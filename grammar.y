@@ -46,6 +46,7 @@ static sl_decl_t* parse_tree_root;
 %token <l_sym> SL_TOK_TNAME
 %token <error> SL_TOK_ERROR
 
+%left SL_TOK_RETURN
 %left ','
 %right '='
 %nonassoc ':'
