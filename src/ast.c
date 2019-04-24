@@ -1,6 +1,8 @@
 #include <stdlib.h>
-#include <stdio.h> // perror
+#include <stdio.h> // perror, fprintf, ...
+#include <stdarg.h> // va_start, va_arg, va_end
 #include <string.h> // memset
+#include <assert.h> // assert
 #include "ast.h"
 
 #define check_mem(ptr) do { \
@@ -33,7 +35,8 @@ sl_decl_t* dl_struct(sl_sym_t name, sl_decl_t* params)
     return node;
 }
 
-sl_decl_t* dl_func(sl_sym_t name, sl_decl_t* params, sl_type_t* ret_type, sl_expr_t* body)
+sl_decl_t* dl_func(
+        sl_sym_t name, sl_decl_t* params, sl_type_t* ret_type, sl_expr_t* body)
 {
     sl_decl_t* node = dl_alloc(SL_DECL_FUNC);
     node->dl_name = name;
@@ -95,6 +98,7 @@ static sl_expr_t* ex_alloc(int tag)
     sl_expr_t* node = malloc(sizeof *node);
     check_mem(node);
 
+    node->ex_tag = tag;
     node->ex_op = 0;
     node->ex_line = yylineno;
     node->ex_type = NULL; // assigned by type-checker
@@ -137,7 +141,7 @@ sl_expr_t* sl_expr_let(sl_sym_t name, sl_type_t* type, sl_expr_t* init)
 {
     sl_expr_t* node = ex_alloc(SL_EXPR_LET);
     node->ex_name = name;
-    node->ex_type = type;
+    node->ex_type_ann = type;
     node->ex_init = init;
     return node;
 }
@@ -180,13 +184,187 @@ sl_expr_t* sl_expr_break()
 sl_expr_t* sl_expr_loop(sl_expr_t* stmts)
 {
     sl_expr_t* node = ex_alloc(SL_EXPR_LOOP);
-    node->ex_left = stmts;
+    node->ex_loop_body = stmts;
     return node;
 }
 
 sl_expr_t* sl_expr_deref(sl_expr_t* expr)
 {
     sl_expr_t* node = ex_alloc(SL_EXPR_DEREF);
-    node->ex_left = expr;
+    node->ex_deref_arg = expr;
     return node;
+}
+
+// Print AST
+
+void dl_list_print(FILE* out, const sl_decl_t* decl)
+{
+    const char* prefix = "";
+    for (; decl; decl = decl->dl_list) {
+        fprintf(out, "%s", prefix);
+        dl_print(out, decl);
+        prefix = " ";
+    }
+}
+
+void ex_list_print(FILE* out, const sl_expr_t* expr)
+{
+    const char* prefix = "";
+    for (; expr; expr = expr->ex_list) {
+        fprintf(out, "%s", prefix);
+        ex_print(out, expr);
+        prefix = " ";
+    }
+}
+
+void dl_print(FILE* out, const sl_decl_t* decl)
+{
+    switch (decl->dl_tag) {
+        case SL_DECL_STRUCT: {
+            fprintf(out, "(struct %s (", decl->dl_name);
+            dl_list_print(out, decl->dl_params);
+            fprintf(out, "))");
+            return;
+        }
+        case SL_DECL_FUNC: {
+            ast_printf(out, "(fn %s : %T (", decl->dl_name, decl->dl_type);
+            dl_list_print(out, decl->dl_params);
+            fprintf(out, ") (");
+            ex_list_print(out, decl->dl_body);
+            fprintf(out, "))");
+            return;
+        }
+        case SL_DECL_PARAM: {
+            ast_printf(out, "(param %s : %T)", decl->dl_name, decl->dl_type);
+            return;
+        }
+    }
+    assert(0 && "dl_print missing case");
+}
+
+
+void ex_print(FILE* out, const sl_expr_t* expr)
+{
+    switch (expr->ex_tag) {
+        case SL_EXPR_INT:
+            // TODO: actually allow 64bit numbers!
+            fprintf(out, "(int %d)", (int)expr->ex_value);
+            return;
+        case SL_EXPR_BINOP:
+            ast_printf(out, "(op %E %E)", expr->ex_left, expr->ex_right);
+            return;
+        case SL_EXPR_LET:
+            ast_printf(out, "(let %s : %T %E)", expr->ex_name,
+                    expr->ex_type_ann, expr->ex_init);
+            return;
+        case SL_EXPR_CALL:
+            fprintf(out, "(call %s (", expr->ex_fn_name);
+            ex_list_print(out, expr->ex_fn_args);
+            fprintf(out, "))");
+            return;
+        case SL_EXPR_NEW:
+            fprintf(out, "(new %s (", expr->ex_new_ctor);
+            ex_list_print(out, expr->ex_new_args);
+            fprintf(out, "))");
+            return;
+        case SL_EXPR_VAR:
+            fprintf(out, "(var %s)", expr->ex_var);
+            return;
+        case SL_EXPR_RETURN:
+            ast_printf(out, "(return %E)", expr->ex_ret_arg);
+            return;
+        case SL_EXPR_BREAK:
+            fprintf(out, "(break)");
+            return;
+        case SL_EXPR_LOOP:
+            ast_printf(out, "(loop (");
+            ex_list_print(out, expr->ex_loop_body);
+            fprintf(out, "))");
+            return;
+        case SL_EXPR_DEREF:
+            ast_printf(out, "(deref %E)", expr->ex_deref_arg);
+            return;
+    }
+    assert(0 && "ex_print missing case");
+}
+
+void ty_print(FILE* out, const sl_type_t* type)
+{
+    switch (type->ty_tag) {
+        case SL_TYPE_NAME:
+            fprintf(out, "%s", type->ty_name);
+            return;
+        case SL_TYPE_PTR:
+            ast_printf(out, "*%T", type->ty_pointee);
+            return;
+        case SL_TYPE_ARRAY:
+            ast_printf(out, "%T[]", type->ty_pointee);
+            return;
+    }
+    assert(0 && "ty_print missing case");
+}
+
+void ast_printf(FILE* out, const char* fmt, ...)
+{
+    const char *cp = fmt;
+    char c;
+
+    va_list valist;
+    va_start(valist, fmt);
+
+    flockfile(out);
+    while ((c = *cp++)) {
+        if (c == '%') {
+            c = *cp++;
+            switch (c) {
+                case 'd':
+                {   // don't bother with negative
+                    int num = va_arg(valist, int);
+                    assert(num >= 0 && "TODO: negative numbers");
+                    do {
+                        putc_unlocked('0' + num%10, out);
+                        num /= 10;
+                    } while (num); // use do while to get printing for 0
+                    break;
+                }
+                case 's':
+                {
+                    const char* cs = va_arg(valist, const char*);
+                    while (*cs) { putc_unlocked(*cs++, out); }
+                    break;
+                }
+                case 'D':
+                {
+                    funlockfile(out); // not sure if re-entrant
+                    dl_print(out, va_arg(valist, sl_decl_t*));
+                    flockfile(out); // not sure if re-entrant
+                    break;
+                }
+                case 'E':
+                {
+                    funlockfile(out); // not sure if re-entrant
+                    ex_print(out, va_arg(valist, sl_expr_t*));
+                    flockfile(out); // not sure if re-entrant
+                    break;
+                }
+                case 'T':
+                {
+                    funlockfile(out); // not sure if re-entrant
+                    ty_print(out, va_arg(valist, sl_type_t*));
+                    flockfile(out); // not sure if re-entrant
+                    break;
+                }
+                case '%':
+                    putc_unlocked(c, out);
+                    break;
+                case '\0': --cp; break;
+                default: assert(0 && "need to add another fmt specifier");
+            }
+        } else {
+            putc_unlocked(c, out);
+        }
+    }
+    funlockfile(out);
+
+    va_end(valist);
 }

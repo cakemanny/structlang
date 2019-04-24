@@ -86,73 +86,73 @@ program:
     ;
 
 declaration_list:
-        declaration
-    |   declaration_list declaration { $$ = dl_append($1, $2); }
+        declaration                     { $$ = $1 }
+    |   declaration_list declaration    { $$ = dl_append($1, $2) }
     ;
 
 declaration:
-        struct_decl
-    |   func_decl
+        struct_decl { $$ = $1 }
+    |   func_decl   { $$ = $1 }
     ;
 
 struct_decl:
         SL_TOK_STRUCT SL_TOK_TNAME '{' param_list '}'
         {
-            $$ = dl_struct($2, $4);
+            $$ = dl_struct($2, $4)
         }
     ;
 
 param_list:
-        /* empty */             { $$ = NULL; }
-    |   param                   { $$ = $1; }
+        /* empty */             { $$ = NULL }
+    |   param                   { $$ = $1 }
     |   param_list ',' param    { $$ = dl_append($1, $3) }
-    |   param_list ','          { $$ = $1; }
+    |   param_list ','          { $$ = $1 }
     ;
 
 param:
-        SL_TOK_IDENT ':' type_expr   { $$ = dl_param($1, $3); }
+        SL_TOK_IDENT ':' type_expr   { $$ = dl_param($1, $3) }
     ;
 
 type_expr:
-        SL_TOK_TNAME    { $$ = ty_type_name($1); }
-    |   '*' type_expr   { $$ = ty_type_pointer($2); }
+        SL_TOK_TNAME    { $$ = ty_type_name($1) }
+    |   '*' type_expr   { $$ = ty_type_pointer($2) }
     ;
 
 func_decl:
         SL_TOK_FN SL_TOK_IDENT '(' param_list ')' SL_TOK_SARROW type_expr '{' stmt_list '}'
         {
-            $$ = dl_func($2, $4, $7, $9);
+            $$ = dl_func($2, $4, $7, $9)
         }
     ;
 
 stmt_list:
-        expr
-    |   stmt_list ';' expr  { $$ = ex_append($1, $3);  }
+        expr                { $$ = $1 }
+    |   stmt_list ';' expr  { $$ = ex_append($1, $3)  }
     |   stmt_list ';'       { $$ = $1 }
     ;
 
 expr:
-        SL_TOK_INT                      { $$ = sl_expr_int($1); }
+        SL_TOK_INT                      { $$ = sl_expr_int($1) }
     |   expr '+' expr
     |   expr '-' expr
     |   expr '*' expr
-    |   expr '/' expr                   { $$ = sl_expr_binop($2, $1, $3); }
+    |   expr '/' expr                   { $$ = sl_expr_binop($2, $1, $3) }
     |   SL_TOK_LET SL_TOK_IDENT ':' type_expr '=' expr
         {
-            $$ = sl_expr_let($2, $4, $6);
+            $$ = sl_expr_let($2, $4, $6)
         }
-    |   SL_TOK_IDENT '(' expr_list ')'  { $$ = sl_expr_call($1, $3); }
-    |   SL_TOK_IDENT                    { $$ = sl_expr_var($1); }
-    |   SL_TOK_RETURN expr              { $$ = sl_expr_return($2); }
-    |   SL_TOK_BREAK                    { $$ = sl_expr_break(); }
-    |   SL_TOK_LOOP '{' stmt_list '}'   { $$ = sl_expr_loop($3); }
-    |   '*' expr                        { $$ = sl_expr_deref($2); }
+    |   SL_TOK_IDENT '(' expr_list ')'  { $$ = sl_expr_call($1, $3) }
+    |   SL_TOK_IDENT                    { $$ = sl_expr_var($1) }
+    |   SL_TOK_RETURN expr              { $$ = sl_expr_return($2) }
+    |   SL_TOK_BREAK                    { $$ = sl_expr_break() }
+    |   SL_TOK_LOOP '{' stmt_list '}'   { $$ = sl_expr_loop($3) }
+    |   '*' expr                        { $$ = sl_expr_deref($2) }
     ;
 
 expr_list:
-        /* empty */         { $$ = NULL; }
-    |   expr
-    |   expr_list ',' expr  { $$ = ex_append($1, $3); }
+        /* empty */         { $$ = NULL }
+    |   expr                { $$ = $1 }
+    |   expr_list ',' expr  { $$ = ex_append($1, $3) }
     ;
 %%
 
@@ -189,8 +189,8 @@ sl_decl_t* parse_file(const char* filename)
         }
         yyfilename = filename;
     }
-    // TODO: check meaning of parse_result
-    int parse_result = yyparse();
+    // TODO: check meaning of yyparse return value
+    yyparse();
     yyfilename = NULL;
     return parse_tree_root;
 }

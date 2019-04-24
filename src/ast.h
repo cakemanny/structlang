@@ -1,6 +1,7 @@
 #ifndef __AST_H__
 #define __AST_H__
 
+#include <stdio.h>
 #include "symbols.h"
 
 struct sl_expr_t;
@@ -90,20 +91,21 @@ struct sl_expr_t {
     sl_expr_t* ex_link; // All allocated sl_expr_t nodes
 };
 
-#define ex_value        ex_u._const._value
+#define ex_value        ex_u._const._value  // SL_EXPR_INT
 #define ex_label        ex_u._const._label
-#define ex_left         ex_u._binop._left
-#define ex_right        ex_u._binop._right
-#define ex_name         ex_u._let._name
-#define ex_type_ann     ex_u._let._type
-#define ex_init         ex_u._let._init
-#define ex_fn_name      ex_u._call._ref
-#define ex_fn_args      ex_u._call._args
-#define ex_new_ctor     ex_u._call._ref
-#define ex_new_args     ex_u._call._args
-#define ex_var          ex_u._call._ref
-#define ex_ret_arg      ex_u._binop._left
-#define ex_deref_arg    ex_u._binop._left
+#define ex_left         ex_u._binop._left   // SL_EXPR_BINOP
+#define ex_right        ex_u._binop._right  // SL_EXPR_BINOP
+#define ex_name         ex_u._let._name     // SL_EXPR_LET
+#define ex_type_ann     ex_u._let._type     // SL_EXPR_LET
+#define ex_init         ex_u._let._init     // SL_EXPR_LET
+#define ex_fn_name      ex_u._call._ref     // SL_EXPR_CALL
+#define ex_fn_args      ex_u._call._args    // SL_EXPR_CALL
+#define ex_new_ctor     ex_u._call._ref     // SL_EXPR_NEW
+#define ex_new_args     ex_u._call._args    // SL_EXPR_NEW
+#define ex_var          ex_u._call._ref     // SL_EXPR_VAR
+#define ex_ret_arg      ex_u._binop._left   // SL_EXPR_RETURN
+#define ex_loop_body    ex_u._binop._left   // SL_EXPR_LOOP
+#define ex_deref_arg    ex_u._binop._left   // SL_EXPR_DEREF
 
 sl_decl_t* dl_struct(sl_sym_t name, sl_decl_t* params);
 sl_decl_t* dl_func(sl_sym_t name, sl_decl_t* params, sl_type_t* ret_type, sl_expr_t* body);
@@ -124,5 +126,11 @@ sl_expr_t* sl_expr_return(sl_expr_t* return_value_expr);
 sl_expr_t* sl_expr_break();
 sl_expr_t* sl_expr_loop(sl_expr_t* smts);
 sl_expr_t* sl_expr_deref(sl_expr_t* expr);
+
+void ast_printf(FILE* out, const char* fmt, ...);
+
+void dl_print(FILE* out, const sl_decl_t* decl);
+void ex_print(FILE* out, const sl_expr_t* expr);
+void ty_print(FILE* out, const sl_type_t* expr);
 
 #endif /* __AST_H__ */

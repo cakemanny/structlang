@@ -14,5 +14,8 @@ int main(int argc, char* argv[])
     char* inarg = argv[1];
     sl_decl_t* program = parse_file(inarg);
 
-    // TODO: print program
+    for (sl_decl_t* decl = program; decl; decl = decl->dl_list) {
+        dl_print(stdout, decl);
+        fprintf(stdout, "\n");
+    }
 }
