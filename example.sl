@@ -11,7 +11,7 @@ struct IntList {
 
 fn f(x: int, y: int) -> int {
     let a: int = g(x, y);
-    // let b: *X = new X { 1, 2 };
+    let b: *X = new X { 1, 2 };
 
     return a;
 }

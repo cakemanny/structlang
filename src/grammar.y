@@ -119,7 +119,8 @@ type_expr:
     ;
 
 func_decl:
-        SL_TOK_FN SL_TOK_IDENT '(' param_list ')' SL_TOK_SARROW type_expr '{' stmt_list '}'
+        SL_TOK_FN SL_TOK_IDENT '(' param_list ')' SL_TOK_SARROW type_expr
+            '{' stmt_list '}'
         {
             $$ = dl_func($2, $4, $7, $9)
         }
@@ -147,6 +148,8 @@ expr:
     |   SL_TOK_BREAK                    { $$ = sl_expr_break() }
     |   SL_TOK_LOOP '{' stmt_list '}'   { $$ = sl_expr_loop($3) }
     |   '*' expr                        { $$ = sl_expr_deref($2) }
+    |   SL_TOK_NEW SL_TOK_TNAME '{' expr_list '}'
+                                        { $$ = sl_expr_new($2, $4) }
     ;
 
 expr_list:
