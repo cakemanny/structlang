@@ -36,6 +36,7 @@ struct sl_type_t {
         SL_TYPE_PTR,
         SL_TYPE_ARRAY,
     } ty_tag;
+    int ty_line;
     union {
         sl_sym_t _name; // SL_TYPE_NAME
         sl_type_t* _pointee; // SL_TYPE_PTR, SL_TYPE_ARRAY

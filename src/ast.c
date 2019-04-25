@@ -73,6 +73,7 @@ static sl_type_t* ty_alloc(int tag)
     check_mem(node);
 
     node->ty_tag = tag;
+    node->ty_line = yylineno;
 
     memset(&node->ty_u, 0, sizeof node->ty_u);
 

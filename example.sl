@@ -13,7 +13,7 @@ fn f(x: int, y: int) -> int {
     let a: int = g(x, y);
     let b: *X = new X { 1, 2 };
 
-    return a;
+    return a; // + b->x ?
 }
 
 fn main() -> int {

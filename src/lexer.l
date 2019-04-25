@@ -7,8 +7,7 @@
 %}
 
 INT     [1-9][0-9]*|0
-ID      [a-z][[:alnum:]_]*
-CTORID  [A-Z][[:alnum:]_]*
+ID      [a-zA-Z][[:alnum:]_]*
 WS      [ \t\f\v\r]
 SYMS    [-+*/=<=(){}:\[\];_,^|@]
 
@@ -65,10 +64,9 @@ loop    { return SL_TOK_LOOP; }
  /* builtin types */
 {INT}       { yylval.l_int = atoll(yytext); return SL_TOK_INT; }
 
-int         { yylval.l_sym = Atom_new(yytext, yyleng); return SL_TOK_TNAME; }
+int         { yylval.l_sym = Atom_new(yytext, yyleng); return SL_TOK_IDENT; }
  /* TODO: other types */
 {ID}        { yylval.l_sym = Atom_new(yytext, yyleng); return SL_TOK_IDENT; }
-{CTORID}    { yylval.l_sym = Atom_new(yytext, yyleng); return SL_TOK_TNAME; }
 
 
  /* puctuation */

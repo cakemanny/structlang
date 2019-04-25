@@ -43,7 +43,6 @@ static sl_decl_t* parse_tree_root;
 
 %token <l_int> SL_TOK_INT
 %token <l_sym> SL_TOK_IDENT
-%token <l_sym> SL_TOK_TNAME
 %token <error> SL_TOK_ERROR
 
 %left SL_TOK_RETURN
@@ -96,7 +95,7 @@ declaration:
     ;
 
 struct_decl:
-        SL_TOK_STRUCT SL_TOK_TNAME '{' param_list '}'
+        SL_TOK_STRUCT SL_TOK_IDENT '{' param_list '}'
         {
             $$ = dl_struct($2, $4)
         }
@@ -114,7 +113,7 @@ param:
     ;
 
 type_expr:
-        SL_TOK_TNAME    { $$ = ty_type_name($1) }
+        SL_TOK_IDENT    { $$ = ty_type_name($1) }
     |   '*' type_expr   { $$ = ty_type_pointer($2) }
     ;
 
@@ -148,7 +147,7 @@ expr:
     |   SL_TOK_BREAK                    { $$ = sl_expr_break() }
     |   SL_TOK_LOOP '{' stmt_list '}'   { $$ = sl_expr_loop($3) }
     |   '*' expr                        { $$ = sl_expr_deref($2) }
-    |   SL_TOK_NEW SL_TOK_TNAME '{' expr_list '}'
+    |   SL_TOK_NEW SL_TOK_IDENT '{' expr_list '}'
                                         { $$ = sl_expr_new($2, $4) }
     ;
 
