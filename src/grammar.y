@@ -59,7 +59,7 @@ static sl_decl_t* parse_tree_root;
 %left SL_TOK_LSH SL_TOK_RSH
 %left '+' '-'
 %left '*' '/' '%'
-/* TODO: DEREF */
+/* TODO deref */
 %left '(' ')'
 
 
@@ -75,8 +75,8 @@ static sl_decl_t* parse_tree_root;
 
 %type <l_expr> stmt_list
 %type <l_expr> expr
+%type <l_expr> expr_opt
 %type <l_expr> expr_list
-
 
 %%
 
@@ -132,10 +132,11 @@ stmt_list:
     ;
 
 expr:
-        SL_TOK_INT                      { $$ = sl_expr_int($1) }
-    |   expr '+' expr
-    |   expr '-' expr
-    |   expr '*' expr
+        '(' expr ')'                    { $$ = $2 }
+    |   SL_TOK_INT                      { $$ = sl_expr_int($1) }
+    |   expr '+' expr                   { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr '-' expr                   { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr '*' expr                   { $$ = sl_expr_binop($2, $1, $3) }
     |   expr '/' expr                   { $$ = sl_expr_binop($2, $1, $3) }
     |   SL_TOK_LET SL_TOK_IDENT ':' type_expr '=' expr
         {
@@ -143,7 +144,7 @@ expr:
         }
     |   SL_TOK_IDENT '(' expr_list ')'  { $$ = sl_expr_call($1, $3) }
     |   SL_TOK_IDENT                    { $$ = sl_expr_var($1) }
-    |   SL_TOK_RETURN expr              { $$ = sl_expr_return($2) }
+    |   SL_TOK_RETURN expr_opt          { $$ = sl_expr_return($2) }
     |   SL_TOK_BREAK                    { $$ = sl_expr_break() }
     |   SL_TOK_LOOP '{' stmt_list '}'   { $$ = sl_expr_loop($3) }
     |   '*' expr                        { $$ = sl_expr_deref($2) }
@@ -151,6 +152,12 @@ expr:
                                         { $$ = sl_expr_new($2, $4) }
     ;
 
+expr_opt:
+        /* empty */         { $$ = NULL }
+    |   expr                { $$ = $1 }
+    ;
+
+    /* this looks wrong..., looks like it would allow ",e" */
 expr_list:
         /* empty */         { $$ = NULL }
     |   expr                { $$ = $1 }
@@ -174,7 +181,7 @@ static void yyerror(const char* msg)
         fn = yyfilename;
     }
 
-    fprintf(stderr, "%s:%d: error: %s\n", yyfilename, yylineno, msg);
+    fprintf(stderr, "%s:%d: error: %s\n", fn, yylineno, msg);
     extern const char* yytext;
     fprintf(stderr, "	yytext = %s\n", yytext);
 }
@@ -191,6 +198,7 @@ sl_decl_t* parse_file(const char* filename)
         }
         yyfilename = filename;
     }
+    parse_tree_root = NULL;
     // TODO: check meaning of yyparse return value
     yyparse();
     yyfilename = NULL;

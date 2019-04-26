@@ -102,7 +102,7 @@ static sl_expr_t* ex_alloc(int tag)
     check_mem(node);
 
     node->ex_tag = tag;
-    node->ex_op = 0;
+    node->ex_op = -1;
     node->ex_line = yylineno;
     node->ex_type = NULL; // assigned by type-checker
     memset(&node->ex_u, 0, sizeof node->ex_u);
@@ -248,13 +248,18 @@ void dl_print(FILE* out, const sl_decl_t* decl)
 
 void ex_print(FILE* out, const sl_expr_t* expr)
 {
+    if (!expr) {
+        fprintf(out, "(null)");
+        return;
+    }
     switch (expr->ex_tag) {
         case SL_EXPR_INT:
             // TODO: actually allow 64bit numbers!
-            fprintf(out, "(int %d)", (int)expr->ex_value);
+            ast_printf(out, "(int %d)", (int)expr->ex_value);
             return;
         case SL_EXPR_BINOP:
-            ast_printf(out, "(op %E %E)", expr->ex_left, expr->ex_right);
+            ast_printf(out, "(op '%c' %E %E)",
+                    expr->ex_op, expr->ex_left, expr->ex_right);
             return;
         case SL_EXPR_LET:
             ast_printf(out, "(let %s : %T %E)", expr->ex_name,
@@ -330,9 +335,12 @@ void ast_printf(FILE* out, const char* fmt, ...)
                     break;
                 }
                 case 'd':
-                {   // don't bother with negative
+                {
                     int num = va_arg(valist, int);
-                    assert(num >= 0 && "TODO: negative numbers");
+                    if (num < 0) {
+                        num = -num;
+                        putc_unlocked('-', out);
+                    }
                     do {
                         putc_unlocked('0' + num%10, out);
                         num /= 10;
@@ -379,6 +387,16 @@ void ast_printf(FILE* out, const char* fmt, ...)
     funlockfile(out);
 
     va_end(valist);
+}
+
+int dl_struct_num_fields(sl_decl_t* struct_decl)
+{
+    assert(struct_decl->dl_tag == SL_DECL_STRUCT);
+    int num_params = 0;
+    for (sl_decl_t* param = struct_decl->dl_params; param; param = param->dl_list) {
+        num_params += 1;
+    }
+    return num_params;
 }
 
 int ty_cmp(sl_type_t* t1, sl_type_t* t2)

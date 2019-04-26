@@ -1,0 +1,285 @@
+#!/bin/bash
+
+SLC=$(dirname "$0")/../build/structlangc
+red=$(tput setaf 1)
+grn=$(tput setaf 2)
+clr=$(tput sgr0)
+
+if [[ ! -x $SLC ]]; then
+    exit 1
+fi
+
+# TODO rewrite to check our expected error messages
+
+check_pass() {
+    output=$(echo "$1" | $SLC -t -)
+    result=$?
+    if [[ $result == 0 ]]; then
+        echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"
+    else
+        echo "${red}failed${clr}"
+        echo "**program**"
+        echo "$1"
+        echo "**end**"
+        echo
+    fi
+}
+
+check_fail() {
+    output=$(echo "$1" | $SLC -t -)
+    result=$?
+    if [[ $result == 1 ]]; then
+        echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"
+    else
+        echo "${red}expected to fail${clr}"
+        echo "**program**"
+        echo "$1"
+        echo "**end**"
+        echo
+    fi
+}
+
+## Declarations
+
+# structs
+check_pass "
+struct X {
+    x: int,
+}
+"
+check_fail "
+struct X {
+    x: int,
+    x: int,
+}
+"
+check_fail "
+struct X {
+    x: X,
+}
+"
+check_pass "
+struct X {
+    x: *X,
+}
+"
+
+## Expressions
+
+# int
+check_pass "fn main() -> int { 0 }"
+
+# Binary operations
+check_pass "
+fn main() -> int {
+    1 + 2
+}
+"
+
+check_pass "
+fn main() -> int {
+    2 - 1; 2 * 3; 4 / 2
+}
+"
+
+check_fail "
+struct X { x: int }
+fn main() -> int {
+    1 + new X{2}
+}
+"
+
+check_fail "
+struct X { x: int }
+fn main() -> int {
+    new X{1} + 2
+}
+"
+
+# let bindings
+
+check_pass "
+fn main() -> void {
+    let a: int = 1
+}
+"
+check_fail "
+fn main() -> void {
+    let a: Y = 1
+}
+"
+check_fail "
+struct X { x: int }
+fn main() -> void {
+    let a: int = new X{0}
+}
+"
+check_fail "
+fn main() -> void {
+    let a: int = 1;
+    let a: int = 2
+}
+"
+
+# function calls
+check_pass "
+fn f(x: int) -> int {
+    x
+}
+fn main() -> int {
+    f(0)
+}
+"
+check_pass "
+fn main() -> int {
+    main()
+}
+"
+check_fail "
+fn main() -> void {
+    f(0)
+}
+"
+check_fail "
+struct X { x: int }
+fn main() -> void {
+    X(0)
+}
+"
+check_fail "
+fn main() -> void {
+    let a: int = 0;
+    a(0)
+}
+"
+check_fail "
+fn f(x: int) -> int {x}
+fn main() -> int {
+    f()
+}
+"
+check_fail "
+fn fst(x: int, y: int) -> int {x}
+fn main() -> int {
+    fst(0)
+}
+"
+check_fail "
+fn f() -> int { 0 }
+fn main() -> int {
+    f(0)
+}
+"
+check_fail "
+fn f(x: int) -> int {x}
+fn main() -> int {
+    f(1, 2)
+}
+"
+check_fail "
+struct X { x: int }
+fn f(x: int) -> int {x}
+fn main() -> int {
+    f(new X{0})
+}
+"
+
+# structs
+check_pass "
+struct X { x: int }
+fn main() -> void {
+    let a: *X = new X { 0 }
+}
+"
+# TODO: more of these
+
+# variable references
+check_pass "
+fn main() -> int {
+    let a: int = 0;
+    a
+}
+"
+check_fail "
+fn main() -> void {
+    x
+}
+"
+check_fail "
+struct X { x: int }
+fn main() -> void {
+    X
+}
+"
+check_fail "
+fn f(x: int) -> int { x }
+fn main() -> void {
+    f
+}
+"
+
+# return
+check_pass "
+fn main() -> int {
+    return 0;
+}
+"
+check_pass "
+fn main() -> int {
+    return 0;
+    return 0;
+}
+"
+check_fail "
+fn main() -> void {
+    return 0;
+}
+"
+check_fail "
+fn main() -> int {
+    return
+}
+"
+
+# loop
+check_pass "
+fn main() -> void {
+    loop {
+        0
+    }
+}
+"
+check_pass "
+fn main() -> int {
+    loop {
+        0
+    }
+}
+"
+
+# break
+check_pass "
+fn main() -> void {
+    loop {
+        break
+    }
+}
+"
+check_fail "
+fn main() -> void {
+    break
+}
+"
+
+# pointer dereference
+check_pass "
+struct X { x: int }
+fn main() -> X {
+    *(new X { 0 })
+}
+"
+check_fail "
+fn main() -> void {
+    *1
+}
+"

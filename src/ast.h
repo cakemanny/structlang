@@ -1,7 +1,7 @@
 #ifndef __AST_H__
 #define __AST_H__
 
-#include <stdio.h>
+#include <stdio.h> // FILE*
 #include "symbols.h"
 
 struct sl_expr_t;
@@ -138,8 +138,10 @@ void ty_print(FILE* out, const sl_type_t* expr);
 
 // Helper functions
 
+int dl_struct_num_fields(sl_decl_t* struct_decl) __attribute__((pure));
+
 // TODO
 //unsigned long ty_hash(sl_type_t* type);
-int ty_cmp(sl_type_t* t1, sl_type_t* t2);
+int ty_cmp(sl_type_t* t1, sl_type_t* t2) __attribute__((nonnull(1, 2)));
 
 #endif /* __AST_H__ */

@@ -1,0 +1,46 @@
+#!/bin/bash
+
+SLC=$(dirname "$0")/../build/structlangc
+red=$(tput setaf 1)
+grn=$(tput setaf 2)
+clr=$(tput sgr0)
+
+if [[ ! -x $SLC ]]; then
+    exit 1
+fi
+
+check() {
+    expected="$2"
+    output=$(echo "$1" | $SLC -p -)
+    result=$?
+    if [[ $result != 0 ]]; then
+        echo "${red}failed${clr}"
+        echo "**program**"
+        echo "$1"
+        echo "**end**"
+        echo
+    elif [[ "$output" != "$expected" ]]; then
+        echo "${red}failed${clr}"
+        echo "expected: $expected"
+        echo "     got: $output"
+        echo "**program**"
+        echo "$1"
+        echo "**end**"
+        echo
+    else
+        echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"
+    fi
+}
+
+# int
+check "fn main() -> int { 0 }" "(fn main : int () ((int 0)))"
+
+
+# Binary operations
+check "fn main() -> int { 1 + 2 }" "(fn main : int () ((op '+' (int 1) (int 2))))"
+check "fn main() -> int { 1 + 2 + 3 }" \
+    "(fn main : int () ((op '+' (op '+' (int 1) (int 2)) (int 3))))"
+check "fn main() -> int { 1 * 2 + 3 }" \
+    "(fn main : int () ((op '+' (op '*' (int 1) (int 2)) (int 3))))"
+check "fn main() -> int { 1 + 2 * 3 }" \
+    "(fn main : int () ((op '+' (int 1) (op '*' (int 2) (int 3)))))"

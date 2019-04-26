@@ -6,10 +6,10 @@
 
 %}
 
-INT     [1-9][0-9]*|0
-ID      [a-zA-Z][[:alnum:]_]*
+INT     [-]?[1-9][0-9]*|0
+ID      [a-zA-Z_][[:alnum:]_]*
 WS      [ \t\f\v\r]
-SYMS    [-+*/=<=(){}:\[\];_,^|@]
+SYMS    [-+*/=<=(){}:\[\];,^|@]
 
 %%
 
@@ -64,8 +64,6 @@ loop    { return SL_TOK_LOOP; }
  /* builtin types */
 {INT}       { yylval.l_int = atoll(yytext); return SL_TOK_INT; }
 
-int         { yylval.l_sym = Atom_new(yytext, yyleng); return SL_TOK_IDENT; }
- /* TODO: other types */
 {ID}        { yylval.l_sym = Atom_new(yytext, yyleng); return SL_TOK_IDENT; }
 
 
@@ -79,7 +77,7 @@ int         { yylval.l_sym = Atom_new(yytext, yyleng); return SL_TOK_IDENT; }
 "<<"    { return SL_TOK_LSH; }
 ">>"    { return SL_TOK_RSH; }
 "->"    { return SL_TOK_SARROW; }
-{SYMS}  { return yytext[0]; }
+{SYMS}  { return (yylval.l_tok = yytext[0]); }
 
 {WS}+   ; /* drop whitespace */
 [\n]    { ++yylineno; }
