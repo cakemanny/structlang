@@ -36,6 +36,7 @@ int main(int argc, char* argv[])
 
     int sem_result = sem_verify_and_type_program(inarg, program);
     if (sem_result < 0) {
+        fprintf(stderr, "%d errors\n", -sem_result);
         return 1;
     }
 }

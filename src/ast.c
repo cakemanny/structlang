@@ -69,13 +69,10 @@ sl_decl_t* dl_append(sl_decl_t* dln, sl_decl_t* to_append)
 
 static sl_type_t* ty_alloc(int tag)
 {
-    sl_type_t* node = malloc(sizeof *node);
+    sl_type_t* node = calloc(1, sizeof *node);
     check_mem(node);
 
     node->ty_tag = tag;
-    node->ty_line = yylineno;
-
-    memset(&node->ty_u, 0, sizeof node->ty_u);
 
     return node;
 }
@@ -92,6 +89,11 @@ sl_type_t* ty_type_pointer(sl_type_t* pointee)
     sl_type_t* node = ty_alloc(SL_TYPE_PTR);
     node->ty_pointee = pointee;
     return node;
+}
+
+sl_type_t* ty_type_func()
+{
+    return ty_alloc(SL_TYPE_FUNC);
 }
 
 static sl_expr_t* ex_alloc(int tag)
@@ -301,6 +303,9 @@ void ty_print(FILE* out, const sl_type_t* type)
         case SL_TYPE_ARRAY:
             ast_printf(out, "%T[]", type->ty_pointee);
             return;
+        case SL_TYPE_FUNC:
+            fprintf(out, "<fn>");
+            return;
     }
     assert(0 && "ty_print missing case");
 }
@@ -318,6 +323,12 @@ void ast_printf(FILE* out, const char* fmt, ...)
         if (c == '%') {
             c = *cp++;
             switch (c) {
+                case 'c':
+                {
+                    int cc = va_arg(valist, int);
+                    putc_unlocked(cc, out);
+                    break;
+                }
                 case 'd':
                 {   // don't bother with negative
                     int num = va_arg(valist, int);
@@ -368,4 +379,28 @@ void ast_printf(FILE* out, const char* fmt, ...)
     funlockfile(out);
 
     va_end(valist);
+}
+
+int ty_cmp(sl_type_t* t1, sl_type_t* t2)
+{
+    assert(t1);
+    assert(t2);
+    if (t1 == t2) {
+        return 0;
+    }
+
+    int cmp = t2->ty_tag - t1->ty_tag;
+    if (cmp != 0) {
+        return cmp;
+    }
+    switch (t1->ty_tag) {
+        case SL_TYPE_NAME:
+            return strcmp(t1->ty_name, t2->ty_name);
+        case SL_TYPE_PTR:
+            return ty_cmp(t1->ty_pointee, t2->ty_pointee);
+        case SL_TYPE_ARRAY:
+            return ty_cmp(t1->ty_pointee, t2->ty_pointee);
+        case SL_TYPE_FUNC:
+            return 1; // FIXME
+    }
 }

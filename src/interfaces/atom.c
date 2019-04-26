@@ -1,4 +1,4 @@
-#include "symbols.h"
+#include "atom.h"
 #include <string.h>
 #include <assert.h>
 #include <limits.h>

@@ -35,16 +35,13 @@ struct sl_type_t {
         SL_TYPE_NAME = 1,
         SL_TYPE_PTR,
         SL_TYPE_ARRAY,
+        SL_TYPE_FUNC,
     } ty_tag;
-    int ty_line;
     union {
-        sl_sym_t _name; // SL_TYPE_NAME
-        sl_type_t* _pointee; // SL_TYPE_PTR, SL_TYPE_ARRAY
-    } ty_u;
+        sl_sym_t ty_name; // SL_TYPE_NAME
+        sl_type_t* ty_pointee; // SL_TYPE_PTR, SL_TYPE_ARRAY
+    };
 };
-
-#define ty_name     ty_u._name
-#define ty_pointee  ty_u._pointee
 
 struct sl_expr_t {
     enum {
@@ -108,6 +105,8 @@ struct sl_expr_t {
 #define ex_loop_body    ex_u._binop._left   // SL_EXPR_LOOP
 #define ex_deref_arg    ex_u._binop._left   // SL_EXPR_DEREF
 
+// AST Node Constructors
+
 sl_decl_t* dl_struct(sl_sym_t name, sl_decl_t* params);
 sl_decl_t* dl_func(sl_sym_t name, sl_decl_t* params, sl_type_t* ret_type, sl_expr_t* body);
 sl_decl_t* dl_param(sl_sym_t name, sl_type_t* type);
@@ -115,6 +114,7 @@ sl_decl_t* dl_append(sl_decl_t* dln, sl_decl_t* to_append);
 
 sl_type_t* ty_type_name(sl_sym_t name);
 sl_type_t* ty_type_pointer(sl_type_t* pointee);
+sl_type_t* ty_type_func();
 
 sl_expr_t* ex_append(sl_expr_t* exn, sl_expr_t* to_append);
 sl_expr_t* sl_expr_int(int value);
@@ -128,10 +128,18 @@ sl_expr_t* sl_expr_break();
 sl_expr_t* sl_expr_loop(sl_expr_t* smts);
 sl_expr_t* sl_expr_deref(sl_expr_t* expr);
 
+// AST Printing functions
+
 void ast_printf(FILE* out, const char* fmt, ...);
 
 void dl_print(FILE* out, const sl_decl_t* decl);
 void ex_print(FILE* out, const sl_expr_t* expr);
 void ty_print(FILE* out, const sl_type_t* expr);
+
+// Helper functions
+
+// TODO
+//unsigned long ty_hash(sl_type_t* type);
+int ty_cmp(sl_type_t* t1, sl_type_t* t2);
 
 #endif /* __AST_H__ */

@@ -19,7 +19,7 @@ LEX=flex
 LFLAGS=
 
 CPPFLAGS ?= $(INC_FLAGS) -MMD -MP
-CFLAGS = -std=gnu11 -g -Wall -fno-omit-frame-pointer
+CFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer
 
 ifndef NDEBUG
   ifneq "$(OS)" "Windows_NT"
