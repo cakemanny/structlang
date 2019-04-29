@@ -69,30 +69,123 @@ struct X {
 # int
 check_pass "fn main() -> int { 0 }"
 
+# bool
+check_pass "fn main() -> bool { true }"
+check_pass "fn main() -> bool { false }"
+
 # Binary operations
 check_pass "
 fn main() -> int {
     1 + 2
 }
 "
-
 check_pass "
 fn main() -> int {
     2 - 1; 2 * 3; 4 / 2
 }
 "
-
+check_pass "
+fn main() -> int {
+    1 << 2; 2 >> 1
+}
+"
 check_fail "
 struct X { x: int }
 fn main() -> int {
     1 + new X{2}
 }
 "
-
 check_fail "
 struct X { x: int }
 fn main() -> int {
     new X{1} + 2
+}
+"
+check_pass "
+fn main() -> bool {
+    true && true
+}
+"
+check_pass "
+fn main() -> bool {
+    false || false
+}
+"
+check_fail "
+fn main() -> bool {
+    1 && 2
+}
+"
+check_fail "
+fn main() -> bool {
+    1 || 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 < 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 <= 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 > 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 >= 2
+}
+"
+check_fail "
+fn main() -> bool {
+    true < false
+}
+"
+check_fail "
+fn main() -> bool {
+    true <= false
+}
+"
+check_fail "
+fn main() -> bool {
+    true > false
+}
+"
+check_fail "
+fn main() -> bool {
+    true >= false
+}
+"
+check_pass "
+fn main() -> bool {
+    1 == 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 != 2
+}
+"
+check_pass "
+fn main() -> bool {
+    true == true
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> bool {
+    (new X{0}) == (new X{1})
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> bool {
+    *(new X{0}) == *(new X{1})
 }
 "
 
@@ -281,5 +374,60 @@ fn main() -> X {
 check_fail "
 fn main() -> void {
     *1
+}
+"
+
+# if expression
+check_pass "
+fn main() -> int {
+    if 1 < 2 {
+        1
+    } else {
+        2
+    }
+}
+"
+check_pass "
+fn main() -> bool {
+    if 1 < 2 {
+        true
+    } else {
+        false
+    }
+}
+"
+check_pass "
+fn main() -> void {
+    if 1 < 2 {
+        return
+    }
+}
+"
+check_pass "
+fn main() -> void {
+    let a: int = if 1 < 2 {
+        1
+    } else {
+        2
+    }
+}
+"
+# else-less if must have type void
+check_fail "
+fn main() -> int {
+    if 1 < 2 {
+        1
+    }
+    2
+}
+"
+# branches must have same type
+check_fail "
+fn main() -> int {
+    if 1 < 2 {
+        1
+    } else {
+        return 1
+    }
 }
 "

@@ -37,10 +37,22 @@ static sl_decl_t* parse_tree_root;
 %token SL_TOK_RETURN
 %token SL_TOK_BREAK
 %token SL_TOK_LOOP
+%token SL_TOK_IF
+%token SL_TOK_ELSE
 
-%token <l_tok> '+' '-' '*' '/'
-%token SL_TOK_SARROW
+%token <l_tok> '+' '-' '*' '/' '<' '>'
+%token <l_tok> SL_TOK_LOR;
+%token <l_tok> SL_TOK_LAND;
+%token <l_tok> SL_TOK_EQ;
+%token <l_tok> SL_TOK_NEQ;
+%token <l_tok> SL_TOK_LE;
+%token <l_tok> SL_TOK_GE;
+%token <l_tok> SL_TOK_LSH;
+%token <l_tok> SL_TOK_RSH;
+%token <l_tok> SL_TOK_SARROW
 
+%token SL_TOK_TRUE
+%token SL_TOK_FALSE
 %token <l_int> SL_TOK_INT
 %token <l_sym> SL_TOK_IDENT
 %token <error> SL_TOK_ERROR
@@ -77,6 +89,7 @@ static sl_decl_t* parse_tree_root;
 %type <l_expr> expr
 %type <l_expr> expr_opt
 %type <l_expr> expr_list
+%type <l_expr> if_expr
 
 %%
 
@@ -134,10 +147,22 @@ stmt_list:
 expr:
         '(' expr ')'                    { $$ = $2 }
     |   SL_TOK_INT                      { $$ = sl_expr_int($1) }
+    |   SL_TOK_TRUE                     { $$ = sl_expr_bool(1) }
+    |   SL_TOK_FALSE                    { $$ = sl_expr_bool(0) }
     |   expr '+' expr                   { $$ = sl_expr_binop($2, $1, $3) }
     |   expr '-' expr                   { $$ = sl_expr_binop($2, $1, $3) }
     |   expr '*' expr                   { $$ = sl_expr_binop($2, $1, $3) }
     |   expr '/' expr                   { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr SL_TOK_LSH expr            { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr SL_TOK_RSH expr            { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr '<' expr                   { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr SL_TOK_LE expr             { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr '>' expr                   { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr SL_TOK_GE expr             { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr SL_TOK_EQ expr             { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr SL_TOK_NEQ expr            { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr SL_TOK_LAND expr           { $$ = sl_expr_binop($2, $1, $3) }
+    |   expr SL_TOK_LOR expr            { $$ = sl_expr_binop($2, $1, $3) }
     |   SL_TOK_LET SL_TOK_IDENT ':' type_expr '=' expr
         {
             $$ = sl_expr_let($2, $4, $6)
@@ -150,6 +175,16 @@ expr:
     |   '*' expr                        { $$ = sl_expr_deref($2) }
     |   SL_TOK_NEW SL_TOK_IDENT '{' expr_list '}'
                                         { $$ = sl_expr_new($2, $4) }
+    |   if_expr                         { $$ = $1 }
+    ;
+
+if_expr:
+        SL_TOK_IF expr '{' expr '}'
+                                        { $$ = sl_expr_if($2, $4, sl_expr_void()) }
+    |   SL_TOK_IF expr '{' expr '}' SL_TOK_ELSE '{' expr '}'
+                                        { $$ = sl_expr_if($2, $4, $8) }
+    |   SL_TOK_IF expr '{' expr '}' SL_TOK_ELSE if_expr
+                                        { $$ = sl_expr_if($2, $4, $7) }
     ;
 
 expr_opt:

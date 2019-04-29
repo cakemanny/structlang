@@ -46,6 +46,8 @@ struct sl_type_t {
 struct sl_expr_t {
     enum {
         SL_EXPR_INT = 1,
+        SL_EXPR_BOOL,
+        SL_EXPR_VOID,
         SL_EXPR_BINOP,
         SL_EXPR_LET,
         SL_EXPR_CALL,
@@ -54,7 +56,8 @@ struct sl_expr_t {
         SL_EXPR_RETURN,
         SL_EXPR_BREAK,
         SL_EXPR_LOOP,
-        SL_EXPR_DEREF
+        SL_EXPR_DEREF,
+        SL_EXPR_IF,
     } ex_tag;
     int ex_op; // SL_TOK_... binop token
     int ex_line;
@@ -63,15 +66,13 @@ struct sl_expr_t {
     union {
         struct {
             long long _value;
-            sl_sym_t _label; // label of constructor args
         } _const;
 
         struct {
             sl_expr_t* _left;
             sl_expr_t* _right;
-        } _binop; /* or return: SL_EXPR_BINOP, SL_EXPR_RETURN (_left only)
-                     SL_EXPR_LOOP (_left = expr list)
-                   */
+        } _binop;
+
         struct {
             sl_sym_t _name;
             sl_type_t* _type;
@@ -83,19 +84,26 @@ struct sl_expr_t {
             sl_expr_t* _args;
         } _call; // SL_EXPR_CALL, SL_EXPR_NEW, SL_EXPR_VAR
 
+        struct {
+            sl_expr_t* _cond;
+            sl_expr_t* _cons;
+            sl_expr_t* _alt;
+        } _if; // SL_EXPR_IF
+
     } ex_u;
 
     sl_expr_t* ex_list; // call args, or next expr in function body
     sl_expr_t* ex_link; // All allocated sl_expr_t nodes
 };
 
-#define ex_value        ex_u._const._value  // SL_EXPR_INT
-#define ex_label        ex_u._const._label
+#define ex_value        ex_u._const._value  // SL_EXPR_INT, SL_EXPR_BOOL
 #define ex_left         ex_u._binop._left   // SL_EXPR_BINOP
 #define ex_right        ex_u._binop._right  // SL_EXPR_BINOP
 #define ex_name         ex_u._let._name     // SL_EXPR_LET
 #define ex_type_ann     ex_u._let._type     // SL_EXPR_LET
 #define ex_init         ex_u._let._init     // SL_EXPR_LET
+#define ex_field_label  ex_u._let._name     // SL_EXPR_FIELD // TODO
+#define ex_field_init   ex_u._let._init     // SL_EXPR_FIELD
 #define ex_fn_name      ex_u._call._ref     // SL_EXPR_CALL
 #define ex_fn_args      ex_u._call._args    // SL_EXPR_CALL
 #define ex_new_ctor     ex_u._call._ref     // SL_EXPR_NEW
@@ -104,6 +112,9 @@ struct sl_expr_t {
 #define ex_ret_arg      ex_u._binop._left   // SL_EXPR_RETURN
 #define ex_loop_body    ex_u._binop._left   // SL_EXPR_LOOP
 #define ex_deref_arg    ex_u._binop._left   // SL_EXPR_DEREF
+#define ex_if_cond      ex_u._if._cond      // SL_EXPR_IF
+#define ex_if_cons      ex_u._if._cons      // SL_EXPR_IF
+#define ex_if_alt       ex_u._if._alt       // SL_EXPR_IF
 
 // AST Node Constructors
 
@@ -118,6 +129,8 @@ sl_type_t* ty_type_func();
 
 sl_expr_t* ex_append(sl_expr_t* exn, sl_expr_t* to_append);
 sl_expr_t* sl_expr_int(int value);
+sl_expr_t* sl_expr_bool(_Bool value);
+sl_expr_t* sl_expr_void();
 sl_expr_t* sl_expr_binop(int op, sl_expr_t* left, sl_expr_t* right);
 sl_expr_t* sl_expr_let(sl_sym_t name, sl_type_t* type, sl_expr_t* init);
 sl_expr_t* sl_expr_call(sl_sym_t fn_name, sl_expr_t* args);
@@ -127,6 +140,7 @@ sl_expr_t* sl_expr_return(sl_expr_t* return_value_expr);
 sl_expr_t* sl_expr_break();
 sl_expr_t* sl_expr_loop(sl_expr_t* smts);
 sl_expr_t* sl_expr_deref(sl_expr_t* expr);
+sl_expr_t* sl_expr_if(sl_expr_t* cond, sl_expr_t* cons, sl_expr_t* alt);
 
 // AST Printing functions
 
@@ -139,6 +153,7 @@ void ty_print(FILE* out, const sl_type_t* expr);
 // Helper functions
 
 int dl_struct_num_fields(sl_decl_t* struct_decl) __attribute__((pure));
+int dl_func_num_params(sl_decl_t* func_decl) __attribute__((pure));
 
 // TODO
 //unsigned long ty_hash(sl_type_t* type);

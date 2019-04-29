@@ -3,6 +3,7 @@
 #include <string.h> // strcmp
 #include "semantics.h"
 #include "colours.h"
+#include "grammar.tab.h"
 
 // type infering declarations - requires -std=gnu11
 #define VAR(_name, _expression) typeof(_expression) _name = (_expression)
@@ -98,7 +99,9 @@ static _Bool type_exists(sem_info_t* sem_info, sl_type_t* type)
         t = t->ty_pointee;
     }
     // check for builtins
-    if (t->ty_name == symbol("int") || t->ty_name == symbol("void")) {
+    if (t->ty_name == symbol("int")
+            || t->ty_name == symbol("void")
+            || t->ty_name == symbol("bool")) {
         return 1;
     }
     return (lookup_struct_decl(sem_info, t->ty_name) != NULL);
@@ -111,36 +114,87 @@ static sl_decl_t* lookup_func_decl(sem_info_t* sem_info, sl_sym_t fn_name)
 
 static int verify_expr(sem_info_t* info, sl_expr_t* e);
 
+static int verify_expr_binop_operands(sem_info_t* info, sl_expr_t* expr,
+        sl_type_t* expected_type)
+{
+    int result = 0;
+    VAR(t1, expr->ex_left->ex_type);
+    VAR(t2, expr->ex_right->ex_type);
+    if (ty_cmp(t1, expected_type) != 0) {
+        elprintf("operands of binary operation '%O' should be of "
+                "type '%T', but left side had type '%T'",
+                info, expr->ex_left->ex_line,
+                expr->ex_op, expected_type, expr->ex_left->ex_type);
+        result -= 1;
+    }
+    if (ty_cmp(t2, expected_type) != 0) {
+        elprintf("operands of binary operation '%O' should be of "
+                "type '%T', but right side had type '%T'",
+                info, expr->ex_right->ex_line,
+                expr->ex_op, expected_type, expr->ex_right->ex_type);
+        result -= 1;
+    }
+    return result;
+}
 
 static int verify_expr_binop(sem_info_t* info, sl_expr_t* expr)
 {
     int result = 0;
+    result += verify_expr(info, expr->ex_left);
+    result += verify_expr(info, expr->ex_right);
+
     switch (expr->ex_op) {
+        /* int -> int -> int */
         case '+':
         case '-':
         case '*':
         case '/':
-            result += verify_expr(info, expr->ex_left);
-            result += verify_expr(info, expr->ex_right);
-
-            VAR(t1, expr->ex_left->ex_type);
-            VAR(t2, expr->ex_right->ex_type);
-            VAR(int_type, info->si_builtin_types.int_type);
-            if (ty_cmp(t1, int_type) != 0) {
-                elprintf("operands of binary operation '%c' should be of "
-                        "type 'int'", info, expr->ex_left->ex_line,
-                        expr->ex_op);
-                result -= 1;
-            }
-            if (ty_cmp(t2, int_type) != 0) {
-                elprintf("operands of binary operation '%c' should be of "
-                        "type 'int'", info, expr->ex_right->ex_line,
-                        expr->ex_op);
-                result -= 1;
-            }
+        case SL_TOK_LSH:
+        case SL_TOK_RSH:
+        {
+            result += verify_expr_binop_operands(
+                    info, expr, info->si_builtin_types.int_type);
 
             expr->ex_type = info->si_builtin_types.int_type;
             break;
+        }
+        /* int -> int -> bool */
+        case '<':
+        case SL_TOK_LE:
+        case '>':
+        case SL_TOK_GE:
+        {
+            result += verify_expr_binop_operands(
+                    info, expr, info->si_builtin_types.int_type);
+
+            expr->ex_type = info->si_builtin_types.bool_type;
+            break;
+        }
+        /* a -> a -> bool */
+        case SL_TOK_EQ:
+        case SL_TOK_NEQ:
+        {
+            VAR(l, expr->ex_left);
+            VAR(r, expr->ex_right);
+            if (ty_cmp(l->ex_type, r->ex_type) != 0) {
+                elprintf("left and right side of '%O' are expression of "
+                        "different types",
+                        info, expr->ex_line, expr->ex_op);
+            }
+
+            expr->ex_type = info->si_builtin_types.bool_type;
+            break;
+        }
+        /* bool -> bool */
+        case SL_TOK_LAND:
+        case SL_TOK_LOR:
+        {
+            result += verify_expr_binop_operands(
+                    info, expr, info->si_builtin_types.bool_type);
+
+            expr->ex_type = info->si_builtin_types.bool_type;
+            break;
+        }
         default:
             fprintf(stderr, "expr->ex_op = 0x%x (%c)\n",
                     expr->ex_op, expr->ex_op);
@@ -207,10 +261,7 @@ static int verify_expr_call(sem_info_t* info, sl_expr_t* expr)
 
     expr->ex_type = fn_decl->dl_type;
 
-    int num_params = 0;
-    for (VAR(param, fn_decl->dl_params); param; param = param->dl_list) {
-        num_params += 1;
-    }
+    int num_params = dl_func_num_params(fn_decl);
     if (num_args < num_params) {
         elprintf("not enough arguments passed to function '%s', expected %d",
                 info, expr->ex_line, expr->ex_fn_name, num_params);
@@ -384,11 +435,45 @@ static int verify_expr_deref(sem_info_t* info, sl_expr_t* expr)
     return result;
 }
 
+static int verify_expr_if(sem_info_t* info, sl_expr_t* expr)
+{
+    int result = 0;
+
+    result += verify_expr(info, expr->ex_if_cond);
+    result += verify_expr(info, expr->ex_if_cons);
+    result += verify_expr(info, expr->ex_if_alt);
+
+    // want to check that condition has type bool
+    VAR(cond_type, expr->ex_if_cond->ex_type);
+    if (ty_cmp(cond_type, info->si_builtin_types.bool_type) != 0) {
+        elprintf("if condition must be an expression of type 'bool'",
+                info, expr->ex_if_cond->ex_line);
+        result -= 1;
+    }
+
+    VAR(cons_type, expr->ex_if_cons->ex_type);
+    VAR(alt_type, expr->ex_if_alt->ex_type);
+    if (ty_cmp(cons_type, alt_type) != 0) {
+        elprintf("branches of if expression have different types, '%T' and '%T'",
+                info, expr->ex_line, cons_type, alt_type);
+        result -= 1;
+    }
+
+    expr->ex_type = expr->ex_if_cons->ex_type;
+    return result;
+}
+
 static int verify_expr(sem_info_t* info, sl_expr_t* expr)
 {
     switch (expr->ex_tag) {
         case SL_EXPR_INT:
             expr->ex_type = info->si_builtin_types.int_type;
+            return 0;
+        case SL_EXPR_BOOL:
+            expr->ex_type = info->si_builtin_types.bool_type;
+            return 0;
+        case SL_EXPR_VOID:
+            expr->ex_type = info->si_builtin_types.void_type;
             return 0;
         case SL_EXPR_BINOP:
             return verify_expr_binop(info, expr);
@@ -408,6 +493,8 @@ static int verify_expr(sem_info_t* info, sl_expr_t* expr)
             return verify_expr_loop(info, expr);
         case SL_EXPR_DEREF:
             return verify_expr_deref(info, expr);
+        case SL_EXPR_IF:
+            return verify_expr_if(info, expr);
     }
     assert(0 && "verify_expr missing case");
 }
@@ -535,6 +622,7 @@ int sem_verify_and_type_program(const char* filename, sl_decl_t* program)
 
     // Add builtin types to sem_info
     sem_info.si_builtin_types.int_type = ty_type_name(symbol("int"));
+    sem_info.si_builtin_types.bool_type = ty_type_name(symbol("bool"));
     sem_info.si_builtin_types.void_type = ty_type_name(symbol("void"));
 
     // Add names to root scope

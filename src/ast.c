@@ -4,6 +4,7 @@
 #include <string.h> // memset
 #include <assert.h> // assert
 #include "ast.h"
+#include "grammar.tab.h"
 
 #define check_mem(ptr) do { \
         if ((ptr) == NULL) { perror("out of memory"); abort(); } \
@@ -131,6 +132,18 @@ sl_expr_t* sl_expr_int(int value)
     return node;
 }
 
+sl_expr_t* sl_expr_bool(_Bool value)
+{
+    sl_expr_t* node = ex_alloc(SL_EXPR_BOOL);
+    node->ex_value = value;
+    return node;
+}
+
+sl_expr_t* sl_expr_void()
+{
+    return ex_alloc(SL_EXPR_VOID);
+}
+
 sl_expr_t* sl_expr_binop(int op, sl_expr_t* left, sl_expr_t* right)
 {
     sl_expr_t* node = ex_alloc(SL_EXPR_BINOP);
@@ -198,6 +211,15 @@ sl_expr_t* sl_expr_deref(sl_expr_t* expr)
     return node;
 }
 
+sl_expr_t* sl_expr_if(sl_expr_t* cond, sl_expr_t* cons, sl_expr_t* alt)
+{
+    sl_expr_t* node = ex_alloc(SL_EXPR_IF);
+    node->ex_if_cond = cond;
+    node->ex_if_cons = cons;
+    node->ex_if_alt = alt;
+    return node;
+}
+
 // Print AST
 
 void dl_list_print(FILE* out, const sl_decl_t* decl)
@@ -255,10 +277,16 @@ void ex_print(FILE* out, const sl_expr_t* expr)
     switch (expr->ex_tag) {
         case SL_EXPR_INT:
             // TODO: actually allow 64bit numbers!
-            ast_printf(out, "(int %d)", (int)expr->ex_value);
+            fprintf(out, "(int %d)", (int)expr->ex_value);
+            return;
+        case SL_EXPR_BOOL:
+            fprintf(out, "(bool %s)", expr->ex_value ? "true" : "false");
+            return;
+        case SL_EXPR_VOID:
+            fprintf(out, "(void)");
             return;
         case SL_EXPR_BINOP:
-            ast_printf(out, "(op '%c' %E %E)",
+            ast_printf(out, "(op '%O' %E %E)",
                     expr->ex_op, expr->ex_left, expr->ex_right);
             return;
         case SL_EXPR_LET:
@@ -291,6 +319,13 @@ void ex_print(FILE* out, const sl_expr_t* expr)
             return;
         case SL_EXPR_DEREF:
             ast_printf(out, "(deref %E)", expr->ex_deref_arg);
+            return;
+        case SL_EXPR_IF:
+            ast_printf(out, "(if %E (", expr->ex_if_cond);
+            ex_list_print(out, expr->ex_if_cons);
+            fprintf(out, ") (");
+            ex_list_print(out, expr->ex_if_alt);
+            fprintf(out, "))");
             return;
     }
     assert(0 && "ex_print missing case");
@@ -367,6 +402,30 @@ void ast_printf(FILE* out, const char* fmt, ...)
                     flockfile(out); // not sure if re-entrant
                     break;
                 }
+                case 'O':
+                {
+                    /* binary/unary operation */
+                    int cc = va_arg(valist, int);
+                    if (cc < 255) {
+                        putc_unlocked(cc, out);
+                    } else {
+                        char* op_str = NULL;
+                        switch (cc) {
+                            case SL_TOK_LOR: op_str = "||"; break;
+                            case SL_TOK_LAND: op_str = "&&"; break;
+                            case SL_TOK_EQ: op_str = "=="; break;
+                            case SL_TOK_NEQ: op_str = "!="; break;
+                            case SL_TOK_LE: op_str = "<="; break;
+                            case SL_TOK_GE: op_str = ">="; break;
+                            case SL_TOK_LSH: op_str = "<<"; break;
+                            case SL_TOK_RSH: op_str = ">>"; break;
+                            case SL_TOK_SARROW: op_str = "->"; break;
+                        }
+                        const char* cs = op_str;
+                        while (*cs) { putc_unlocked(*cs++, out); }
+                    }
+                    break;
+                }
                 case 'T':
                 {
                     funlockfile(out); // not sure if re-entrant
@@ -389,20 +448,32 @@ void ast_printf(FILE* out, const char* fmt, ...)
     va_end(valist);
 }
 
+static int dl_num_params(sl_decl_t* decl)
+{
+    sl_decl_t* param;
+    int n = 0;
+    for (param = decl->dl_params; param; param = param->dl_list) {
+        n += 1;
+    }
+    return n;
+}
+
 int dl_struct_num_fields(sl_decl_t* struct_decl)
 {
     assert(struct_decl->dl_tag == SL_DECL_STRUCT);
-    int num_params = 0;
-    for (sl_decl_t* param = struct_decl->dl_params; param; param = param->dl_list) {
-        num_params += 1;
-    }
-    return num_params;
+    return dl_num_params(struct_decl);
+}
+
+int dl_func_num_params(sl_decl_t* func_decl)
+{
+    assert(func_decl->dl_tag == SL_DECL_FUNC);
+    return dl_num_params(func_decl);
 }
 
 int ty_cmp(sl_type_t* t1, sl_type_t* t2)
 {
-    assert(t1);
-    assert(t2);
+    //assert(t1);
+    //assert(t2);
     if (t1 == t2) {
         return 0;
     }

@@ -18,6 +18,7 @@ typedef struct sem_info_t {
     int         si_loop_depth;
     struct {
         sl_type_t* int_type;
+        sl_type_t* bool_type;
         sl_type_t* void_type;
     } si_builtin_types;
 } sem_info_t;

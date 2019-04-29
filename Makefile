@@ -11,6 +11,7 @@ OBJS := $(SRCS:%=$(BUILD_DIR)/%.o) $(OBJEX)
 DEPS := $(OBJS:.o=.d)
 
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
+INC_DIRS += $(SRC_DIRS:%=$(BUILD_DIR)/%)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 YACC=bison
