@@ -435,6 +435,53 @@ static int verify_expr_deref(sem_info_t* info, sl_expr_t* expr)
     return result;
 }
 
+static int verify_expr_member(sem_info_t* info, sl_expr_t* expr)
+{
+    int result = 0;
+    result += verify_expr(info, expr->ex_composite);
+
+    // check expr->ex_composite is a struct type?
+
+    if (expr->ex_composite->ex_type->ty_tag != SL_DECL_STRUCT) {
+        elprintf("trying to access field '%s' of non-struct type '%T'",
+                info, expr->ex_composite->ex_line, expr->ex_member,
+                expr->ex_composite->ex_type);
+        // XXX unknown type
+        expr->ex_type = info->si_builtin_types.void_type;
+        return result - 1;
+    }
+
+    // check we can find the declaration of the struct
+    sl_decl_t* struct_decl =
+        lookup_struct_decl(info, expr->ex_composite->ex_type->ty_name);
+    if (struct_decl == NULL) {
+        elprintf("attempting to access field '%s' of undeclared struct '%s'",
+                info, expr->ex_line,
+                expr->ex_member, expr->ex_composite->ex_type->ty_name);
+        // XXX unknown type
+        expr->ex_type = info->si_builtin_types.void_type;
+        return result - 1;
+    }
+
+    // check the field being accessed can be found in the struct declaration
+    sl_decl_t* param = struct_decl->dl_params;
+    for (; param; param = param->dl_list) {
+        if (param->dl_name == expr->ex_member) {
+            break;
+        }
+    }
+    if (param == NULL) {
+        elprintf("no such field '%s' in type struct '%s'",
+                info, expr->ex_line, expr->ex_member, struct_decl->dl_name);
+        // XXX unknown type
+        expr->ex_type = info->si_builtin_types.void_type;
+        return result - 1;
+    }
+
+    expr->ex_type = param->dl_type;
+    return result;
+}
+
 static int verify_expr_if(sem_info_t* info, sl_expr_t* expr)
 {
     int result = 0;
@@ -493,6 +540,8 @@ static int verify_expr(sem_info_t* info, sl_expr_t* expr)
             return verify_expr_loop(info, expr);
         case SL_EXPR_DEREF:
             return verify_expr_deref(info, expr);
+        case SL_EXPR_MEMBER:
+            return verify_expr_member(info, expr);
         case SL_EXPR_IF:
             return verify_expr_if(info, expr);
     }

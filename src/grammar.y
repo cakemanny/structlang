@@ -72,7 +72,7 @@ static sl_decl_t* parse_tree_root;
 %left '+' '-'
 %left '*' '/' '%'
 %right SL_TOK_DEREF
-%left '(' ')'
+%left '(' ')' SL_TOK_PTR '.'
 
 
 %type <l_decl> program
@@ -184,6 +184,10 @@ expr:
     |   SL_TOK_BREAK                    { $$ = sl_expr_break() }
     |   SL_TOK_LOOP '{' stmt_list '}'   { $$ = sl_expr_loop($3) }
     |   '*' expr %prec SL_TOK_DEREF     { $$ = sl_expr_deref($2) }
+    |   expr SL_TOK_SARROW SL_TOK_IDENT %prec SL_TOK_PTR
+                                        { $$ = sl_expr_member(
+                                                sl_expr_deref($1), $3) }
+    |   expr '.' SL_TOK_IDENT           { $$ = sl_expr_member($1, $3) }
     |   SL_TOK_NEW SL_TOK_IDENT '{' expr_list '}'
                                         { $$ = sl_expr_new($2, $4) }
     |   if_expr                         { $$ = $1 }

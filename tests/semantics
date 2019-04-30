@@ -376,6 +376,31 @@ fn main() -> void {
     *1
 }
 "
+check_pass "
+struct X { x: int }
+fn main() -> int {
+    let a: *X = new X { 0 };
+    a->x
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> int {
+    let a: X = *(new X { 0 });
+    a.x
+}
+"
+check_fail "
+fn main() -> void {
+    let a: int = 0;
+    a.x
+}
+"
+check_fail "
+fn main() -> void {
+    (new Y{0})->y
+}
+"
 
 # if expression
 check_pass "
