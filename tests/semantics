@@ -364,7 +364,7 @@ fn main() -> void {
 }
 "
 
-# pointer dereference
+# pointer dereference / struct member
 check_pass "
 struct X { x: int }
 fn main() -> X {
@@ -399,6 +399,40 @@ fn main() -> void {
 check_fail "
 fn main() -> void {
     (new Y{0})->y
+}
+"
+
+# addrress of
+check_pass "
+fn main() -> *int {
+    let x: int = 1;
+    &x
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> *X {
+    let xx: *X = new X{0};
+    &(*xx)
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> *int {
+    let xx: *X = new X{0};
+    &xx->x
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> *int {
+    let xx: X = *(new X{0});
+    &xx.x
+}
+"
+check_fail "
+fn main() -> *int {
+    &(0)
 }
 "
 
@@ -442,7 +476,7 @@ check_fail "
 fn main() -> int {
     if 1 < 2 {
         1
-    }
+    };
     2
 }
 "

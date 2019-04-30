@@ -85,6 +85,12 @@ static sl_decl_t* lookup_decl(sem_info_t* sem_info, sl_sym_t name, int tag)
     return NULL;
 }
 
+static sl_decl_t* lookup_func_decl(sem_info_t* sem_info, sl_sym_t fn_name)
+{
+    return lookup_decl(sem_info, fn_name, SL_DECL_FUNC);
+}
+
+
 static sl_decl_t* lookup_struct_decl(sem_info_t* sem_info, sl_sym_t type_name)
 {
     return lookup_decl(sem_info, type_name, SL_DECL_STRUCT);
@@ -107,12 +113,27 @@ static _Bool type_exists(sem_info_t* sem_info, sl_type_t* type)
     return (lookup_struct_decl(sem_info, t->ty_name) != NULL);
 }
 
-static sl_decl_t* lookup_func_decl(sem_info_t* sem_info, sl_sym_t fn_name)
+static _Bool is_lvalue(sl_expr_t* expr)
 {
-    return lookup_decl(sem_info, fn_name, SL_DECL_FUNC);
+    // l-values:
+    // - vars
+    // - dereference of l-value
+    // - struct member of l-value
+    // - array member of l-value (todo)
+    switch (expr->ex_tag) {
+        case SL_EXPR_VAR:
+            return 1;
+        case SL_EXPR_MEMBER:
+            return is_lvalue(expr->ex_composite);
+        case SL_EXPR_DEREF:
+            return is_lvalue(expr->ex_deref_arg);
+        // TODO: Array subscript
+        default:
+            return 0;
+    }
 }
 
-static int verify_expr(sem_info_t* info, sl_expr_t* e);
+static int verify_expr(sem_info_t* info, sl_expr_t* expr);
 
 static int verify_expr_binop_operands(sem_info_t* info, sl_expr_t* expr,
         sl_type_t* expected_type)
@@ -435,6 +456,22 @@ static int verify_expr_deref(sem_info_t* info, sl_expr_t* expr)
     return result;
 }
 
+static int verify_expr_addrof(sem_info_t* info, sl_expr_t* expr)
+{
+    int result = 0;
+    result += verify_expr(info, expr->ex_addrof_arg);
+
+    // Must be an l-value
+    if (!is_lvalue(expr->ex_addrof_arg)) {
+        elprintf("cannot take the address of an rvalue of type '%T'",
+                info, expr->ex_line, expr->ex_addrof_arg->ex_type);
+        result -= 1;
+    }
+
+    expr->ex_type = ty_type_pointer(expr->ex_addrof_arg->ex_type);
+    return result;
+}
+
 static int verify_expr_member(sem_info_t* info, sl_expr_t* expr)
 {
     int result = 0;
@@ -540,6 +577,8 @@ static int verify_expr(sem_info_t* info, sl_expr_t* expr)
             return verify_expr_loop(info, expr);
         case SL_EXPR_DEREF:
             return verify_expr_deref(info, expr);
+        case SL_EXPR_ADDROF:
+            return verify_expr_addrof(info, expr);
         case SL_EXPR_MEMBER:
             return verify_expr_member(info, expr);
         case SL_EXPR_IF:

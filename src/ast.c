@@ -211,6 +211,13 @@ sl_expr_t* sl_expr_deref(sl_expr_t* expr)
     return node;
 }
 
+sl_expr_t* sl_expr_addrof(sl_expr_t* expr)
+{
+    sl_expr_t* node = ex_alloc(SL_EXPR_ADDROF);
+    node->ex_addrof_arg = expr;
+    return node;
+}
+
 sl_expr_t* sl_expr_member(sl_expr_t* expr, sl_sym_t member)
 {
     sl_expr_t* node = ex_alloc(SL_EXPR_MEMBER);
@@ -327,6 +334,9 @@ void ex_print(FILE* out, const sl_expr_t* expr)
             return;
         case SL_EXPR_DEREF:
             ast_printf(out, "(deref %E)", expr->ex_deref_arg);
+            return;
+        case SL_EXPR_ADDROF:
+            ast_printf(out, "(addrof %E)", expr->ex_addrof_arg);
             return;
         case SL_EXPR_MEMBER:
             ast_printf(out, "(member %E %s)", expr->ex_composite, expr->ex_member);

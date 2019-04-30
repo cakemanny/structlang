@@ -57,6 +57,7 @@ struct sl_expr_t {
         SL_EXPR_BREAK,
         SL_EXPR_LOOP,
         SL_EXPR_DEREF,
+        SL_EXPR_ADDROF,
         SL_EXPR_MEMBER,
         SL_EXPR_IF,
     } ex_tag;
@@ -118,6 +119,7 @@ struct sl_expr_t {
 #define ex_ret_arg      ex_u._binop._left   // SL_EXPR_RETURN
 #define ex_loop_body    ex_u._binop._left   // SL_EXPR_LOOP
 #define ex_deref_arg    ex_u._binop._left   // SL_EXPR_DEREF
+#define ex_addrof_arg   ex_u._binop._left   // SL_EXPR_ADDROF
 #define ex_composite    ex_u._member._struct // SL_EXPR_MEMBER
 #define ex_member       ex_u._member._member // SL_EXPR_MEMBER
 #define ex_if_cond      ex_u._if._cond      // SL_EXPR_IF
@@ -148,6 +150,7 @@ sl_expr_t* sl_expr_return(sl_expr_t* return_value_expr);
 sl_expr_t* sl_expr_break();
 sl_expr_t* sl_expr_loop(sl_expr_t* smts);
 sl_expr_t* sl_expr_deref(sl_expr_t* expr);
+sl_expr_t* sl_expr_addrof(sl_expr_t* expr);
 sl_expr_t* sl_expr_member(sl_expr_t* expr, sl_sym_t member);
 sl_expr_t* sl_expr_if(sl_expr_t* cond, sl_expr_t* cons, sl_expr_t* alt);
 
