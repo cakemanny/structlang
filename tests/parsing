@@ -32,6 +32,20 @@ check() {
     fi
 }
 
+check_fail() {
+    output=$(echo "$1" | $SLC -p -)
+    result=$?
+    if [[ $result == 0 ]]; then
+        echo "${red}expected to fail${clr}"
+        echo "**program**"
+        echo "$1"
+        echo "**end**"
+        echo
+    else
+        echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"
+    fi
+}
+
 # int
 check "fn main() -> int { 0 }" "(fn main : int () ((int 0)))"
 
@@ -44,3 +58,6 @@ check "fn main() -> int { 1 * 2 + 3 }" \
     "(fn main : int () ((op '+' (op '*' (int 1) (int 2)) (int 3))))"
 check "fn main() -> int { 1 + 2 * 3 }" \
     "(fn main : int () ((op '+' (int 1) (op '*' (int 2) (int 3)))))"
+
+check_fail "fn main() -> int { f(,1) }"
+check_fail "struct X {,x:int}"

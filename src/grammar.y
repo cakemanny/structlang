@@ -81,6 +81,8 @@ static sl_decl_t* parse_tree_root;
 %type <l_decl> struct_decl
 %type <l_decl> func_decl
 %type <l_decl> param_list
+%type <l_decl> param_list_opt
+%type <l_decl> param_list_comma
 %type <l_decl> param
 
 %type <l_type> type_expr
@@ -88,6 +90,7 @@ static sl_decl_t* parse_tree_root;
 %type <l_expr> stmt_list
 %type <l_expr> expr
 %type <l_expr> expr_list
+%type <l_expr> expr_list_opt
 %type <l_expr> if_expr
 
 %%
@@ -107,17 +110,25 @@ declaration:
     ;
 
 struct_decl:
-        SL_TOK_STRUCT SL_TOK_IDENT '{' param_list '}'
+        SL_TOK_STRUCT SL_TOK_IDENT '{' param_list_comma '}'
         {
             $$ = dl_struct($2, $4)
         }
     ;
 
-param_list:
+param_list_opt:
         /* empty */             { $$ = NULL }
-    |   param                   { $$ = $1 }
+    |   param_list_comma        { $$ = $1 }
+    ;
+
+param_list_comma:
+        param_list      { $$ = $1 }
+    |   param_list ','  { $$ = $1 }
+    ;
+
+param_list:
+        param                   { $$ = $1 }
     |   param_list ',' param    { $$ = dl_append($1, $3) }
-    |   param_list ','          { $$ = $1 }
     ;
 
 param:
@@ -130,7 +141,7 @@ type_expr:
     ;
 
 func_decl:
-        SL_TOK_FN SL_TOK_IDENT '(' param_list ')' SL_TOK_SARROW type_expr
+        SL_TOK_FN SL_TOK_IDENT '(' param_list_opt ')' SL_TOK_SARROW type_expr
             '{' stmt_list '}'
         {
             $$ = dl_func($2, $4, $7, $9)
@@ -166,7 +177,7 @@ expr:
         {
             $$ = sl_expr_let($2, $4, $6)
         }
-    |   SL_TOK_IDENT '(' expr_list ')'  { $$ = sl_expr_call($1, $3) }
+    |   SL_TOK_IDENT '(' expr_list_opt ')'  { $$ = sl_expr_call($1, $3) }
     |   SL_TOK_IDENT                    { $$ = sl_expr_var($1) }
     |   SL_TOK_RETURN                   { $$ = sl_expr_return(NULL) }
     |   SL_TOK_RETURN expr              { $$ = sl_expr_return($2) }
@@ -187,11 +198,14 @@ if_expr:
                                         { $$ = sl_expr_if($2, $4, $7) }
     ;
 
-    /* this looks wrong..., looks like it would allow ",e" */
+expr_list_opt:
+        /* empty */      { $$ = NULL }
+    |   expr_list        { $$ = $1 }
+    ;
+ /* non-empty expr list */
 expr_list:
-        /* empty */         { $$ = NULL }
-    |   expr                { $$ = $1 }
-    |   expr_list ',' expr  { $$ = ex_append($1, $3) }
+        expr                { $$ = $1 }
+    |   expr_list ',' expr  { $$ = ex_append($1, $3); }
     ;
 %%
 
