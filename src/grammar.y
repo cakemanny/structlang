@@ -71,7 +71,7 @@ static sl_decl_t* parse_tree_root;
 %left SL_TOK_LSH SL_TOK_RSH
 %left '+' '-'
 %left '*' '/' '%'
-/* TODO deref */
+%right SL_TOK_DEREF
 %left '(' ')'
 
 
@@ -87,7 +87,6 @@ static sl_decl_t* parse_tree_root;
 
 %type <l_expr> stmt_list
 %type <l_expr> expr
-%type <l_expr> expr_opt
 %type <l_expr> expr_list
 %type <l_expr> if_expr
 
@@ -169,10 +168,11 @@ expr:
         }
     |   SL_TOK_IDENT '(' expr_list ')'  { $$ = sl_expr_call($1, $3) }
     |   SL_TOK_IDENT                    { $$ = sl_expr_var($1) }
-    |   SL_TOK_RETURN expr_opt          { $$ = sl_expr_return($2) }
+    |   SL_TOK_RETURN                   { $$ = sl_expr_return(NULL) }
+    |   SL_TOK_RETURN expr              { $$ = sl_expr_return($2) }
     |   SL_TOK_BREAK                    { $$ = sl_expr_break() }
     |   SL_TOK_LOOP '{' stmt_list '}'   { $$ = sl_expr_loop($3) }
-    |   '*' expr                        { $$ = sl_expr_deref($2) }
+    |   '*' expr %prec SL_TOK_DEREF     { $$ = sl_expr_deref($2) }
     |   SL_TOK_NEW SL_TOK_IDENT '{' expr_list '}'
                                         { $$ = sl_expr_new($2, $4) }
     |   if_expr                         { $$ = $1 }
@@ -185,11 +185,6 @@ if_expr:
                                         { $$ = sl_expr_if($2, $4, $8) }
     |   SL_TOK_IF expr '{' expr '}' SL_TOK_ELSE if_expr
                                         { $$ = sl_expr_if($2, $4, $7) }
-    ;
-
-expr_opt:
-        /* empty */         { $$ = NULL }
-    |   expr                { $$ = $1 }
     ;
 
     /* this looks wrong..., looks like it would allow ",e" */

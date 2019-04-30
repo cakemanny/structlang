@@ -472,8 +472,8 @@ int dl_func_num_params(sl_decl_t* func_decl)
 
 int ty_cmp(sl_type_t* t1, sl_type_t* t2)
 {
-    //assert(t1);
-    //assert(t2);
+    assert(t1);
+    assert(t2);
     if (t1 == t2) {
         return 0;
     }
