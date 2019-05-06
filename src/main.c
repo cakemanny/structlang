@@ -1,8 +1,10 @@
+// vim:sw=4:
 #include <stdlib.h> // exit
 #include <stdio.h>
 #include "colours.h"
 #include "ast.h"
 #include "semantics.h"
+#include "activation.h"
 
 // grammar.y
 extern sl_decl_t* parse_file(const char* filename);
@@ -75,4 +77,11 @@ int main(int argc, char* argv[])
         // Print typed tree?
         return 0;
     }
+
+    ac_frame_t* frames = calculate_activation_records(program);
+    if(!frames) {
+        fprintf(stderr, "internal error: failed to calculate frames\n");
+        return 1;
+    }
+    // TODO: do something with frames
 }

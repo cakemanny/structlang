@@ -20,6 +20,7 @@ static sl_decl_t* dl_alloc(int tag)
 
     node->dl_tag = tag;
     node->dl_line = yylineno;
+    node->dl_var_id = 0;
     node->dl_params = NULL;
     node->dl_type = NULL;
     node->dl_body = NULL;
@@ -159,6 +160,7 @@ sl_expr_t* sl_expr_let(sl_sym_t name, sl_type_t* type, sl_expr_t* init)
     node->ex_name = name;
     node->ex_type_ann = type;
     node->ex_init = init;
+    node->ex_let_id = 0;
     return node;
 }
 
@@ -182,6 +184,7 @@ sl_expr_t* sl_expr_var(sl_sym_t name)
 {
     sl_expr_t* node = ex_alloc(SL_EXPR_VAR);
     node->ex_var = name;
+    node->ex_var_id = 0;
     return node;
 }
 
@@ -392,15 +395,22 @@ void ast_printf(FILE* out, const char* fmt, ...)
                 }
                 case 'd':
                 {
-                    int num = va_arg(valist, int);
-                    if (num < 0) {
-                        num = -num;
-                        putc_unlocked('-', out);
+                    /* 43 is maximum possible length of 128-bit integer
+                     * string representation */
+                    char str[44] = {};
+                    char* s = str + sizeof str - 1;
+                    int n = va_arg(valist, int);
+                    int m = (n < 0) ? -n : n;
+                    do {
+                        *--s = '0' + m%10;
+                        m /= 10;
+                    } while (m); // use do while to get printing for 0
+                    if (n < 0) {
+                        *--s = '-';
                     }
                     do {
-                        putc_unlocked('0' + num%10, out);
-                        num /= 10;
-                    } while (num); // use do while to get printing for 0
+                        putc_unlocked(*s++, out);
+                    } while (*s);
                     break;
                 }
                 case 's':

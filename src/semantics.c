@@ -2,6 +2,7 @@
 #include <assert.h> // assert
 #include <string.h> // strcmp
 #include "semantics.h"
+#include "mem.h"
 #include "colours.h"
 #include "grammar.tab.h"
 
@@ -21,15 +22,25 @@ static void check_psem_info_t(sem_info_t* sem_info) {}
 
 static scope_t* scope_new()
 {
-    scope_t* s = malloc(sizeof *s);
-    if (!s) { perror("out of memory"); abort(); }
+    scope_t* s = xmalloc(sizeof *s);
     s->sc_bindings = Table_new(0, NULL, NULL);
     s->sc_parent = NULL;
     return s;
 }
 
+static void scope_entry_free(const void* key, void** value, void* cl)
+{
+    // We don't free the contents of the entry, namely the sl_type_t*, because
+    // it will be referenced by the ast at this point.
+    assert(*value);
+    free(*value);
+    // Table_map does not allow us to set the values to NULL, so we must only
+    // call this using Table_map right before calling Table_free
+}
+
 static void scope_free(scope_t** scope)
 {
+    Table_map((*scope)->sc_bindings, scope_entry_free, NULL);
     Table_free(&(*scope)->sc_bindings);
     assert(scope && *scope);
     free(*scope);
@@ -52,19 +63,24 @@ static void pop_scope(sem_info_t* info)
 }
 
 static int declare_in_current_scope(
-        sem_info_t* info, sl_sym_t name, sl_type_t* type)
+        sem_info_t* info, sl_sym_t name, sl_type_t* type, int id)
 {
-    if (Table_put(info->si_current_scope->sc_bindings, name, type) != NULL) {
+    assert(type->ty_tag > 0);
+    assert(id > 0);
+    scope_entry_t* entry = xmalloc(sizeof *entry);
+    entry->sce_type = type;
+    entry->sce_var_id = id;
+    if (Table_put(info->si_current_scope->sc_bindings, name, entry) != NULL) {
         return -1;
     }
     return 0;
 }
 
-static sl_type_t* lookup_var(sem_info_t* info, sl_sym_t name)
+static scope_entry_t* lookup_var(sem_info_t* info, sl_sym_t name)
 {
     scope_t* scope = info->si_current_scope;
     for (; scope; scope = scope->sc_parent) {
-        sl_type_t* found = Table_get(scope->sc_bindings, name);
+        scope_entry_t* found = Table_get(scope->sc_bindings, name);
         if (found) {
             return found;
         }
@@ -242,8 +258,12 @@ static int verify_expr_let(sem_info_t* info, sl_expr_t* expr)
         result -= 1;
     }
 
+    // allocate an ID to this name
+    expr->ex_let_id = info->si_next_var_id++;
+
     // add name to scope
-    if (declare_in_current_scope(info, expr->ex_name, expr->ex_type_ann) < 0) {
+    if (declare_in_current_scope(
+                info, expr->ex_name, expr->ex_type_ann, expr->ex_let_id) < 0) {
         elprintf("name '%s' already defined in this scope", info,
                 expr->ex_line, expr->ex_name);
         result -= 1;
@@ -252,6 +272,7 @@ static int verify_expr_let(sem_info_t* info, sl_expr_t* expr)
     // what is the type of a let expression? void, or the type of the
     // binding? Or void?
     expr->ex_type = info->si_builtin_types.void_type; // ?
+
 
     return result;
 }
@@ -358,15 +379,17 @@ static int verify_expr_var(sem_info_t* info, sl_expr_t* expr)
     // lookup the variable
     // type the node the same as the variable was declared
 
-    sl_type_t* var_type = lookup_var(info, expr->ex_var);
-    if (var_type == NULL) {
+    scope_entry_t* entry = lookup_var(info, expr->ex_var);
+    if (entry == NULL) {
         elprintf("use of undeclared identifier '%s'", info, expr->ex_line,
                 expr->ex_var);
         // XXX unknown type
         expr->ex_type = info->si_builtin_types.void_type;
         return -1;
     }
+    sl_type_t* var_type = entry->sce_type;
     expr->ex_type = var_type;
+    expr->ex_var_id = entry->sce_var_id;
     return 0;
 }
 
@@ -602,7 +625,10 @@ static int verify_decl_func(sem_info_t* sem_info, sl_decl_t* decl)
             result -= 1;
         }
 
-        if (declare_in_current_scope(sem_info, param->dl_name, param->dl_type) < 0) {
+        param->dl_var_id = sem_info->si_next_var_id++;
+
+        if (declare_in_current_scope(
+                    sem_info, param->dl_name, param->dl_type, param->dl_var_id) < 0) {
             elprintf("second declaration of parameter '%s' in function '%s'",
                     sem_info, param->dl_line, param->dl_name, decl->dl_name);
             result -= 1;
@@ -705,6 +731,7 @@ int sem_verify_and_type_program(const char* filename, sl_decl_t* program)
         .si_program = program,
         .si_filename = (strcmp(filename, "-") == 0) ? "<stdin>" : filename,
         .si_root_scope = scope_new(),
+        .si_next_var_id = 1,
     };
     sem_info.si_current_scope = sem_info.si_root_scope;
 
@@ -718,13 +745,18 @@ int sem_verify_and_type_program(const char* filename, sl_decl_t* program)
 
         if (decl->dl_tag == SL_DECL_STRUCT) {
             for (sl_decl_t* decl2 = program; decl2 != decl; decl2 = decl2->dl_list) {
-                elprintf("second declaration of type '%s' in module",
-                        &sem_info, decl2->dl_line, decl2->dl_name);
-                result -= 1;
+                if (decl->dl_name == decl2->dl_name) {
+                    elprintf("second declaration of type '%s' in module",
+                            &sem_info, decl->dl_line, decl->dl_name);
+                    result -= 1;
+                }
             }
         } else if (decl->dl_tag == SL_DECL_FUNC) {
             // we actually shouldn't be declaring types in the root scope
-            if (declare_in_current_scope(&sem_info, decl->dl_name, ty_type_func()) < 0) {
+
+            decl->dl_var_id = sem_info.si_next_var_id++;
+            if (declare_in_current_scope(
+                        &sem_info, decl->dl_name, ty_type_func(), decl->dl_var_id) < 0) {
                 elprintf("second declaration of function '%s' in module",
                         &sem_info, decl->dl_line, decl->dl_name);
                 result -= 1;

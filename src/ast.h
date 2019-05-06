@@ -20,6 +20,7 @@ struct sl_decl_t {
         SL_DECL_PARAM,
     } dl_tag;
     int dl_line;
+    int dl_var_id;
     sl_sym_t dl_name;
     sl_decl_t* dl_params;   // SL_DECL_STRUCT, SL_DECL_FUNC
     sl_type_t* dl_type;     // SL_DECL_FUNC, SL_DECL_PARAM
@@ -79,18 +80,24 @@ struct sl_expr_t {
             sl_sym_t _name;
             sl_type_t* _type;
             sl_expr_t* _init;
+            int _id;
         } _let;
 
         struct {
             sl_sym_t _ref;
             sl_expr_t* _args;
-        } _call; // SL_EXPR_CALL, SL_EXPR_NEW, SL_EXPR_VAR
+        } _call;
+
+        struct {
+            sl_sym_t _ref;
+            int _id;
+        } _var;
 
         struct {
             sl_expr_t* _cond;
             sl_expr_t* _cons;
             sl_expr_t* _alt;
-        } _if; // SL_EXPR_IF
+        } _if;
 
         struct {
             sl_expr_t* _struct;
@@ -109,13 +116,15 @@ struct sl_expr_t {
 #define ex_name         ex_u._let._name     // SL_EXPR_LET
 #define ex_type_ann     ex_u._let._type     // SL_EXPR_LET
 #define ex_init         ex_u._let._init     // SL_EXPR_LET
+#define ex_let_id       ex_u._let._id       // SL_EXPR_LET
 #define ex_field_label  ex_u._let._name     // SL_EXPR_FIELD // TODO
 #define ex_field_init   ex_u._let._init     // SL_EXPR_FIELD
 #define ex_fn_name      ex_u._call._ref     // SL_EXPR_CALL
 #define ex_fn_args      ex_u._call._args    // SL_EXPR_CALL
 #define ex_new_ctor     ex_u._call._ref     // SL_EXPR_NEW
 #define ex_new_args     ex_u._call._args    // SL_EXPR_NEW
-#define ex_var          ex_u._call._ref     // SL_EXPR_VAR
+#define ex_var          ex_u._var._ref      // SL_EXPR_VAR
+#define ex_var_id       ex_u._var._id       // SL_EXPR_VAR
 #define ex_ret_arg      ex_u._binop._left   // SL_EXPR_RETURN
 #define ex_loop_body    ex_u._binop._left   // SL_EXPR_LOOP
 #define ex_deref_arg    ex_u._binop._left   // SL_EXPR_DEREF
