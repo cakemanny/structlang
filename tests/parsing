@@ -64,5 +64,14 @@ check "fn main() -> int { x * y -> z }" \
 check "fn main() -> int { x -> y * z }" \
     "(fn main : int () ((op '*' (member (deref (var x)) y) (var z))))"
 
+check "fn main() -> int { f(x) * f(y) -> z }" \
+    "(fn main : int () ((op '*' (call f ((var x))) (member (deref (call f ((var y)))) z))))"
+
+check "fn main() -> int { a.b.c }" \
+    "(fn main : int () ((member (member (var a) b) c)))"
+
+check "fn main() -> int { if true { 1 } else { 2 } }" \
+    "(fn main : int () ((if (bool true) ((int 1)) ((int 2)))))"
+
 check_fail "fn main() -> int { f(,1) }"
 check_fail "struct X {,x:int}"
