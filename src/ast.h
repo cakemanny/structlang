@@ -4,13 +4,8 @@
 #include <stdio.h> // FILE*
 #include "symbols.h"
 
-struct sl_expr_t;
 typedef struct sl_expr_t sl_expr_t;
-
-struct sl_decl_t;
 typedef struct sl_decl_t sl_decl_t;
-
-struct sl_type_t;
 typedef struct sl_type_t sl_type_t;
 
 struct sl_decl_t {

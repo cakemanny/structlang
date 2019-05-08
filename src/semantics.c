@@ -547,8 +547,14 @@ static int verify_expr_if(sem_info_t* info, sl_expr_t* expr)
     int result = 0;
 
     result += verify_expr(info, expr->ex_if_cond);
+
+    push_scope(info);
     result += verify_expr(info, expr->ex_if_cons);
+    pop_scope(info);
+
+    push_scope(info);
     result += verify_expr(info, expr->ex_if_alt);
+    pop_scope(info);
 
     // want to check that condition has type bool
     VAR(cond_type, expr->ex_if_cond->ex_type);
@@ -638,17 +644,16 @@ static int verify_decl_func(sem_info_t* sem_info, sl_decl_t* decl)
     push_scope(sem_info);
     sem_info->si_current_fn = decl;
 
+    sl_expr_t* final_expr = NULL;
     for (sl_expr_t* e = decl->dl_body; e; e = e->ex_list) {
         result += verify_expr(sem_info, e);
+        final_expr = e;
+        // Idea: emit warning about dead code, if there is a return/break
+        // before the final expression in any given block... ?
     }
 
     // if non-void, check that last expression is either a return, or
     // the same type as the function return type, or a loop
-    sl_expr_t* final_expr = decl->dl_body;
-    while (final_expr->ex_list) {
-        final_expr = final_expr->ex_list;
-    }
-
     if (final_expr) {
         if (final_expr->ex_tag == SL_EXPR_RETURN) {
             // OK.. probably
