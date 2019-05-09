@@ -51,6 +51,8 @@ const struct ac_builtin_type {
 };
 
 const char* argument_regs[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
+const char* return_registers[] = { "rax", "rdx" };
+const char* frame_pointer = "rbp";
 
 typedef struct target {
     size_t word_size;

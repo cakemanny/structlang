@@ -5,6 +5,8 @@
 #include "ast.h"
 #include "semantics.h"
 #include "activation.h"
+#include "temp.h"
+#include "translate.h"
 
 // grammar.y
 extern sl_decl_t* parse_file(const char* filename);
@@ -83,5 +85,11 @@ int main(int argc, char* argv[])
         fprintf(stderr, "internal error: failed to calculate frames\n");
         return 1;
     }
-    // TODO: do something with frames
+
+    temp_state_t* temp_state = temp_state_new();
+    translate_program(temp_state, program, frames);
+    // ^ after this we can free up the ast structures
+
+    // end of program... maybe
+    temp_state_free(&temp_state);
 }
