@@ -54,6 +54,16 @@ const char* argument_regs[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 const char* return_registers[] = { "rax", "rdx" };
 const char* frame_pointer = "rbp";
 
+const char* registers[] = {
+    "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+};
+ac_registers_t register_temps = {
+    .acr_sp = {.temp_id = 4},
+    .acr_fp = {.temp_id = 5},
+};
+
+
 typedef struct target {
     size_t word_size;
     size_t stack_alignment;
@@ -63,6 +73,7 @@ const target_t target_x86_64 = {
     .word_size = 8,
     .stack_alignment = 16,
 };
+const size_t ac_word_size = 8;
 
 // We might unmake this const in future?
 const target_t* const target = &target_x86_64;
@@ -73,6 +84,7 @@ static ac_frame_t* ac_frame_new()
     f->acf_next_arg_offset = 16;
     f->acf_last_local_offset = 0;
     f->ac_frame_vars_end = &f->ac_frame_vars;
+    f->acf_regs = &register_temps;
     return f;
 }
 
@@ -178,7 +190,7 @@ static size_t alignment_of_type(const sl_decl_t* program, const sl_type_t* type)
  * The size of the type as stored in the stack frame. Including padding for
  * alignment...
  */
-static size_t size_of_type(const sl_decl_t* program, const sl_type_t* type)
+size_t size_of_type(const sl_decl_t* program, const sl_type_t* type)
 {
     switch (type->ty_tag) {
         case SL_TYPE_NAME:

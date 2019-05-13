@@ -4,6 +4,7 @@
 #include "colours.h"
 #include "ast.h"
 #include "semantics.h"
+#include "rewrites.h"
 #include "activation.h"
 #include "temp.h"
 #include "translate.h"
@@ -22,6 +23,7 @@ if '-' is given as an input, then stdin is read.\n\
 options:\n\
   -p    Parse only (print ast)\n\
   -t    Stop after type checking\n\
+  -r    Stop after rewrites and print ast\n\
 ", stderr);
     exit(exit_code);
 }
@@ -30,6 +32,7 @@ int main(int argc, char* argv[])
 {
     _Bool parse_only = 0;
     _Bool stop_after_type_checking = 0;
+    _Bool stop_after_rewrites = 0;
     _Bool warn_about_multiple_files = 0;
     char* inarg = NULL;
     for (int i = 1; i < argc; i++) {
@@ -38,6 +41,7 @@ int main(int argc, char* argv[])
                 switch (*pc) {
                     case 'p': parse_only = 1; break;
                     case 't': stop_after_type_checking = 1; break;
+                    case 'r': stop_after_rewrites = 1; break;
                     default: fprintf(stderr, "unknown option '%c'\n", *pc);
                              print_usage_and_exit(1);
                 }
@@ -77,6 +81,18 @@ int main(int argc, char* argv[])
 
     if (stop_after_type_checking) {
         // Print typed tree?
+        return 0;
+    }
+
+    // make some small transformations that make it easier to transform the
+    // program into the lower level language
+    rewrite_decompose_equal(program);
+
+    if (stop_after_rewrites) {
+        for (sl_decl_t* decl = program; decl; decl = decl->dl_list) {
+            dl_print(stdout, decl);
+            fprintf(stdout, "\n");
+        }
         return 0;
     }
 

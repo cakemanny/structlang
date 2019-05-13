@@ -17,10 +17,10 @@ enum tree_binop_t {
     TREE_BINOP_DIV,
     TREE_BINOP_AND,
     TREE_BINOP_OR,
+    TREE_BINOP_XOR,
     TREE_BINOP_LSHIFT,
     TREE_BINOP_RSHIFT,
     TREE_BINOP_ARSHIFT,
-    TREE_BINOP_XOR,
 };
 typedef enum tree_binop_t tree_binop_t;
 

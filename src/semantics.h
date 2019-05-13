@@ -30,5 +30,6 @@ typedef struct sem_info_t {
 } sem_info_t;
 
 int sem_verify_and_type_program(const char* filename, sl_decl_t* program);
+_Bool sem_is_lvalue(const sl_expr_t* expr);
 
 #endif /* __SEMANTICS_H__ */

@@ -57,7 +57,6 @@ struct sl_expr_t {
         SL_EXPR_MEMBER,
         SL_EXPR_IF,
     } ex_tag;
-    int ex_op; // SL_TOK_... binop token
     int ex_line;
     sl_type_t* ex_type; // assigned by the type-checker
 
@@ -67,6 +66,7 @@ struct sl_expr_t {
         } _const;
 
         struct {
+            int _op; // SL_TOK_... binop token
             sl_expr_t* _left;
             sl_expr_t* _right;
         } _binop;
@@ -106,6 +106,7 @@ struct sl_expr_t {
 };
 
 #define ex_value        ex_u._const._value  // SL_EXPR_INT, SL_EXPR_BOOL
+#define ex_op           ex_u._binop._op     // SL_EXPR_BINOP
 #define ex_left         ex_u._binop._left   // SL_EXPR_BINOP
 #define ex_right        ex_u._binop._right  // SL_EXPR_BINOP
 #define ex_name         ex_u._let._name     // SL_EXPR_LET

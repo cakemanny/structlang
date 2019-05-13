@@ -1,6 +1,7 @@
 #include "translate.h"
 #include <assert.h> /* assert */
 #include "mem.h" // xmalloc
+#include "grammar.tab.h"
 
 label_bifunc_t label_bifunc(
         tree_stm_t* (*fn)(sl_sym_t, sl_sym_t, void* cl),
@@ -166,7 +167,7 @@ static translate_exp_t* translate_expr_var(
     tree_exp_t* result = tree_exp_mem(
         tree_exp_binop(
             TREE_BINOP_PLUS,
-            tree_exp_temp(frame->reg->fp), // rbp
+            tree_exp_temp(frame->acf_regs->acr_fp), // rbp
             tree_exp_const(frame_var->acf_offset)
         )
     );
@@ -196,14 +197,48 @@ static translate_exp_t* translate_expr_binop(
     tree_exp_t* lhe = translate_un_ex(temp_state, lhs); free(lhs); lhs = NULL;
     tree_exp_t* rhe = translate_un_ex(temp_state, rhs); free(rhs); rhs = NULL;
 
+    // break out of here and compose some branches
+    switch (expr->ex_op) {
+        case SL_TOK_LOR:
+        case SL_TOK_LAND:
+        default: break;
+    }
+
+    if (expr->ex_op == SL_TOK_EQ || expr->ex_op == SL_TOK_NEQ) {
+        // if the types of the things being compared is > 1 word, then we
+        // need to rewrite it, as and AND of comparisons
+        // might need to do this before the subexpression conversion
+        // solve using a rewrite layer
+    }
+
+    int relop = -1;
+    switch (expr->ex_op) {
+        // what about the size of the operands?
+        case SL_TOK_EQ: relop = TREE_RELOP_EQ; break;
+        case SL_TOK_NEQ: relop = TREE_RELOP_NE; break;
+        case '<': relop = TREE_RELOP_LT; break;
+        case '>': relop = TREE_RELOP_GT; break;
+        case SL_TOK_LE: relop = TREE_RELOP_LE; break;
+        case SL_TOK_GE: relop = TREE_RELOP_GE; break;
+        // missing: all the unsigned comparisons
+        default: break;
+    }
+    if (relop != -1) {
+        // break off here and do a cjump node
+    }
+
     int op = -1;
-    switch (expr->ex_op)
-    {
-        case '+': op = TREE_BINOP_PLUS;
-        case '-': op = TREE_BINOP_MINUS;
-        case '*': op = TREE_BINOP_MUL;
-        case '/': op = TREE_BINOP_DIV;
-        // TODO: translate op, more cases!
+    switch (expr->ex_op) {
+        case '+': op = TREE_BINOP_PLUS; break;
+        case '-': op = TREE_BINOP_MINUS; break;
+        case '*': op = TREE_BINOP_MUL; break;
+        case '/': op = TREE_BINOP_DIV; break;
+        case '&': op = TREE_BINOP_AND; break;
+        case '|': op = TREE_BINOP_OR; break;
+        case '^': op = TREE_BINOP_XOR; break;
+        case SL_TOK_LSH: op = TREE_BINOP_LSHIFT; break;
+        case SL_TOK_RSH: op = TREE_BINOP_RSHIFT; break;
+        // missing: TREE_BINOP_ARSHIFT
     }
     assert(op != -1);
 

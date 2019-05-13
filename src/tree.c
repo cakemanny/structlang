@@ -1,4 +1,6 @@
 #include "tree.h"
+#include "mem.h"
+#include <assert.h>
 
 typedef tree_exp_t* exp;
 typedef tree_stm_t* stm;
@@ -59,10 +61,10 @@ exp tree_exp_call(exp func, exp args)
 
 exp tree_exp_eseq(stm s, exp e)
 {
-    exp e = tree_exp_new(TREE_EXP_ESEQ);
-    e->te_eseq_stm = s;
-    e->te_eseq_exp = e;
-    return e;
+    exp e_ = tree_exp_new(TREE_EXP_ESEQ);
+    e_->te_eseq_stm = s;
+    e_->te_eseq_exp = e;
+    return e_;
 }
 
 static stm tree_stm_new(int tag)
@@ -94,7 +96,7 @@ stm tree_stm_jump(exp dst, int num_labels, sl_sym_t* labels)
     stm s = tree_stm_new(TREE_STM_JUMP);
     s->tst_jump_dst = dst;
     s->tst_jump_num_labels = num_labels;
-    s->tst_jump_labels labels; // should be a list
+    s->tst_jump_labels = labels; // should be a list
     return s;
 }
 
@@ -103,7 +105,7 @@ stm tree_stm_cjump(tree_relop_t op, exp lhs, exp rhs, sl_sym_t jtrue, sl_sym_t j
     stm s = tree_stm_new(TREE_STM_CJUMP);
     s->tst_cjump_op = op;
     s->tst_cjump_lhs = lhs;
-    s->tst_cjump_rhs = rhs
+    s->tst_cjump_rhs = rhs;
     s->tst_cjump_true = jtrue;
     s->tst_cjump_false = jfalse;
     return s;

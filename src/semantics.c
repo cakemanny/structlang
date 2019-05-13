@@ -115,7 +115,7 @@ static sl_decl_t* lookup_struct_decl(sem_info_t* sem_info, sl_sym_t type_name)
 static _Bool type_exists(sem_info_t* sem_info, sl_type_t* type)
 {
     // extract type name only, e.g. **int[] -> *int[] -> int[] -> int
-    sl_type_t* t = type;
+    const sl_type_t* t = type;
     while (t->ty_tag != SL_TYPE_NAME) {
         assert(t->ty_tag == SL_TYPE_PTR || t->ty_tag == SL_TYPE_ARRAY);
         t = t->ty_pointee;
@@ -129,7 +129,7 @@ static _Bool type_exists(sem_info_t* sem_info, sl_type_t* type)
     return (lookup_struct_decl(sem_info, t->ty_name) != NULL);
 }
 
-static _Bool is_lvalue(sl_expr_t* expr)
+_Bool sem_is_lvalue(const sl_expr_t* expr)
 {
     // l-values:
     // - vars
@@ -140,9 +140,9 @@ static _Bool is_lvalue(sl_expr_t* expr)
         case SL_EXPR_VAR:
             return 1;
         case SL_EXPR_MEMBER:
-            return is_lvalue(expr->ex_composite);
+            return sem_is_lvalue(expr->ex_composite);
         case SL_EXPR_DEREF:
-            return is_lvalue(expr->ex_deref_arg);
+            return sem_is_lvalue(expr->ex_deref_arg);
         // TODO: Array subscript
         default:
             return 0;
@@ -485,7 +485,7 @@ static int verify_expr_addrof(sem_info_t* info, sl_expr_t* expr)
     result += verify_expr(info, expr->ex_addrof_arg);
 
     // Must be an l-value
-    if (!is_lvalue(expr->ex_addrof_arg)) {
+    if (!sem_is_lvalue(expr->ex_addrof_arg)) {
         elprintf("cannot take the address of an rvalue of type '%T'",
                 info, expr->ex_line, expr->ex_addrof_arg->ex_type);
         result -= 1;

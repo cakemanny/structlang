@@ -3,6 +3,12 @@
 #include "symbols.h" // sl_sym_t
 #include "ast.h" // sl_type_t
 #include <stdint.h> // uint64_t
+#include "temp.h"
+
+typedef struct ac_registers_t {
+    temp_t acr_sp;
+    temp_t acr_fp;
+} ac_registers_t;
 
 typedef struct ac_frame {
 
@@ -11,6 +17,8 @@ typedef struct ac_frame {
     uint64_t *acf_locals_ptr_bitset;
     uint64_t *acf_args_ptr_bitset;
     int acf_next_arg_reg; // temp
+
+    ac_registers_t* acf_regs;
 
     struct ac_frame_var {
         enum {
@@ -41,6 +49,9 @@ typedef struct ac_frame {
 void ac_frame_free(ac_frame_t** pframe);
 
 ac_frame_t* calculate_activation_records(sl_decl_t* program);
+size_t size_of_type(const sl_decl_t* program, const sl_type_t* type);
+
+extern const size_t ac_word_size;
 
 extern _Bool ac_debug;
 

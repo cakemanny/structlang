@@ -104,7 +104,6 @@ static sl_expr_t* ex_alloc(int tag)
     check_mem(node);
 
     node->ex_tag = tag;
-    node->ex_op = -1;
     node->ex_line = yylineno;
     node->ex_type = NULL; // assigned by type-checker
     memset(&node->ex_u, 0, sizeof node->ex_u);
