@@ -27,6 +27,31 @@ static sl_decl_t* lookup_struct_decl(sl_decl_t* program, sl_sym_t name)
     return NULL;
 }
 
+static void rewrite_decompose_equal_expr(rewrite_info_t* info, sl_expr_t* expr);
+
+
+static sl_expr_t* rewrite_decompose_equal_expr_field(
+        rewrite_info_t* info,
+        sl_expr_t* expr,
+        sl_decl_t* field)
+{
+    VAR(left_access,
+            sl_expr_member(expr->ex_left, field->dl_name));
+    left_access->ex_type = field->dl_type;
+
+    VAR(right_access,
+            sl_expr_member(expr->ex_right, field->dl_name));
+    right_access->ex_type = field->dl_type;
+
+    // now recurse in case, in case those are structs.
+    rewrite_decompose_equal_expr(info, left_access);
+    rewrite_decompose_equal_expr(info, right_access);
+
+    sl_expr_t* new_cmp = sl_expr_binop(expr->ex_op, left_access, right_access);
+    new_cmp->ex_type = expr->ex_type;
+    return new_cmp;
+}
+
 static void rewrite_decompose_equal_expr(rewrite_info_t* info, sl_expr_t* expr)
 {
 #define recur(e) rewrite_decompose_equal_expr(info, e)
@@ -52,43 +77,11 @@ static void rewrite_decompose_equal_expr(rewrite_info_t* info, sl_expr_t* expr)
                     _Bool is_eq = (expr->ex_op == SL_TOK_EQ);
                     VAR(comb_op , is_eq ? SL_TOK_LAND : SL_TOK_LOR);
 
-                    // TODO: factor into function
-                    sl_expr_t* head = NULL;
-                    {
-                        VAR(field, struct_decl->dl_params);
-                        VAR(left_access,
-                                sl_expr_member(expr->ex_left, field->dl_name));
-                        left_access->ex_type = field->dl_type;
-
-                        VAR(right_access,
-                                sl_expr_member(expr->ex_right, field->dl_name));
-                        right_access->ex_type = field->dl_type;
-
-                        // now recurse in case, in case those are structs.
-                        recur(left_access);
-                        recur(right_access);
-
-                        sl_expr_t* new_cmp =
-                            sl_expr_binop(expr->ex_op, left_access, right_access);
-                        new_cmp->ex_type = bool_type;
-                        head = new_cmp;
-                    }
+                    sl_expr_t* head = rewrite_decompose_equal_expr_field(
+                            info, expr, struct_decl->dl_params);
                     for (DL_LIST_IT(field, struct_decl->dl_params->dl_list)) {
-                        VAR(left_access,
-                                sl_expr_member(expr->ex_left, field->dl_name));
-                        left_access->ex_type = field->dl_type;
-
-                        VAR(right_access,
-                                sl_expr_member(expr->ex_right, field->dl_name));
-                        right_access->ex_type = field->dl_type;
-
-                        // now recurse in case, in case those are structs.
-                        recur(left_access);
-                        recur(right_access);
-
-                        sl_expr_t* new_cmp =
-                            sl_expr_binop(expr->ex_op, left_access, right_access);
-                        new_cmp->ex_type = bool_type;
+                        sl_expr_t* new_cmp = rewrite_decompose_equal_expr_field(
+                                info, expr, field);
 
                         head = sl_expr_binop(comb_op, head, new_cmp);
                         head->ex_type = bool_type;
@@ -149,6 +142,7 @@ static void rewrite_decompose_equal_expr(rewrite_info_t* info, sl_expr_t* expr)
             return;
     }
     assert(0);
+#undef recur
 }
 
 static void rewrite_decompose_equal_decl(rewrite_info_t* info, sl_decl_t* decl)
