@@ -7,7 +7,6 @@
 extern int yylex();
 extern int yylineno;
 extern FILE* yyin;
-int yywrap();
 
 static void yyerror(const char* msg);
 
@@ -211,8 +210,8 @@ band_expr:
 
 eq_expr:
         cmp_expr
-    |   eq_expr SL_TOK_EQ eq_expr       { $$ = sl_expr_binop($2, $1, $3) }
-    |   eq_expr SL_TOK_NEQ eq_expr      { $$ = sl_expr_binop($2, $1, $3) }
+    |   eq_expr SL_TOK_EQ cmp_expr      { $$ = sl_expr_binop($2, $1, $3) }
+    |   eq_expr SL_TOK_NEQ cmp_expr     { $$ = sl_expr_binop($2, $1, $3) }
     ;
 
 cmp_expr:
