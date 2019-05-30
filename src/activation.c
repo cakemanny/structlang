@@ -137,7 +137,7 @@ static ac_frame_t* ac_frame_append_frame(ac_frame_t* head, ac_frame_t* to_append
 static int round_up_size(int size, int multiple) __attribute__((const));
 static int round_up_size(int size, int multiple)
 {
-    return ((size * multiple) + multiple - 1) / multiple;
+    return ((size + multiple - 1) / multiple) * multiple;
 }
 
 static size_t num_words(size_t num_bytes) __attribute__((const));
@@ -185,7 +185,6 @@ static size_t alignment_of_type(const sl_decl_t* program, const sl_type_t* type)
     assert(0 && " missing case");
 }
 
-
 /*
  * The size of the type as stored in the stack frame. Including padding for
  * alignment...
@@ -203,18 +202,19 @@ size_t size_of_type(const sl_decl_t* program, const sl_type_t* type)
             for (const sl_decl_t* decl = program; decl; decl = decl->dl_list) {
                 if (decl->dl_tag == SL_DECL_STRUCT
                         && decl->dl_name == type->ty_name) {
-                    size_t alignment = alignment_of_type(program, type);
                     size_t total_size = 0;
                     for (const sl_decl_t* field = decl->dl_params; field;
                             field = field->dl_list) {
+                        // Are we sure this this shouldn't be using the
+                        // structure alignment as opposed to the field
+                        // alignment...
                         size_t field_alignment =
                             alignment_of_type(program, field->dl_type);
-                        while ((total_size % field_alignment) != 0)
-                            total_size += 1;
+                        total_size = round_up_size(total_size, field_alignment);
                         total_size += size_of_type(program, field->dl_type);
                     }
-                    while ((total_size % alignment) != 0)
-                        total_size += 1;
+                    size_t alignment = alignment_of_type(program, type);
+                    total_size = round_up_size(total_size, alignment);
                     return total_size;
                 }
             }
@@ -250,14 +250,13 @@ static void ptr_map_for_type(
             for (const sl_decl_t* decl = program; decl; decl = decl->dl_list) {
                 if (decl->dl_tag == SL_DECL_STRUCT
                         && decl->dl_name == type->ty_name) {
-                    size_t alignment = alignment_of_type(program, type);
                     size_t total_size = 0;
                     for (const sl_decl_t* field = decl->dl_params; field;
                             field = field->dl_list) {
                         size_t field_alignment =
                             alignment_of_type(program, field->dl_type);
-                        while ((total_size % field_alignment) != 0)
-                            total_size += 1;
+
+                        total_size = round_up_size(total_size, field_alignment);
 
                         if (field_alignment >= target->word_size) {
                             // possible to be a pointer
@@ -267,8 +266,8 @@ static void ptr_map_for_type(
 
                         total_size += size_of_type(program, field->dl_type);
                     }
-                    while ((total_size % alignment) != 0)
-                        total_size += 1;
+                    size_t alignment = alignment_of_type(program, type);
+                    total_size = round_up_size(total_size, alignment);
                     return;
                 }
             }
