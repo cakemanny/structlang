@@ -146,32 +146,50 @@ static size_t num_words(size_t num_bytes)
     return round_up_size(num_bytes, target->word_size) / target->word_size;
 }
 
+static const struct ac_builtin_type*
+lookup_builtin(const sl_type_t* type)
+{
+    for (int i = 0; i < NELEMS(builtin_sizes); i++) {
+        if (type->ty_name == symbol(builtin_sizes[i].name)) {
+            return builtin_sizes + i;
+        }
+    }
+    return NULL;
+}
+
+static const sl_decl_t* lookup_struct(
+        const sl_decl_t* program, const sl_type_t* type)
+{
+    for (const sl_decl_t* decl = program; decl; decl = decl->dl_list) {
+        if (decl->dl_tag == SL_DECL_STRUCT
+                && decl->dl_name == type->ty_name) {
+            return decl;
+        }
+    }
+    fprintf(stderr, "type->name = %s\n", type->ty_name);
+    assert(0 && "unknown type name");
+}
+
 static size_t alignment_of_type(const sl_decl_t* program, const sl_type_t* type)
 {
     switch (type->ty_tag) {
         case SL_TYPE_NAME:
         {
-            for (int i = 0; i < NELEMS(builtin_sizes); i++) {
-                if (type->ty_name == symbol(builtin_sizes[i].name)) {
-                    return builtin_sizes[i].alignment;
+            const struct ac_builtin_type* builtin = lookup_builtin(type);
+            if (builtin) {
+                return builtin->alignment;
+            }
+            const sl_decl_t* decl = lookup_struct(program, type);
+            size_t alignment = 0;
+            for (const sl_decl_t* field = decl->dl_params; field;
+                    field = field->dl_list) {
+                size_t field_alignment =
+                    alignment_of_type(program, field->dl_type);
+                if (field_alignment > alignment) {
+                    alignment = field_alignment;
                 }
             }
-            for (const sl_decl_t* decl = program; decl; decl = decl->dl_list) {
-                if (decl->dl_tag == SL_DECL_STRUCT
-                        && decl->dl_name == type->ty_name) {
-                    size_t alignment = 0;
-                    for (const sl_decl_t* field = decl->dl_params; field;
-                            field = field->dl_list) {
-                        size_t field_alignment =
-                            alignment_of_type(program, field->dl_type);
-                        if (field_alignment > alignment) {
-                            alignment = field_alignment;
-                        }
-                    }
-                    return alignment;
-                }
-            }
-            assert(0 && "unknown type name");
+            return alignment;
         }
         case SL_TYPE_PTR:
             return target->word_size;
@@ -194,31 +212,22 @@ size_t size_of_type(const sl_decl_t* program, const sl_type_t* type)
     switch (type->ty_tag) {
         case SL_TYPE_NAME:
         {
-            for (int i = 0; i < NELEMS(builtin_sizes); i++) {
-                if (type->ty_name == symbol(builtin_sizes[i].name)) {
-                    return builtin_sizes[i].size;
-                }
+            const struct ac_builtin_type* builtin = lookup_builtin(type);
+            if (builtin) {
+                return builtin->size;
             }
-            for (const sl_decl_t* decl = program; decl; decl = decl->dl_list) {
-                if (decl->dl_tag == SL_DECL_STRUCT
-                        && decl->dl_name == type->ty_name) {
-                    size_t total_size = 0;
-                    for (const sl_decl_t* field = decl->dl_params; field;
-                            field = field->dl_list) {
-                        // Are we sure this this shouldn't be using the
-                        // structure alignment as opposed to the field
-                        // alignment...
-                        size_t field_alignment =
-                            alignment_of_type(program, field->dl_type);
-                        total_size = round_up_size(total_size, field_alignment);
-                        total_size += size_of_type(program, field->dl_type);
-                    }
-                    size_t alignment = alignment_of_type(program, type);
-                    total_size = round_up_size(total_size, alignment);
-                    return total_size;
-                }
+            const sl_decl_t* decl = lookup_struct(program, type);
+            size_t total_size = 0;
+            for (const sl_decl_t* field = decl->dl_params; field;
+                    field = field->dl_list) {
+                size_t field_alignment =
+                    alignment_of_type(program, field->dl_type);
+                total_size = round_up_size(total_size, field_alignment);
+                total_size += size_of_type(program, field->dl_type);
             }
-            assert(0 && "unknown type name");
+            size_t alignment = alignment_of_type(program, type);
+            total_size = round_up_size(total_size, alignment);
+            return total_size;
         }
         case SL_TYPE_PTR:
             return target->word_size;
@@ -239,40 +248,33 @@ static void ptr_map_for_type(
     switch (type->ty_tag) {
         case SL_TYPE_NAME:
         {
-            for (int i = 0; i < NELEMS(builtin_sizes); i++) {
-                if (type->ty_name == symbol(builtin_sizes[i].name)) {
-                    if (builtin_sizes[i].is_ptr) {
-                        SetBit(map, offset);
-                    }
-                    return;
+            const struct ac_builtin_type* builtin = lookup_builtin(type);
+            if (builtin) {
+                if (builtin->is_ptr) {
+                    SetBit(map, offset);
                 }
+                return;
             }
-            for (const sl_decl_t* decl = program; decl; decl = decl->dl_list) {
-                if (decl->dl_tag == SL_DECL_STRUCT
-                        && decl->dl_name == type->ty_name) {
-                    size_t total_size = 0;
-                    for (const sl_decl_t* field = decl->dl_params; field;
-                            field = field->dl_list) {
-                        size_t field_alignment =
-                            alignment_of_type(program, field->dl_type);
+            const sl_decl_t* decl = lookup_struct(program, type);
+            size_t total_size = 0;
+            for (const sl_decl_t* field = decl->dl_params; field;
+                    field = field->dl_list) {
+                size_t field_alignment =
+                    alignment_of_type(program, field->dl_type);
 
-                        total_size = round_up_size(total_size, field_alignment);
+                total_size = round_up_size(total_size, field_alignment);
 
-                        if (field_alignment >= target->word_size) {
-                            // possible to be a pointer
-                            ptr_map_for_type(program, type, map,
-                                    offset + num_words(total_size));
-                        }
-
-                        total_size += size_of_type(program, field->dl_type);
-                    }
-                    size_t alignment = alignment_of_type(program, type);
-                    total_size = round_up_size(total_size, alignment);
-                    return;
+                if (field_alignment >= target->word_size) {
+                    // possible to be a pointer
+                    ptr_map_for_type(program, type, map,
+                            offset + num_words(total_size));
                 }
+
+                total_size += size_of_type(program, field->dl_type);
             }
-            fprintf(stderr, "type->ty_name = \"%s\"\n", type->ty_name);
-            assert(0 && "unknown type name");
+            size_t alignment = alignment_of_type(program, type);
+            total_size = round_up_size(total_size, alignment);
+            return;
         }
         case SL_TYPE_PTR:
             SetBit(map, offset);
@@ -388,6 +390,8 @@ static void calculate_activation_record_decl_func(
     } else if (ret_type_size <= 16) {
         // result goes into RAX, RDX
     } else {
+        // ... WTF, why do we have an assert 0, but then some code?
+        // Need to allocate temporary for the return value?
         assert(0 && "TODO: larger return sizes");
         // The result is converted into a by-reference param
         struct ac_frame_var* v = xmalloc(sizeof *v);
@@ -438,7 +442,7 @@ static void calculate_activation_record_decl_func(
     for (sl_expr_t* e = decl->dl_body; e; e = e->ex_list) {
         // Add space for locals
         // And maybe temporaries
-        calculate_activation_record_expr(program ,frame, e);
+        calculate_activation_record_expr(program, frame, e);
     }
 
     // Now, scan through the frame vars and calculate a bitset showing where
