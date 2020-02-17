@@ -7,7 +7,7 @@
 #include "grammar.tab.h"
 
 // type infering declarations - requires -std=gnu11
-#define VAR(_name, _expression) typeof(_expression) _name = (_expression)
+#define var __auto_type
 
 // used to define check types of our macros arguments
 static void check_int(int i) {}
@@ -155,8 +155,8 @@ static int verify_expr_binop_operands(sem_info_t* info, sl_expr_t* expr,
         sl_type_t* expected_type)
 {
     int result = 0;
-    VAR(t1, expr->ex_left->ex_type);
-    VAR(t2, expr->ex_right->ex_type);
+    var t1 = expr->ex_left->ex_type;
+    var t2 = expr->ex_right->ex_type;
     if (ty_cmp(t1, expected_type) != 0) {
         elprintf("operands of binary operation '%O' should be of "
                 "type '%T', but left side had type '%T'",
@@ -211,8 +211,8 @@ static int verify_expr_binop(sem_info_t* info, sl_expr_t* expr)
         case SL_TOK_EQ:
         case SL_TOK_NEQ:
         {
-            VAR(l, expr->ex_left);
-            VAR(r, expr->ex_right);
+            var l = expr->ex_left;
+            var r = expr->ex_right;
             if (ty_cmp(l->ex_type, r->ex_type) != 0) {
                 elprintf("left and right side of '%O' are expression of "
                         "different types",
@@ -287,7 +287,7 @@ static int verify_expr_call(sem_info_t* info, sl_expr_t* expr)
 
     int result = 0;
     int num_args = 0;
-    for (VAR(arg, expr->ex_fn_args); arg; arg = arg->ex_list) {
+    for (var arg = expr->ex_fn_args; arg; arg = arg->ex_list) {
         result += verify_expr(info, arg);
         num_args += 1;
     }
@@ -314,8 +314,8 @@ static int verify_expr_call(sem_info_t* info, sl_expr_t* expr)
         result -= 1;
     }
 
-    VAR(arg, expr->ex_fn_args);
-    VAR(param, fn_decl->dl_params);
+    var arg = expr->ex_fn_args;
+    var param = fn_decl->dl_params;
     for (int i = 1; arg && param; arg = arg->ex_list, param = param->dl_list, i++) {
         if (ty_cmp(arg->ex_type, param->dl_type) != 0) {
             elprintf("argument %d passed to '%s' has type '%T' but expected '%T'",
@@ -334,7 +334,7 @@ static int verify_expr_new(sem_info_t* info, sl_expr_t* expr)
 
     int result = 0;
     int num_args = 0;
-    for (VAR(arg, expr->ex_new_args); arg; arg = arg->ex_list) {
+    for (var arg = expr->ex_new_args; arg; arg = arg->ex_list) {
         result += verify_expr(info, arg);
         num_args += 1;
     }
@@ -361,8 +361,8 @@ static int verify_expr_new(sem_info_t* info, sl_expr_t* expr)
         result -= 1;
     }
 
-    VAR(arg, expr->ex_new_args);
-    VAR(param, struct_decl->dl_params);
+    var arg = expr->ex_new_args;
+    var param = struct_decl->dl_params;
     for (int i = 1; arg && param; arg = arg->ex_list, param = param->dl_list, i++) {
         if (ty_cmp(arg->ex_type, param->dl_type) != 0) {
             elprintf("field %d in '%s' constructor has type '%T' but expected '%T'",
@@ -399,7 +399,7 @@ static int verify_expr_return(sem_info_t* info, sl_expr_t* expr)
     // check the return expression type matches the function return type
     // type node as void
     int result = 0;
-    VAR(fn_ret_type, info->si_current_fn->dl_type);
+    var fn_ret_type = info->si_current_fn->dl_type;
     if (expr->ex_ret_arg) {
         result += verify_expr(info, expr->ex_ret_arg);
         // How do I get the current function
@@ -443,7 +443,7 @@ static int verify_expr_loop(sem_info_t* info, sl_expr_t* expr)
     info->si_loop_depth += 1;
     push_scope(info);
 
-    for (VAR(stmt, expr->ex_loop_body); stmt; stmt = stmt->ex_list) {
+    for (var stmt = expr->ex_loop_body; stmt; stmt = stmt->ex_list) {
         result += verify_expr(info, stmt);
     }
 
@@ -557,15 +557,15 @@ static int verify_expr_if(sem_info_t* info, sl_expr_t* expr)
     pop_scope(info);
 
     // want to check that condition has type bool
-    VAR(cond_type, expr->ex_if_cond->ex_type);
+    var cond_type = expr->ex_if_cond->ex_type;
     if (ty_cmp(cond_type, info->si_builtin_types.bool_type) != 0) {
         elprintf("if condition must be an expression of type 'bool'",
                 info, expr->ex_if_cond->ex_line);
         result -= 1;
     }
 
-    VAR(cons_type, expr->ex_if_cons->ex_type);
-    VAR(alt_type, expr->ex_if_alt->ex_type);
+    var cons_type = expr->ex_if_cons->ex_type;
+    var alt_type = expr->ex_if_alt->ex_type;
     if (ty_cmp(cons_type, alt_type) != 0) {
         elprintf("branches of if expression have different types, '%T' and '%T'",
                 info, expr->ex_line, cons_type, alt_type);
@@ -693,7 +693,7 @@ static int verify_decl_struct(sem_info_t* sem_info, sl_decl_t* decl)
         }
 
         // check type is not recursive
-        VAR(field_type, field->dl_type);
+        var field_type = field->dl_type;
         if (field_type->ty_tag == SL_TYPE_NAME
                 && field_type->ty_name == decl->dl_name) {
             elprintf("recursive type not allowed, use pointer instead",
