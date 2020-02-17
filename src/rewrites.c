@@ -7,7 +7,7 @@
 
 #define EX_LIST_IT(it, head) sl_expr_t* it = (head); it; it = it->ex_list
 #define DL_LIST_IT(it, head) sl_decl_t* it = (head); it; it = it->dl_list
-#define VAR(v, x) typeof(x) v = (x)
+#define var __auto_type
 
 typedef struct rewrite_info_t {
     sl_decl_t* program;
@@ -35,12 +35,10 @@ static sl_expr_t* rewrite_decompose_equal_expr_field(
         sl_expr_t* expr,
         sl_decl_t* field)
 {
-    VAR(left_access,
-            sl_expr_member(expr->ex_left, field->dl_name));
+    var left_access = sl_expr_member(expr->ex_left, field->dl_name);
     left_access->ex_type = field->dl_type;
 
-    VAR(right_access,
-            sl_expr_member(expr->ex_right, field->dl_name));
+    var right_access = sl_expr_member(expr->ex_right, field->dl_name);
     right_access->ex_type = field->dl_type;
 
     // now recurse in case, in case those are structs.
@@ -59,11 +57,11 @@ static void rewrite_decompose_equal_expr(rewrite_info_t* info, sl_expr_t* expr)
         /* interesting case */
         case SL_EXPR_BINOP:
             if (expr->ex_op == SL_TOK_EQ || expr->ex_op == SL_TOK_NEQ) {
-                VAR(left_type, expr->ex_left->ex_type);
+                var left_type = expr->ex_left->ex_type;
                 if (size_of_type(info->program, left_type) > ac_word_size) {
                     assert(expr->ex_type->ty_tag== SL_TYPE_NAME &&
                             expr->ex_type->ty_name == symbol("bool"));
-                    VAR(bool_type, expr->ex_type);
+                    var bool_type = expr->ex_type;
                     // must be a struct...
                     assert(left_type->ty_tag == SL_TYPE_NAME);
                     sl_decl_t* struct_decl =
@@ -75,7 +73,7 @@ static void rewrite_decompose_equal_expr(rewrite_info_t* info, sl_expr_t* expr)
                     assert(sem_is_lvalue(expr->ex_right));
 
                     _Bool is_eq = (expr->ex_op == SL_TOK_EQ);
-                    VAR(comb_op , is_eq ? SL_TOK_LAND : SL_TOK_LOR);
+                    var comb_op = is_eq ? SL_TOK_LAND : SL_TOK_LOR;
 
                     sl_expr_t* head = rewrite_decompose_equal_expr_field(
                             info, expr, struct_decl->dl_params);
