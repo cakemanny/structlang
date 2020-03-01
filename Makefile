@@ -29,6 +29,9 @@ ifndef NDEBUG
   endif
 endif
 
+all: $(BUILD_DIR)/src/grammar.tab.h $(BUILD_DIR)/$(TARGET_EXEC)
+
+
 $(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
 	$(CC) $(OBJS) -o $@ $(LDFLAGS)
 
@@ -66,7 +69,7 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 
 
 
-.PHONY: clean
+.PHONY: clean all
 
 clean:
 	$(RM) -r $(BUILD_DIR)
