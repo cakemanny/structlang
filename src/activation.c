@@ -170,14 +170,19 @@ static const sl_decl_t* lookup_struct(
     assert(0 && "unknown type name");
 }
 
-static size_t alignment_of_type(const sl_decl_t* program, const sl_type_t* type)
+static size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type)
 {
+    if (type->ty_alignment != -1) {
+        return type->ty_alignment;
+    }
     switch (type->ty_tag) {
         case SL_TYPE_NAME:
         {
             const struct ac_builtin_type* builtin = lookup_builtin(type);
             if (builtin) {
-                return builtin->alignment;
+                // while we are here, assign the size too
+                type->ty_size = builtin->size;
+                return type->ty_alignment = builtin->alignment;
             }
             const sl_decl_t* decl = lookup_struct(program, type);
             size_t alignment = 0;
@@ -189,32 +194,42 @@ static size_t alignment_of_type(const sl_decl_t* program, const sl_type_t* type)
                     alignment = field_alignment;
                 }
             }
-            return alignment;
+            return type->ty_alignment = alignment;
         }
         case SL_TYPE_PTR:
-            return target->word_size;
+            // call on pointee for side-effects:
+            alignment_of_type(program, type->ty_pointee);
+            return type->ty_alignment = target->word_size;
         case SL_TYPE_ARRAY:
             // alignment of its elements?
+            alignment_of_type(program, type->ty_pointee);
             assert(0 && "not implemented, alignment_of_type, array");
         case SL_TYPE_FUNC:
-            return target->word_size;
+            return type->ty_alignment = target->word_size;
     }
     fprintf(stderr, "type->ty_tag = %d (0x%x)\n", type->ty_tag, type->ty_tag);
     assert(0 && " missing case");
 }
 
+// TODO: we should scan through the program and calculate the types as a
+// pre-step maybe?
 /*
  * The size of the type as stored in the stack frame. Including padding for
  * alignment...
  */
-size_t size_of_type(const sl_decl_t* program, const sl_type_t* type)
+size_t size_of_type(const sl_decl_t* program, sl_type_t* type)
 {
+    if (type->ty_size != -1) {
+        return type->ty_size;
+    }
     switch (type->ty_tag) {
         case SL_TYPE_NAME:
         {
             const struct ac_builtin_type* builtin = lookup_builtin(type);
             if (builtin) {
-                return builtin->size;
+                // while we are here, assign the alignment too
+                type->ty_alignment = builtin->alignment;
+                return type->ty_size = builtin->size;
             }
             const sl_decl_t* decl = lookup_struct(program, type);
             size_t total_size = 0;
@@ -227,11 +242,14 @@ size_t size_of_type(const sl_decl_t* program, const sl_type_t* type)
             }
             size_t alignment = alignment_of_type(program, type);
             total_size = round_up_size(total_size, alignment);
-            return total_size;
+            return type->ty_size = total_size;
         }
         case SL_TYPE_PTR:
-            return target->word_size;
+            // call on pointee for side-effects:
+            size_of_type(program, type->ty_pointee);
+            return type->ty_size = target->word_size;
         case SL_TYPE_ARRAY:
+            size_of_type(program, type->ty_pointee);
             assert(0 && "not implemented, size_of_type, array");
         case SL_TYPE_FUNC:
             // unless we add first-class functions
@@ -242,8 +260,7 @@ size_t size_of_type(const sl_decl_t* program, const sl_type_t* type)
 }
 
 static void ptr_map_for_type(
-        const sl_decl_t* program, const sl_type_t* type,
-        uint64_t* map, int offset)
+        const sl_decl_t* program, sl_type_t* type, uint64_t* map, int offset)
 {
     switch (type->ty_tag) {
         case SL_TYPE_NAME:

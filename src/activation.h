@@ -49,7 +49,7 @@ typedef struct ac_frame {
 void ac_frame_free(ac_frame_t** pframe);
 
 ac_frame_t* calculate_activation_records(sl_decl_t* program);
-size_t size_of_type(const sl_decl_t* program, const sl_type_t* type);
+size_t size_of_type(const sl_decl_t* program, sl_type_t* type);
 
 extern const size_t ac_word_size;
 

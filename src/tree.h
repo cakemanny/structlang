@@ -3,6 +3,7 @@
 
 #include "symbols.h" // sl_sym_t
 #include "temp.h" // temp_t
+#include <stddef.h> // size_t
 
 struct tree_exp_t;
 typedef struct tree_exp_t tree_exp_t;
@@ -58,7 +59,10 @@ struct tree_exp_t {
             tree_exp_t* te_lhs;
             tree_exp_t* te_rhs;
         };
-        tree_exp_t* te_mem_addr;
+        struct {
+            tree_exp_t* te_mem_addr;
+            size_t te_mem_size;
+        }; // MEM
         struct {
             tree_exp_t* te_func;
             tree_exp_t* te_args; // list
@@ -107,19 +111,32 @@ struct tree_stm_t {
     };
 };
 
+/* the integer constant _value_ */
 tree_exp_t* tree_exp_const(int value);
+/* symbolic constant _name_ corresonding to an assembly label */
 tree_exp_t* tree_exp_name(sl_sym_t name);
+/* a temp in the abstract machine, similar to a register, but infinitely many*/
 tree_exp_t* tree_exp_temp(temp_t temp);
+/* evaluate lhs, rhs, and then apply op */
 tree_exp_t* tree_exp_binop(tree_binop_t op, tree_exp_t* lhs, tree_exp_t* rhs);
-tree_exp_t* tree_exp_mem(tree_exp_t* addr);
+/* the contents of size bytes of memory starting at address addr */
+tree_exp_t* tree_exp_mem(tree_exp_t* addr, size_t size);
+/* evaluate func, then args (left-to-right), then apply func to args */
 tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args);
+/* eval s for side-effects then e for a result */
 tree_exp_t* tree_exp_eseq(tree_stm_t* s, tree_exp_t* e);
 
+/* eval e and then move it into temp or mem reference */
 tree_stm_t* tree_stm_move(tree_exp_t* dst, tree_exp_t* e);
+/* eval e and then discard the results */
 tree_stm_t* tree_stm_exp(tree_exp_t* e);
+/* transfer control to address dst. common case is JUMP(NAME l, 1, [l]) */
 tree_stm_t* tree_stm_jump(tree_exp_t* dst, int num_labels, sl_sym_t* labels);
+/* eval lhs, then rhs, then compare with op, then jump to jtrue or jfalse */
 tree_stm_t* tree_stm_cjump(tree_relop_t op, tree_exp_t* lhs, tree_exp_t* rhs, sl_sym_t jtrue, sl_sym_t jfalse);
+/* s1 followed by s2 */
 tree_stm_t* tree_stm_seq(tree_stm_t* s1, tree_stm_t* s2);
+/* define a label such that NAME(label) may be the target of jumps */
 tree_stm_t* tree_stm_label(sl_sym_t label);
 
 #endif /* __TREE_H__ */

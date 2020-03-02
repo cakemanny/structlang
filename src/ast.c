@@ -75,6 +75,8 @@ static sl_type_t* ty_alloc(int tag)
     check_mem(node);
 
     node->ty_tag = tag;
+    node->ty_size = -1;
+    node->ty_alignment = -1;
 
     return node;
 }
@@ -359,6 +361,9 @@ void ty_print(FILE* out, const sl_type_t* type)
     switch (type->ty_tag) {
         case SL_TYPE_NAME:
             fprintf(out, "%s", type->ty_name);
+            if (type->ty_size != -1) {
+                fprintf(out, ".%lu.%lu", type->ty_size, type->ty_alignment);
+            }
             return;
         case SL_TYPE_PTR:
             ast_printf(out, "*%T", type->ty_pointee);

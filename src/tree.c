@@ -44,10 +44,11 @@ exp tree_exp_binop(tree_binop_t op, exp lhs, exp rhs)
     return e;
 }
 
-exp tree_exp_mem(exp addr)
+exp tree_exp_mem(exp addr, size_t size)
 {
     exp e = tree_exp_new(TREE_EXP_MEM);
     e->te_mem_addr = addr;
+    e->te_mem_size = size;
     return e;
 }
 

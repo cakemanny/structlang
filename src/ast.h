@@ -39,6 +39,8 @@ struct sl_type_t {
         sl_sym_t ty_name; // SL_TYPE_NAME
         sl_type_t* ty_pointee; // SL_TYPE_PTR, SL_TYPE_ARRAY
     };
+    size_t ty_size; // -1 when not set
+    size_t ty_alignment; // -1 when not set
 };
 
 struct sl_expr_t {
