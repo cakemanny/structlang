@@ -1,0 +1,277 @@
+#!/bin/bash
+
+SLC=$(dirname "$0")/../build/structlangc
+red=$(tput setaf 1)
+grn=$(tput setaf 2)
+clr=$(tput sgr0)
+
+if [[ ! -x $SLC ]]; then
+    exit 1
+fi
+
+
+# This is basically just the acceptable cases from the semantics tests
+
+# TODO rewrite to check the records
+
+check_pass() {
+    output=$(echo "$1" | $SLC -a -)
+    result=$?
+    if [[ $result == 0 ]]; then
+        echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"
+    else
+        echo "${red}failed${clr}"
+        echo "**program**"
+        echo "$1"
+        echo "**end**"
+        echo
+    fi
+}
+
+## Expressions
+
+# int
+check_pass "fn main() -> int { 0 }"
+
+# bool
+check_pass "fn main() -> bool { true }"
+check_pass "fn main() -> bool { false }"
+
+# Binary operations
+check_pass "
+fn main() -> int {
+    1 + 2
+}
+"
+check_pass "
+fn main() -> int {
+    2 - 1; 2 * 3; 4 / 2
+}
+"
+check_pass "
+fn main() -> int {
+    1 << 2; 2 >> 1
+}
+"
+check_pass "
+fn main() -> bool {
+    true && true
+}
+"
+check_pass "
+fn main() -> bool {
+    false || false
+}
+"
+check_pass "
+fn main() -> bool {
+    1 < 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 <= 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 > 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 >= 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 == 2
+}
+"
+check_pass "
+fn main() -> bool {
+    1 != 2
+}
+"
+check_pass "
+fn main() -> bool {
+    true == true
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> bool {
+    (new X{0}) == (new X{1})
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> bool {
+    *(new X{0}) == *(new X{1})
+}
+"
+
+# let bindings
+
+check_pass "
+fn main() -> void {
+    let a: int = 1
+}
+"
+
+# function calls
+check_pass "
+fn f(x: int) -> int {
+    x
+}
+fn main() -> int {
+    f(0)
+}
+"
+check_pass "
+fn main() -> int {
+    main()
+}
+"
+
+# structs
+check_pass "
+struct X { x: int }
+fn main() -> void {
+    let a: *X = new X { 0 }
+}
+"
+# TODO: more of these
+
+# variable references
+check_pass "
+fn main() -> int {
+    let a: int = 0;
+    a
+}
+"
+
+# return
+check_pass "
+fn main() -> int {
+    return 0;
+}
+"
+check_pass "
+fn main() -> int {
+    return 0;
+    return 0;
+}
+"
+
+# loop
+check_pass "
+fn main() -> void {
+    loop {
+        0
+    }
+}
+"
+check_pass "
+fn main() -> int {
+    loop {
+        0
+    }
+}
+"
+
+# break
+check_pass "
+fn main() -> void {
+    loop {
+        break
+    }
+}
+"
+
+# pointer dereference / struct member
+check_pass "
+struct X { x: int }
+fn main() -> X {
+    *(new X { 0 })
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> int {
+    let a: *X = new X { 0 };
+    a->x
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> int {
+    let a: X = *(new X { 0 });
+    a.x
+}
+"
+
+# addrress of
+check_pass "
+fn main() -> *int {
+    let x: int = 1;
+    &x
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> *X {
+    let xx: *X = new X{0};
+    &(*xx)
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> *int {
+    let xx: *X = new X{0};
+    &xx->x
+}
+"
+check_pass "
+struct X { x: int }
+fn main() -> *int {
+    let xx: X = *(new X{0});
+    &xx.x
+}
+"
+
+# if expression
+check_pass "
+fn main() -> int {
+    if 1 < 2 {
+        1
+    } else {
+        2
+    }
+}
+"
+check_pass "
+fn main() -> bool {
+    if 1 < 2 {
+        true
+    } else {
+        false
+    }
+}
+"
+check_pass "
+fn main() -> void {
+    if 1 < 2 {
+        return
+    }
+}
+"
+check_pass "
+fn main() -> void {
+    let a: int = if 1 < 2 {
+        1
+    } else {
+        2
+    }
+}
+"

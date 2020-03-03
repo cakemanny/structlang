@@ -360,7 +360,9 @@ static void calculate_activation_record_expr(
         case SL_EXPR_VAR:
             return;
         case SL_EXPR_RETURN:
-            recur(expr->ex_ret_arg);
+            if (expr->ex_ret_arg) {
+                recur(expr->ex_ret_arg);
+            }
             return;
         case SL_EXPR_BREAK:
             return;

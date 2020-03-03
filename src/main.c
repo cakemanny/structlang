@@ -24,6 +24,7 @@ options:\n\
   -p    Parse only (print ast)\n\
   -t    Stop after type checking\n\
   -r    Stop after rewrites and print ast\n\
+  -a    Stop after calculating activation records\n\
 ", stderr);
     exit(exit_code);
 }
@@ -33,6 +34,7 @@ int main(int argc, char* argv[])
     _Bool parse_only = 0;
     _Bool stop_after_type_checking = 0;
     _Bool stop_after_rewrites = 0;
+    _Bool stop_after_activation_calculation = 0;
     _Bool warn_about_multiple_files = 0;
     char* inarg = NULL;
     for (int i = 1; i < argc; i++) {
@@ -42,6 +44,7 @@ int main(int argc, char* argv[])
                     case 'p': parse_only = 1; break;
                     case 't': stop_after_type_checking = 1; break;
                     case 'r': stop_after_rewrites = 1; break;
+                    case 'a': stop_after_activation_calculation = 1; break;
                     default: fprintf(stderr, "unknown option '%c'\n", *pc);
                              print_usage_and_exit(1);
                 }
@@ -100,6 +103,10 @@ int main(int argc, char* argv[])
     if(!frames) {
         fprintf(stderr, "internal error: failed to calculate frames\n");
         return 1;
+    }
+
+    if (stop_after_activation_calculation) {
+        return 0;
     }
 
     temp_state_t* temp_state = temp_state_new();
