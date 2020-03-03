@@ -77,6 +77,7 @@ static sl_type_t* ty_alloc(int tag)
     node->ty_tag = tag;
     node->ty_size = -1;
     node->ty_alignment = -1;
+    node->ty_decl = NULL;
 
     return node;
 }

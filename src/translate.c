@@ -3,6 +3,8 @@
 #include "mem.h" // xmalloc
 #include "grammar.tab.h"
 
+#define var __auto_type
+
 static int round_up_size(int size, int multiple) __attribute__((const));
 static int round_up_size(int size, int multiple)
 {
@@ -334,8 +336,8 @@ static translate_exp_t* translate_expr_new(
     tree_stm_t** init_seq_tail = &init_seq;
 
     int offset = 0;
-    for (__auto_type arg = expr->ex_new_args; arg; arg = arg->ex_list) {
-        __auto_type init_exp = translate_expr(temp_state, frame, arg);
+    for (var arg = expr->ex_new_args; arg; arg = arg->ex_list) {
+        var init_exp = translate_expr(temp_state, frame, arg);
         size_t arg_size = arg->ex_type->ty_size;
         assert(arg_size > 0);
         assert(arg->ex_type->ty_alignment > 0);
@@ -363,6 +365,29 @@ static translate_exp_t* translate_expr_new(
 
     tree_exp_t* result = tree_exp_eseq(init_seq, tree_exp_temp(r));
     return translate_ex(result);
+}
+
+static translate_exp_t* translate_expr_member(
+        temp_state_t* temp_state, ac_frame_t* frame, sl_expr_t* expr)
+{
+    // I think we need access to the type information for the struct type
+    // to know the offsets
+
+    var struct_decl = expr->ex_composite->ex_type->ty_decl;
+
+    int offset = 0;
+    for (var mem = struct_decl->dl_params; mem; mem = mem->dl_list) {
+        if (mem->dl_name == expr->ex_member) {
+            break;
+        }
+        size_t member_size = mem->dl_type->ty_size;
+        assert(member_size > 0);
+        assert(mem->dl_type->ty_alignment > 0);
+
+        offset = round_up_size(offset, mem->dl_type->ty_alignment);
+    }
+    // TODO: cont here
+    assert(0 && "TODO");
 }
 
 static translate_exp_t* translate_expr_if(
@@ -397,9 +422,10 @@ static translate_exp_t* translate_expr(
         case SL_EXPR_LOOP:
         case SL_EXPR_DEREF:
         case SL_EXPR_ADDROF:
-        case SL_EXPR_MEMBER:
             // TODO
             return NULL;
+        case SL_EXPR_MEMBER:
+            return translate_expr_member(temp_state, frame, expr);
         case SL_EXPR_IF:
             return translate_expr_if(temp_state, frame, expr);;
     }

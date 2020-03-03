@@ -41,6 +41,7 @@ struct sl_type_t {
     };
     size_t ty_size; // -1 when not set
     size_t ty_alignment; // -1 when not set
+    sl_decl_t* ty_decl; // Filled in during semantics
 };
 
 struct sl_expr_t {

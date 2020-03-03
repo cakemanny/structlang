@@ -126,7 +126,13 @@ static _Bool type_exists(sem_info_t* sem_info, sl_type_t* type)
             || t->ty_name == symbol("bool")) {
         return 1;
     }
-    return (lookup_struct_decl(sem_info, t->ty_name) != NULL);
+    var struct_decl = lookup_struct_decl(sem_info, t->ty_name);
+    if (struct_decl != NULL) {
+        // stash away the decl on the type for later stages
+        type->ty_decl = struct_decl;
+        return 1;
+    }
+    return 0;
 }
 
 _Bool sem_is_lvalue(const sl_expr_t* expr)
@@ -349,6 +355,8 @@ static int verify_expr_new(sem_info_t* info, sl_expr_t* expr)
     }
 
     expr->ex_type = ty_type_pointer(ty_type_name(struct_decl->dl_name));
+    // stash reference to struct for later stages
+    expr->ex_type->ty_pointee->ty_decl = struct_decl;
 
     int num_fields = dl_struct_num_fields(struct_decl);
     if (num_args < num_fields) {
@@ -502,7 +510,7 @@ static int verify_expr_member(sem_info_t* info, sl_expr_t* expr)
 
     // check expr->ex_composite is a struct type?
 
-    if (expr->ex_composite->ex_type->ty_tag != SL_DECL_STRUCT) {
+    if (expr->ex_composite->ex_type->ty_tag != SL_TYPE_NAME) {
         elprintf("trying to access field '%s' of non-struct type '%T'",
                 info, expr->ex_composite->ex_line, expr->ex_member,
                 expr->ex_composite->ex_type);
@@ -522,6 +530,9 @@ static int verify_expr_member(sem_info_t* info, sl_expr_t* expr)
         expr->ex_type = info->si_builtin_types.void_type;
         return result - 1;
     }
+
+    // stash away the decl on the composite's type for later stages
+    expr->ex_composite->ex_type->ty_decl = struct_decl;
 
     // check the field being accessed can be found in the struct declaration
     sl_decl_t* param = struct_decl->dl_params;
@@ -775,6 +786,7 @@ int sem_verify_and_type_program(const char* filename, sl_decl_t* program)
         goto cleanup;
     }
 
+    // TODO: replace these iterations with the EX_LIST_IT and DL_LIST_IT macros
     for (sl_decl_t* decl = program; decl; decl = decl->dl_list) {
         result += verify_decl(&sem_info, decl);
     }
