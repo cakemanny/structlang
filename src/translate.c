@@ -367,6 +367,19 @@ static translate_exp_t* translate_expr_new(
     return translate_ex(result);
 }
 
+static translate_exp_t* translate_expr_deref(
+        temp_state_t* temp_state, ac_frame_t* frame, sl_expr_t* expr)
+{
+    var arg_ex = translate_expr(temp_state, frame, expr->ex_deref_arg);
+    tree_exp_t* arg =
+        translate_un_ex(temp_state, arg_ex); free(arg_ex); arg_ex = NULL;
+
+    size_t size = expr->ex_deref_arg->ex_type->ty_size;
+
+    var result = tree_exp_mem(arg, size);
+    return translate_ex(result);
+}
+
 static translate_exp_t* translate_expr_member(
         temp_state_t* temp_state, ac_frame_t* frame, sl_expr_t* expr)
 {
@@ -375,19 +388,45 @@ static translate_exp_t* translate_expr_member(
 
     var struct_decl = expr->ex_composite->ex_type->ty_decl;
 
+    size_t member_size = 0;
     int offset = 0;
     for (var mem = struct_decl->dl_params; mem; mem = mem->dl_list) {
+        member_size = mem->dl_type->ty_size;
+        assert(member_size > 0);
+        assert(mem->dl_type->ty_alignment > 0);
+        offset = round_up_size(offset, mem->dl_type->ty_alignment);
+
         if (mem->dl_name == expr->ex_member) {
             break;
         }
-        size_t member_size = mem->dl_type->ty_size;
-        assert(member_size > 0);
-        assert(mem->dl_type->ty_alignment > 0);
 
-        offset = round_up_size(offset, mem->dl_type->ty_alignment);
+        offset += member_size;
     }
-    // TODO: cont here
-    assert(0 && "TODO");
+    assert(member_size > 0);
+
+
+    // Case 1: deref == (mem *addr*)
+    // Case 2: var == (mem *addr*)
+    // Case 3: member == (mem *addr*)
+
+    var base_ref_ex = translate_expr(temp_state, frame, expr->ex_composite);
+    tree_exp_t* base_ref = translate_un_ex(temp_state, base_ref_ex);
+    free(base_ref_ex);
+    // I don't actually know if this will always be the case, but it seems like
+    // it might be
+    assert(base_ref->te_tag == TREE_EXP_MEM);
+    tree_exp_t* base_addr = base_ref->te_mem_addr;
+
+    tree_exp_t* result = tree_exp_mem(
+        tree_exp_binop(
+            TREE_BINOP_PLUS,
+            base_addr,
+            tree_exp_const(offset)
+        ),
+        member_size
+    );
+
+    return translate_ex(result);
 }
 
 static translate_exp_t* translate_expr_if(
@@ -420,7 +459,10 @@ static translate_exp_t* translate_expr(
         case SL_EXPR_RETURN:
         case SL_EXPR_BREAK:
         case SL_EXPR_LOOP:
+            // TODO
+            return NULL;
         case SL_EXPR_DEREF:
+            return translate_expr_deref(temp_state, frame, expr);
         case SL_EXPR_ADDROF:
             // TODO
             return NULL;
