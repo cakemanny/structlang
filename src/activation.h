@@ -8,6 +8,8 @@
 typedef struct ac_registers_t {
     temp_t acr_sp;
     temp_t acr_fp;
+    temp_t acr_ret0;
+    temp_t acr_ret1;
 } ac_registers_t;
 
 typedef struct ac_frame {

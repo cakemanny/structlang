@@ -61,6 +61,8 @@ const char* registers[] = {
 ac_registers_t register_temps = {
     .acr_sp = {.temp_id = 4},
     .acr_fp = {.temp_id = 5},
+    .acr_ret0 = {.temp_id = 0},
+    .acr_ret1 = {.temp_id = 2},
 };
 
 
@@ -375,6 +377,8 @@ static void calculate_activation_record_expr(
             recur(expr->ex_deref_arg);
             return;
         case SL_EXPR_ADDROF:
+            // TODO: consider that this forces a var to be frame rather than
+            // reg
             recur(expr->ex_addrof_arg);
             return;
         case SL_EXPR_MEMBER:

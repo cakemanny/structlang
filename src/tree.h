@@ -126,6 +126,8 @@ tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args);
 /* eval s for side-effects then e for a result */
 tree_exp_t* tree_exp_eseq(tree_stm_t* s, tree_exp_t* e);
 
+tree_exp_t* tree_exp_append(tree_exp_t* hd, tree_exp_t* to_append);
+
 /* eval e and then move it into temp or mem reference */
 tree_stm_t* tree_stm_move(tree_exp_t* dst, tree_exp_t* e);
 /* eval e and then discard the results */

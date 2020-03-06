@@ -68,6 +68,19 @@ exp tree_exp_eseq(stm s, exp e)
     return e_;
 }
 
+exp tree_exp_append(exp hd, exp to_append)
+{
+    if (!hd)
+        return to_append;
+
+    exp final_node = hd;
+    while (final_node->te_list)
+        final_node = final_node->te_list;
+    final_node->te_list = to_append;
+
+    return hd;
+}
+
 static stm tree_stm_new(int tag)
 {
     assert(tag > 0);
