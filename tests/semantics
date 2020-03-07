@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SLC=$(dirname "$0")/../build/structlangc
+SLC=$(dirname "$0")/../build/debug/structlangc
 red=$(tput setaf 1)
 grn=$(tput setaf 2)
 clr=$(tput sgr0)

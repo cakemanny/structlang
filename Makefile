@@ -1,14 +1,23 @@
 # Based on https://spin.atomicobject.com/2016/08/26/makefile-c-projects/
 TARGET_EXEC ?= structlangc
+TARGET_LIB ?= libstructlang.a
 
 BUILD_DIR ?= ./build
 SRC_DIRS ?= ./src
+
+# don't mix release and debug objs
+ifndef NDEBUG
+  BUILD_DIR := $(BUILD_DIR)/debug
+else
+  BUILD_DIR := $(BUILD_DIR)/release
+endif
 
 SRCS := $(shell find $(SRC_DIRS) -name *.cpp -or -name *.c -or -name *.s)
 GEN := lex.yy.c grammar.tab.c
 OBJEX := $(GEN:%=$(BUILD_DIR)/src/%.o)
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o) $(OBJEX)
 DEPS := $(OBJS:.o=.d)
+MAINS := $(BUILD_DIR)/src/main.o
 
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_DIRS += $(SRC_DIRS:%=$(BUILD_DIR)/%)
@@ -27,10 +36,18 @@ ifndef NDEBUG
     CFLAGS += -fsanitize=address
     LDFLAGS += -fsanitize=address
   endif
+else
+  CFLAGS += -O3
 endif
 
-all: $(BUILD_DIR)/src/grammar.tab.h $(BUILD_DIR)/$(TARGET_EXEC)
+all: gen lib $(BUILD_DIR)/$(TARGET_EXEC)
 
+lib: gen $(BUILD_DIR)/$(TARGET_LIB)
+
+gen: $(BUILD_DIR)/src/grammar.tab.h
+
+$(BUILD_DIR)/$(TARGET_LIB): $(filter-out $(MAINS),$(OBJS))
+	$(AR) rcs $@ $^
 
 $(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
 	$(CC) $(OBJS) -o $@ $(LDFLAGS)
@@ -69,7 +86,7 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 
 
 
-.PHONY: clean all
+.PHONY: clean all lib gen
 
 clean:
 	$(RM) -r $(BUILD_DIR)
