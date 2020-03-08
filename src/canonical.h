@@ -1,0 +1,10 @@
+#ifndef __CANONICAL_H__
+#define __CANONICAL_H__
+
+#include "fragment.h"
+
+sl_fragment_t* canonicalise_tree(
+        temp_state_t* temp_state, sl_fragment_t* fragments);
+
+
+#endif /* __CANONICAL_H__ */

@@ -746,29 +746,6 @@ static tree_stm_t* translate_decl(
     }
 }
 
-static sl_fragment_t* sl_fragment(tree_stm_t* body, ac_frame_t* frame)
-{
-    assert(body);
-    assert(frame);
-    sl_fragment_t* x = xmalloc(sizeof *x);
-    x->fr_body = body;
-    x->fr_frame = frame;
-    x->fr_list = NULL;
-    return x;
-}
-
-static sl_fragment_t* fr_append(sl_fragment_t* hd, sl_fragment_t* to_append)
-{
-    if (!hd)
-        return to_append;
-
-    var final_node = hd;
-    while (final_node->fr_list)
-        final_node = final_node->fr_list;
-    final_node->fr_list = to_append;
-
-    return hd;
-}
 
 sl_fragment_t* translate_program(
         temp_state_t* temp_state, sl_decl_t* program, ac_frame_t* frames)
