@@ -190,7 +190,33 @@ void tree_stm_print(FILE* out, const tree_stm_t* s)
         fprintf(out, "NULL");
         return;
     }
-    fprintf(out, "STMT");
+    switch (s->tst_tag) {
+        case TREE_STM_MOVE:
+            tree_printf(out, "MOVE(%E, %E)", s->tst_move_dst, s->tst_move_exp);
+            return;
+        case TREE_STM_EXP:
+            tree_printf(out, "EXP(%E)", s->tst_exp);
+            return;
+        case TREE_STM_JUMP:
+            tree_printf(out, "JUMP(%E", s->tst_jump_dst);
+            for (int i = 0; i < s->tst_jump_num_labels; i++) {
+                fprintf(out, ", %s", s->tst_jump_labels[i]);
+            }
+            fprintf(out, ")");
+            return;
+        case TREE_STM_CJUMP:
+            tree_printf(
+                    out, "CJUMP(%R, %E, %E, %s, %s)",
+                    s->tst_cjump_op, s->tst_cjump_lhs, s->tst_cjump_rhs,
+                    s->tst_cjump_true, s->tst_cjump_false);
+            return;
+        case TREE_STM_SEQ:
+            tree_printf(out, "SEQ(%S, %S)", s->tst_seq_s1, s->tst_seq_s2);
+            return;
+        case TREE_STM_LABEL:
+            fprintf(out, "LABEL(%s)", s->tst_label);
+            return;
+    }
 }
 
 void tree_printf(FILE* out, const char* fmt, ...)
