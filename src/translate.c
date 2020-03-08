@@ -76,18 +76,18 @@ tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
                     tree_stm_seq(
                     tree_stm_seq(
                         tree_stm_move(
-                            tree_exp_temp(r), tree_exp_const(1, ac_word_size))
+                            tree_exp_temp(r, 1), tree_exp_const(1, 1))
                         ,
                         lbf_call(ex->tr_exp_cx, t, f) /* genstm */
                         ),
                         tree_stm_label(f)
                         ),
                         tree_stm_move(
-                            tree_exp_temp(r), tree_exp_const(0, ac_word_size))
+                            tree_exp_temp(r, 1), tree_exp_const(0, 1))
                         ),
                         tree_stm_label(t)
                         ),
-                        tree_exp_temp(r)
+                        tree_exp_temp(r, 1)
                         );
         }
     }
@@ -184,14 +184,14 @@ static tree_exp_t* translate_var_mem_ref_expr(ac_frame_t* frame, int var_id)
     assert(frame_var);
 
     if (frame_var->acf_tag == ACF_ACCESS_REG) {
-        return tree_exp_temp(frame_var->acf_reg);
+        return tree_exp_temp(frame_var->acf_reg, frame_var->acf_size);
     }
     assert(frame_var->acf_tag == ACF_ACCESS_FRAME);
 
     tree_exp_t* result = tree_exp_mem(
         tree_exp_binop(
             TREE_BINOP_PLUS,
-            tree_exp_temp(frame->acf_regs->acr_fp), // rbp
+            tree_exp_temp(frame->acf_regs->acr_fp, ac_word_size), // rbp
             tree_exp_const(frame_var->acf_offset, ac_word_size)
         ),
         frame_var->acf_size
@@ -391,12 +391,12 @@ static translate_exp_t* translate_expr_new(
     temp_t r = temp_newtemp(info->temp_state);
 
     // to work out the size, we need the struct size
-    const sl_type_t* struct_type = expr->ex_type->ty_pointee;
-    size_t struct_size = struct_type->ty_size;
+    sl_type_t* struct_type = expr->ex_type->ty_pointee;
+    size_t struct_size = size_of_type(info->program, struct_type);
     assert(struct_size > 0);
 
     tree_stm_t* assign = tree_stm_move(
-            tree_exp_temp(r),
+            tree_exp_temp(r, ac_word_size),
             tree_exp_call(
                 tree_exp_name("malloc"),
                 tree_exp_const(struct_size, ac_word_size),
@@ -411,17 +411,16 @@ static translate_exp_t* translate_expr_new(
     int offset = 0;
     for (var arg = expr->ex_new_args; arg; arg = arg->ex_list) {
         var init_exp = translate_expr(info, frame, arg);
-        size_t arg_size = arg->ex_type->ty_size;
-        assert(arg_size > 0);
-        assert(arg->ex_type->ty_alignment > 0);
+        size_t arg_size = size_of_type(info->program, arg->ex_type);
+        var arg_alignment = alignment_of_type(info->program, arg->ex_type);
 
-        offset = round_up_size(offset, arg->ex_type->ty_alignment);
+        offset = round_up_size(offset, arg_alignment);
 
         tree_stm_t* init = tree_stm_move(
                 tree_exp_mem(
                     tree_exp_binop(
                         TREE_BINOP_PLUS,
-                        tree_exp_temp(r),
+                        tree_exp_temp(r, ac_word_size),
                         tree_exp_const(offset, ac_word_size)
                     ),
                     arg_size
@@ -436,7 +435,10 @@ static translate_exp_t* translate_expr_new(
     // this loses some memory ... oh well
     *init_seq_tail = (*init_seq_tail)->tst_seq_s1;
 
-    tree_exp_t* result = tree_exp_eseq(init_seq, tree_exp_temp(r));
+    tree_exp_t* result = tree_exp_eseq(
+            init_seq,
+            tree_exp_temp(r, ac_word_size)
+    );
     return translate_ex(result);
 }
 
@@ -459,7 +461,7 @@ static translate_exp_t* translate_expr_call(
     tree_exp_t* result = tree_exp_call(
         tree_exp_name(expr->ex_fn_name),
         translated_args,
-        expr->ex_type->ty_size
+        size_of_type(info->program, expr->ex_type)
     );
     return translate_ex(result);
 }
@@ -469,10 +471,9 @@ static translate_exp_t* translate_expr_call(
  */
 static tree_stm_t* assign_return(ac_frame_t* frame, tree_exp_t* arg)
 {
-    assert(arg->te_size < 1000);
     if (arg->te_size <= ac_word_size) {
         return tree_stm_move(
-            tree_exp_temp(frame->acf_regs->acr_ret0),
+            tree_exp_temp(frame->acf_regs->acr_ret0, ac_word_size),
             arg
         );
     } else if (arg->te_size <= 2 * ac_word_size) {
@@ -482,8 +483,10 @@ static tree_stm_t* assign_return(ac_frame_t* frame, tree_exp_t* arg)
         // MOVE(ret0, temp t)
         // MOVE(ret1, BINOP(PLUS, temp t, CONST(ac_word_size))
 
+        tree_printf(stderr, "%E\n", arg);
         assert(0 && "TODO larger return sizes");
     } else {
+        tree_printf(stderr, "%E\n", arg);
         assert(0 && "TODO larger return sizes");
     }
 }
@@ -564,7 +567,9 @@ static translate_exp_t* translate_expr_deref(
     tree_exp_t* arg =
         translate_un_ex(info->temp_state, arg_ex);
 
-    size_t size = expr->ex_deref_arg->ex_type->ty_size;
+    size_t size = size_of_type(info->program, expr->ex_deref_arg->ex_type);
+    assert(size > 0);
+    assert(size != -1);
 
     tree_exp_t* result = tree_exp_mem(arg, size);
     return translate_ex(result);
@@ -601,10 +606,9 @@ static translate_exp_t* translate_expr_member(
     size_t member_size = 0;
     int offset = 0;
     for (var mem = struct_decl->dl_params; mem; mem = mem->dl_list) {
-        member_size = mem->dl_type->ty_size;
-        assert(member_size > 0);
-        assert(mem->dl_type->ty_alignment > 0);
-        offset = round_up_size(offset, mem->dl_type->ty_alignment);
+        member_size = size_of_type(info->program, mem->dl_type);
+        var member_alignment = alignment_of_type(info->program, mem->dl_type);
+        offset = round_up_size(offset, member_alignment);
 
         if (mem->dl_name == expr->ex_member) {
             break;
@@ -655,14 +659,20 @@ static translate_exp_t* translate_expr_if(
     sl_sym_t join = temp_newlabel(info->temp_state);
     temp_t r = temp_newtemp(info->temp_state);
 
+    size_t cons_sz = size_of_type(info->program, expr->ex_if_cons->ex_type);
+    tree_exp_t* r_exp = tree_exp_temp(r, cons_sz);
+
+    // TODO: What about the void if/else expressions?
+    // in those, we don't need this r_exp thing
+
     var res = lbf_call(condition, tlabel, flabel);
     res = tree_stm_seq(res, tree_stm_label(tlabel));
-    res = tree_stm_seq(res, tree_stm_move(tree_exp_temp(r), cons));
+    res = tree_stm_seq(res, tree_stm_move(r_exp, cons));
     res = tree_stm_seq(res, unconditional_jump(join));
     res = tree_stm_seq(res, tree_stm_label(flabel));
-    res = tree_stm_seq(res, tree_stm_move(tree_exp_temp(r), alt));
+    res = tree_stm_seq(res, tree_stm_move(r_exp, alt));
     res = tree_stm_seq(res, unconditional_jump(join));
-    return translate_nx(res);
+    return translate_ex(tree_exp_eseq(res, r_exp));
 }
 
 static translate_exp_t* translate_expr(
@@ -718,8 +728,10 @@ static tree_stm_t* translate_decl(
         }
         last_expr = translate_expr(info, frame, e);
     }
-    var result_exp =
-        tree_exp_eseq(stmts, translate_un_ex(info->temp_state, last_expr));
+
+    var result_exp = (stmts)
+        ? tree_exp_eseq(stmts, translate_un_ex(info->temp_state, last_expr))
+        : translate_un_ex(info->temp_state, last_expr);
 
     var return_assignment = assign_return(frame, result_exp);
     // assign the return value to the right registers and declare a label for

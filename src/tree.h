@@ -116,7 +116,7 @@ tree_exp_t* tree_exp_const(int value, size_t size);
 /* symbolic constant _name_ corresonding to an assembly label */
 tree_exp_t* tree_exp_name(sl_sym_t name);
 /* a temp in the abstract machine, similar to a register, but infinitely many*/
-tree_exp_t* tree_exp_temp(temp_t temp);
+tree_exp_t* tree_exp_temp(temp_t temp, size_t size);
 /* evaluate lhs, rhs, and then apply op */
 tree_exp_t* tree_exp_binop(tree_binop_t op, tree_exp_t* lhs, tree_exp_t* rhs);
 /* the contents of size bytes of memory starting at address addr */
@@ -140,5 +140,11 @@ tree_stm_t* tree_stm_cjump(tree_relop_t op, tree_exp_t* lhs, tree_exp_t* rhs, sl
 tree_stm_t* tree_stm_seq(tree_stm_t* s1, tree_stm_t* s2);
 /* define a label such that NAME(label) may be the target of jumps */
 tree_stm_t* tree_stm_label(sl_sym_t label);
+
+#include <stdio.h>
+/* print tree expression */
+void tree_printf(FILE* out, const char* fmt, ...);
+void tree_exp_print(FILE* out, const tree_exp_t*);
+void tree_stm_print(FILE* out, const tree_stm_t*);
 
 #endif /* __TREE_H__ */

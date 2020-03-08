@@ -180,7 +180,7 @@ static const sl_decl_t* lookup_struct(
     assert(0 && "unknown type name");
 }
 
-static size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type)
+size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type)
 {
     if (type->ty_alignment != -1) {
         return type->ty_alignment;
@@ -207,12 +207,9 @@ static size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type)
             return type->ty_alignment = alignment;
         }
         case SL_TYPE_PTR:
-            // call on pointee for side-effects:
-            alignment_of_type(program, type->ty_pointee);
             return type->ty_alignment = target->word_size;
         case SL_TYPE_ARRAY:
             // alignment of its elements?
-            alignment_of_type(program, type->ty_pointee);
             assert(0 && "not implemented, alignment_of_type, array");
         case SL_TYPE_FUNC:
             return type->ty_alignment = target->word_size;
@@ -255,11 +252,8 @@ size_t size_of_type(const sl_decl_t* program, sl_type_t* type)
             return type->ty_size = total_size;
         }
         case SL_TYPE_PTR:
-            // call on pointee for side-effects:
-            size_of_type(program, type->ty_pointee);
             return type->ty_size = target->word_size;
         case SL_TYPE_ARRAY:
-            size_of_type(program, type->ty_pointee);
             assert(0 && "not implemented, size_of_type, array");
         case SL_TYPE_FUNC:
             // unless we add first-class functions
