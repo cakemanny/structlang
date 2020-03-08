@@ -34,7 +34,7 @@ typedef struct ac_frame {
         int acf_var_id;
         union {
             int acf_offset;         // ACF_ACCESS_FRAME
-            const char* acf_reg;    // ACF_ACCESS_REG
+            temp_t acf_reg;         // ACF_ACCESS_REG
         };
         //_Bool acf_escapes; //?
         _Bool acf_is_formal; // i.e. function parameter

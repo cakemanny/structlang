@@ -183,9 +183,10 @@ static tree_exp_t* translate_var_mem_ref_expr(ac_frame_t* frame, int var_id)
     }
     assert(frame_var);
 
-    // FIXME: what about parameters and ACF_ACCESS_REG
-
-    assert(frame_var->acf_tag == ACF_ACCESS_FRAME && "FIXME");
+    if (frame_var->acf_tag == ACF_ACCESS_REG) {
+        return tree_exp_temp(frame_var->acf_reg);
+    }
+    assert(frame_var->acf_tag == ACF_ACCESS_FRAME);
 
     tree_exp_t* result = tree_exp_mem(
         tree_exp_binop(
@@ -228,6 +229,31 @@ static translate_exp_t* translate_expr_void(
 }
 
 
+struct logical_and_or_cl {
+    temp_state_t* ts;
+    tree_exp_t* lhe;
+    tree_exp_t* rhe;
+};
+
+static tree_stm_t* logical_or(sl_sym_t t, sl_sym_t f, void* cl) {
+    struct logical_and_or_cl* uncl = (struct logical_and_or_cl*) cl;
+    var z = temp_newlabel(uncl->ts);
+    var result = jump_not_zero(t, z, uncl->lhe);
+    result = tree_stm_seq(result, tree_stm_label(z));
+    result = tree_stm_seq(result, jump_not_zero(t, f, uncl->rhe));
+    return result;
+}
+
+static tree_stm_t* logical_and(sl_sym_t t, sl_sym_t f, void* cl) {
+    struct logical_and_or_cl* uncl = (struct logical_and_or_cl*) cl;
+    var z = temp_newlabel(uncl->ts);
+    var result = jump_not_zero(z, f, uncl->lhe);
+    result = tree_stm_seq(result, tree_stm_label(z));
+    result = tree_stm_seq(result, jump_not_zero(t, f, uncl->rhe));
+    return result;
+}
+
+
 // closure for the compare_and_jump function
 struct compare_and_jump_cl {
     int relop;
@@ -253,13 +279,34 @@ static translate_exp_t* translate_expr_binop(
 
     // break out of here and compose some branches
     switch (expr->ex_op) {
-        // we should have a rewrite step that removes these and replaces them
-        // with if expressions
+        // I think here, we actually want CX nodes. So maybe the unEx is a
+        // bit premature
         case SL_TOK_LOR:
-            // I think here, we actually want CX nodes. So maybe the unEx is a
-            // bit premature
+            {
+                // a || b:
+                // t, f ->
+                //      CJUMP(!=, a, 0, t, z)
+                //  label z:
+                //      CJUMP(!=, b, 0, t, f)
+                struct logical_and_or_cl* cl = xmalloc(sizeof *cl);
+                cl->ts = info->temp_state;
+                cl->lhe = lhe;
+                cl->rhe = rhe;
+                return translate_cx(label_bifunc(logical_or, cl));
+            }
         case SL_TOK_LAND:
-            assert(0 && "TODO logical and and or");
+            {
+                // a && b:
+                // t, f ->
+                //      CJUMP(!=, a, 0, z, f)
+                //  label z:
+                //      CJUMP(!=, b, 0, t, f)
+                struct logical_and_or_cl* cl = xmalloc(sizeof *cl);
+                cl->ts = info->temp_state;
+                cl->lhe = lhe;
+                cl->rhe = rhe;
+                return translate_cx(label_bifunc(logical_and, cl));
+            }
         default: break;
     }
 
@@ -357,6 +404,7 @@ static translate_exp_t* translate_expr_new(
             )
     );
 
+    // FIXME: this is not necessary
     tree_stm_t* init_seq = tree_stm_seq(assign, NULL);
     tree_stm_t** init_seq_tail = &init_seq;
 
@@ -397,6 +445,8 @@ static translate_exp_t* translate_expr_call(
 {
     // TODO: if return type size is greater than 16 want to insert
     // temp binding with copy, and then pass as reference parameter
+    assert(size_of_type(info->program, expr->ex_type) <= 2 * ac_word_size);
+
     tree_exp_t* translated_args = NULL;
 
     for (EX_LIST_IT(fnarg, expr->ex_fn_args)) {
@@ -596,22 +646,21 @@ static translate_exp_t* translate_expr_if(
     // TODO: consider some special cases
     var condition = translate_un_cx(
             translate_expr(info, frame, expr->ex_if_cond));
-    var t = translate_un_ex(
+    var cons = translate_un_ex(
             info->temp_state, translate_expr(info, frame, expr->ex_if_cons));
-    var f = translate_un_ex(
+    var alt = translate_un_ex(
             info->temp_state, translate_expr(info, frame, expr->ex_if_alt));
     sl_sym_t tlabel = temp_newlabel(info->temp_state);
     sl_sym_t flabel = temp_newlabel(info->temp_state);
     sl_sym_t join = temp_newlabel(info->temp_state);
     temp_t r = temp_newtemp(info->temp_state);
 
-    // TODO: sequence these togeter!
     var res = lbf_call(condition, tlabel, flabel);
     res = tree_stm_seq(res, tree_stm_label(tlabel));
-    res = tree_stm_seq(res, tree_stm_move(tree_exp_temp(r), t));
+    res = tree_stm_seq(res, tree_stm_move(tree_exp_temp(r), cons));
     res = tree_stm_seq(res, unconditional_jump(join));
     res = tree_stm_seq(res, tree_stm_label(flabel));
-    res = tree_stm_seq(res, tree_stm_move(tree_exp_temp(r), f));
+    res = tree_stm_seq(res, tree_stm_move(tree_exp_temp(r), alt));
     res = tree_stm_seq(res, unconditional_jump(join));
     return translate_nx(res);
 }

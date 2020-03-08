@@ -50,7 +50,15 @@ const struct ac_builtin_type {
     { "void", 0, 0, 0 },
 };
 
-const char* argument_regs[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
+const char* argument_reg_names[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
+temp_t argument_regs[] = {
+    {.temp_id = 7}, // rdi
+    {.temp_id = 6}, // rsi
+    {.temp_id = 2}, // rdx
+    {.temp_id = 1}, // rcx
+    {.temp_id = 8}, // r8
+    {.temp_id = 9}, // r9
+};
 const char* return_registers[] = { "rax", "rdx" };
 const char* frame_pointer = "rbp";
 
@@ -59,10 +67,10 @@ const char* registers[] = {
     "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
 };
 ac_registers_t register_temps = {
-    .acr_sp = {.temp_id = 4},
-    .acr_fp = {.temp_id = 5},
-    .acr_ret0 = {.temp_id = 0},
-    .acr_ret1 = {.temp_id = 2},
+    .acr_sp = {.temp_id = 4}, // rsp
+    .acr_fp = {.temp_id = 5}, // rbp
+    .acr_ret0 = {.temp_id = 0}, // rax
+    .acr_ret1 = {.temp_id = 2}, // rdx
 };
 
 
