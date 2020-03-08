@@ -14,10 +14,11 @@ static exp tree_exp_new(int tag)
     return e;
 }
 
-exp tree_exp_const(int value)
+exp tree_exp_const(int value, size_t size)
 {
     exp e = tree_exp_new(TREE_EXP_CONST);
     e->te_const = value;
+    e->te_size = size;
     return e;
 }
 
@@ -48,15 +49,16 @@ exp tree_exp_mem(exp addr, size_t size)
 {
     exp e = tree_exp_new(TREE_EXP_MEM);
     e->te_mem_addr = addr;
-    e->te_mem_size = size;
+    e->te_size = size;
     return e;
 }
 
-exp tree_exp_call(exp func, exp args)
+exp tree_exp_call(exp func, exp args, size_t size)
 {
     exp e = tree_exp_new(TREE_EXP_CALL);
     e->te_func = func;
     e->te_args = args;
+    e->te_size = size;
     return e;
 }
 
@@ -65,6 +67,7 @@ exp tree_exp_eseq(stm s, exp e)
     exp e_ = tree_exp_new(TREE_EXP_ESEQ);
     e_->te_eseq_stm = s;
     e_->te_eseq_exp = e;
+    e_->te_size = e->te_size;
     return e_;
 }
 

@@ -58,10 +58,9 @@ struct tree_exp_t {
             tree_binop_t te_binop;
             tree_exp_t* te_lhs;
             tree_exp_t* te_rhs;
-        };
+        }; // BINOP
         struct {
             tree_exp_t* te_mem_addr;
-            size_t te_mem_size;
         }; // MEM
         struct {
             tree_exp_t* te_func;
@@ -72,6 +71,7 @@ struct tree_exp_t {
             tree_exp_t* te_eseq_exp;
         }; // ESEQ
     };
+    size_t te_size;
     tree_exp_t* te_list;
 };
 
@@ -112,7 +112,7 @@ struct tree_stm_t {
 };
 
 /* the integer constant _value_ */
-tree_exp_t* tree_exp_const(int value);
+tree_exp_t* tree_exp_const(int value, size_t size);
 /* symbolic constant _name_ corresonding to an assembly label */
 tree_exp_t* tree_exp_name(sl_sym_t name);
 /* a temp in the abstract machine, similar to a register, but infinitely many*/
@@ -122,7 +122,7 @@ tree_exp_t* tree_exp_binop(tree_binop_t op, tree_exp_t* lhs, tree_exp_t* rhs);
 /* the contents of size bytes of memory starting at address addr */
 tree_exp_t* tree_exp_mem(tree_exp_t* addr, size_t size);
 /* evaluate func, then args (left-to-right), then apply func to args */
-tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args);
+tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args, size_t size);
 /* eval s for side-effects then e for a result */
 tree_exp_t* tree_exp_eseq(tree_stm_t* s, tree_exp_t* e);
 

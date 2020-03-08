@@ -37,7 +37,7 @@ Two bitmaps, one for arguments, another for locals.
 
  */
 
-_Bool ac_debug = 1;
+_Bool ac_debug = 0;
 
 const struct ac_builtin_type {
     char* name;

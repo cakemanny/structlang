@@ -101,6 +101,7 @@ int main(int argc, char* argv[])
 
     ac_frame_t* frames = calculate_activation_records(program);
     if(!frames) {
+        // TODO: consider a module with only struct definitions?
         fprintf(stderr, "internal error: failed to calculate frames\n");
         return 1;
     }
@@ -110,8 +111,12 @@ int main(int argc, char* argv[])
     }
 
     temp_state_t* temp_state = temp_state_new();
-    translate_program(temp_state, program, frames);
+    sl_fragment_t* fragments =  translate_program(temp_state, program, frames);
     // ^ after this we can free up the ast structures
+    if (!fragments) {
+        fprintf(stderr, "internal error: failed to translate into trees\n");
+        return 1;
+    }
 
     // end of program... maybe
     temp_state_free(&temp_state);

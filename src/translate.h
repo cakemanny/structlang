@@ -25,6 +25,16 @@ struct translate_exp_t {
     };
 };
 
+
+typedef struct sl_fragment_t sl_fragment_t;
+
+struct sl_fragment_t {
+    tree_stm_t* fr_body;
+    ac_frame_t* fr_frame;
+    sl_fragment_t* fr_list;
+};
+
+
 translate_exp_t* translate_ex(tree_exp_t* e);
 translate_exp_t* translate_nx(tree_stm_t* s);
 translate_exp_t* translate_cx(label_bifunc_t genstm);
@@ -35,7 +45,7 @@ label_bifunc_t translate_un_cx(translate_exp_t*);
 
 // TODO: fix return type.. maybe it's the list of frames? and they each
 // reference the list of fragments?
-void translate_program(
+sl_fragment_t* translate_program(
         temp_state_t* temp_state, sl_decl_t* program, ac_frame_t* frames);
 
 /* Just a helper function, does not allocate */

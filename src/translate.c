@@ -7,9 +7,11 @@
 #define var __auto_type
 
 typedef struct translate_info_t {
+    sl_decl_t* program;
     temp_state_t* temp_state;
     sl_sym_t current_loop_end;
     sl_sym_t function_end_label;
+    _Bool is_end_label_used;
 } translate_info_t;
 
 static int round_up_size(int size, int multiple) __attribute__((const));
@@ -61,7 +63,7 @@ tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
         case TR_EXP_EX:
             return ex->tr_exp_ex;
         case TR_EXP_NX:
-            return tree_exp_eseq(ex->tr_exp_nx, tree_exp_const(0));
+            return tree_exp_eseq(ex->tr_exp_nx, tree_exp_const(0, ac_word_size));
         case TR_EXP_CX:
         {
             temp_t r = temp_newtemp(ts);
@@ -73,13 +75,15 @@ tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
                     tree_stm_seq(
                     tree_stm_seq(
                     tree_stm_seq(
-                        tree_stm_move(tree_exp_temp(r), tree_exp_const(1))
+                        tree_stm_move(
+                            tree_exp_temp(r), tree_exp_const(1, ac_word_size))
                         ,
                         lbf_call(ex->tr_exp_cx, t, f) /* genstm */
                         ),
                         tree_stm_label(f)
                         ),
-                        tree_stm_move(tree_exp_temp(r), tree_exp_const(0))
+                        tree_stm_move(
+                            tree_exp_temp(r), tree_exp_const(0, ac_word_size))
                         ),
                         tree_stm_label(t)
                         ),
@@ -130,7 +134,8 @@ static tree_stm_t* always_false(sl_sym_t t, sl_sym_t f, void* cl)
 static tree_stm_t* jump_not_zero(sl_sym_t t, sl_sym_t f, void* cl)
 {
     return tree_stm_cjump(
-            TREE_RELOP_NE, tree_exp_const(0), (tree_exp_t*)cl, t, f);
+            TREE_RELOP_NE, tree_exp_const(0, ac_word_size), (tree_exp_t*)cl,
+            t, f);
 }
 
 label_bifunc_t translate_un_cx(translate_exp_t* ex)
@@ -186,7 +191,7 @@ static tree_exp_t* translate_var_mem_ref_expr(ac_frame_t* frame, int var_id)
         tree_exp_binop(
             TREE_BINOP_PLUS,
             tree_exp_temp(frame->acf_regs->acr_fp), // rbp
-            tree_exp_const(frame_var->acf_offset)
+            tree_exp_const(frame_var->acf_offset, ac_word_size)
         ),
         frame_var->acf_size
     );
@@ -203,15 +208,23 @@ static translate_exp_t* translate_expr_var(
 static translate_exp_t* translate_expr_int(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
-    tree_exp_t* result = tree_exp_const(expr->ex_value);
+    tree_exp_t* result = tree_exp_const(
+            expr->ex_value, size_of_type(info->program, expr->ex_type));
     return translate_ex(result);
 }
 
 static translate_exp_t* translate_expr_bool(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
-    tree_exp_t* result = tree_exp_const(expr->ex_value);
+    tree_exp_t* result = tree_exp_const(
+            expr->ex_value, size_of_type(info->program, expr->ex_type));
     return translate_ex(result);
+}
+
+static translate_exp_t* translate_expr_void(
+        translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
+{
+    return translate_ex(tree_exp_const(0, ac_word_size));
 }
 
 
@@ -339,7 +352,8 @@ static translate_exp_t* translate_expr_new(
             tree_exp_temp(r),
             tree_exp_call(
                 tree_exp_name("malloc"),
-                tree_exp_const(struct_size)
+                tree_exp_const(struct_size, ac_word_size),
+                ac_word_size
             )
     );
 
@@ -360,7 +374,7 @@ static translate_exp_t* translate_expr_new(
                     tree_exp_binop(
                         TREE_BINOP_PLUS,
                         tree_exp_temp(r),
-                        tree_exp_const(offset)
+                        tree_exp_const(offset, ac_word_size)
                     ),
                     arg_size
                 ),
@@ -381,6 +395,8 @@ static translate_exp_t* translate_expr_new(
 static translate_exp_t* translate_expr_call(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
+    // TODO: if return type size is greater than 16 want to insert
+    // temp binding with copy, and then pass as reference parameter
     tree_exp_t* translated_args = NULL;
 
     for (EX_LIST_IT(fnarg, expr->ex_fn_args)) {
@@ -392,22 +408,58 @@ static translate_exp_t* translate_expr_call(
 
     tree_exp_t* result = tree_exp_call(
         tree_exp_name(expr->ex_fn_name),
-        translated_args
+        translated_args,
+        expr->ex_type->ty_size
     );
     return translate_ex(result);
+}
+
+/*
+ * Assign arg to the return location for the current function
+ */
+static tree_stm_t* assign_return(ac_frame_t* frame, tree_exp_t* arg)
+{
+    assert(arg->te_size < 1000);
+    if (arg->te_size <= ac_word_size) {
+        return tree_stm_move(
+            tree_exp_temp(frame->acf_regs->acr_ret0),
+            arg
+        );
+    } else if (arg->te_size <= 2 * ac_word_size) {
+        // If we have a mem reference, turn it into to
+        // maybe
+        // MOVE(temp t, arg)
+        // MOVE(ret0, temp t)
+        // MOVE(ret1, BINOP(PLUS, temp t, CONST(ac_word_size))
+
+        assert(0 && "TODO larger return sizes");
+    } else {
+        assert(0 && "TODO larger return sizes");
+    }
 }
 
 static translate_exp_t* translate_expr_return(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
-    assert(0 && "TODO");
     /*
      * I guess this will be a case of jumping to a final label at the end
      * of the function... where the eiplogue is emitted?
      */
-    // if return has an argument
-    //   convert that, and move it into the return variable?
-    tree_stm_t* result = unconditional_jump(info->current_loop_end);
+
+    tree_stm_t* result = unconditional_jump(info->function_end_label);
+    info->is_end_label_used = 1;
+
+    if (expr->ex_ret_arg) {
+        size_t ret_type_size = size_of_type(
+                info->program, expr->ex_ret_arg->ex_type);
+        var arg_ex = translate_expr(info, frame, expr->ex_ret_arg);
+        var arg = translate_un_ex(info->temp_state, arg_ex);
+
+        assert(arg->te_size == ret_type_size);
+        var move_stmt = assign_return(frame, arg);
+        result = tree_stm_seq(move_stmt, result);
+    }
+
     return translate_nx(result);
 }
 
@@ -530,7 +582,7 @@ static translate_exp_t* translate_expr_member(
         tree_exp_binop(
             TREE_BINOP_PLUS,
             base_addr,
-            tree_exp_const(offset)
+            tree_exp_const(offset, ac_word_size)
         ),
         member_size
     );
@@ -541,7 +593,27 @@ static translate_exp_t* translate_expr_member(
 static translate_exp_t* translate_expr_if(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
-    assert(0 && "TODO");
+    // TODO: consider some special cases
+    var condition = translate_un_cx(
+            translate_expr(info, frame, expr->ex_if_cond));
+    var t = translate_un_ex(
+            info->temp_state, translate_expr(info, frame, expr->ex_if_cons));
+    var f = translate_un_ex(
+            info->temp_state, translate_expr(info, frame, expr->ex_if_alt));
+    sl_sym_t tlabel = temp_newlabel(info->temp_state);
+    sl_sym_t flabel = temp_newlabel(info->temp_state);
+    sl_sym_t join = temp_newlabel(info->temp_state);
+    temp_t r = temp_newtemp(info->temp_state);
+
+    // TODO: sequence these togeter!
+    var res = lbf_call(condition, tlabel, flabel);
+    res = tree_stm_seq(res, tree_stm_label(tlabel));
+    res = tree_stm_seq(res, tree_stm_move(tree_exp_temp(r), t));
+    res = tree_stm_seq(res, unconditional_jump(join));
+    res = tree_stm_seq(res, tree_stm_label(flabel));
+    res = tree_stm_seq(res, tree_stm_move(tree_exp_temp(r), f));
+    res = tree_stm_seq(res, unconditional_jump(join));
+    return translate_nx(res);
 }
 
 static translate_exp_t* translate_expr(
@@ -556,8 +628,8 @@ static translate_exp_t* translate_expr(
         case SL_EXPR_BOOL:
             return translate_expr_bool(info, frame, expr);
         case SL_EXPR_VOID:
-            // TODO: should we ever get these?
-            return NULL;
+            // Can happen, as an unspecified else branch
+            return translate_expr_void(info, frame, expr);
         case SL_EXPR_BINOP:
             return translate_expr_binop(info, frame, expr);
         case SL_EXPR_LET:
@@ -583,7 +655,8 @@ static translate_exp_t* translate_expr(
     }
 }
 
-void translate_decl(translate_info_t* info, ac_frame_t* frame, sl_decl_t* decl)
+static tree_stm_t* translate_decl(
+        translate_info_t* info, ac_frame_t* frame, sl_decl_t* decl)
 {
     info->function_end_label = temp_newlabel(info->temp_state);
 
@@ -596,32 +669,69 @@ void translate_decl(translate_info_t* info, ac_frame_t* frame, sl_decl_t* decl)
         }
         last_expr = translate_expr(info, frame, e);
     }
-    //var result =
+    var result_exp =
         tree_exp_eseq(stmts, translate_un_ex(info->temp_state, last_expr));
-    // tack on a MOVE() ?
-    // TODO: here append the end label
 
+    var return_assignment = assign_return(frame, result_exp);
+    // assign the return value to the right registers and declare a label for
+    // the end of the function
+    if (info->is_end_label_used) {
+        return tree_stm_seq(
+                return_assignment,
+                tree_stm_label(info->function_end_label)
+        );
+    } else {
+        return return_assignment;
+    }
 }
 
+static sl_fragment_t* sl_fragment(tree_stm_t* body, ac_frame_t* frame)
+{
+    assert(body);
+    assert(frame);
+    sl_fragment_t* x = xmalloc(sizeof *x);
+    x->fr_body = body;
+    x->fr_frame = frame;
+    x->fr_list = NULL;
+    return x;
+}
 
-void translate_program(
+static sl_fragment_t* fr_append(sl_fragment_t* hd, sl_fragment_t* to_append)
+{
+    if (!hd)
+        return to_append;
+
+    var final_node = hd;
+    while (final_node->fr_list)
+        final_node = final_node->fr_list;
+    final_node->fr_list = to_append;
+
+    return hd;
+}
+
+sl_fragment_t* translate_program(
         temp_state_t* temp_state, sl_decl_t* program, ac_frame_t* frames)
 {
     // return some sort of list of functions, with each carrying a reference
     // to the activation record, and to the IR representation
-    translate_info_t info = { .temp_state = temp_state };
+    translate_info_t info = { .temp_state = temp_state, .program = program };
+
+    sl_fragment_t* result = NULL;
 
     sl_decl_t* d;
     ac_frame_t* f;
     for (d = program, f = frames; d; d = d->dl_list) {
         assert(f); // d => f
         if (d->dl_tag == SL_DECL_FUNC) {
-            // TODO something with this's returns
-            translate_decl(&info, f, d);
+            var body = translate_decl(&info, f, d);
+            var frag = sl_fragment(body, f);
+            result = fr_append(result, frag);
 
             // the next frame will be for the next function, so iter
             f = f->acf_link;
         }
     }
     assert(!f);
+
+    return result;
 }
