@@ -14,13 +14,36 @@ typedef struct translate_info_t {
     _Bool is_end_label_used;
 } translate_info_t;
 
+struct translate_exp_t;
+typedef struct translate_exp_t translate_exp_t;
+
+typedef struct label_bifunc_t {
+    tree_stm_t* (*lbf_fn)(sl_sym_t, sl_sym_t, void* cl);
+    void* lbf_cl;
+} label_bifunc_t;
+
+struct translate_exp_t {
+    enum {
+        TR_EXP_EX = 1,
+        TR_EXP_NX,
+        TR_EXP_CX
+    } tr_exp_tag;
+    union {
+        tree_exp_t* tr_exp_ex;
+        tree_stm_t* tr_exp_nx;
+        label_bifunc_t tr_exp_cx;
+    };
+};
+
+
 static int round_up_size(int size, int multiple) __attribute__((const));
 static int round_up_size(int size, int multiple)
 {
     return ((size + multiple - 1) / multiple) * multiple;
 }
 
-label_bifunc_t label_bifunc(
+/* Just a helper function, does not allocate */
+static label_bifunc_t label_bifunc(
         tree_stm_t* (*fn)(sl_sym_t, sl_sym_t, void* cl),
         void* cl)
 {
@@ -33,7 +56,7 @@ static tree_stm_t* lbf_call(label_bifunc_t lbf, sl_sym_t t, sl_sym_t f)
     return lbf.lbf_fn(t, f, lbf.lbf_cl);
 }
 
-translate_exp_t* translate_ex(tree_exp_t* e)
+static translate_exp_t* translate_ex(tree_exp_t* e)
 {
     translate_exp_t* result = xmalloc(sizeof *result);
     result->tr_exp_tag = TR_EXP_EX;
@@ -41,7 +64,7 @@ translate_exp_t* translate_ex(tree_exp_t* e)
     return result;
 }
 
-translate_exp_t* translate_nx(tree_stm_t* s)
+static translate_exp_t* translate_nx(tree_stm_t* s)
 {
     translate_exp_t* result = xmalloc(sizeof *result);
     result->tr_exp_tag = TR_EXP_NX;
@@ -49,7 +72,7 @@ translate_exp_t* translate_nx(tree_stm_t* s)
     return result;
 }
 
-translate_exp_t* translate_cx(label_bifunc_t genstm)
+static translate_exp_t* translate_cx(label_bifunc_t genstm)
 {
     translate_exp_t* result = xmalloc(sizeof *result);
     result->tr_exp_tag = TR_EXP_CX;
@@ -57,20 +80,23 @@ translate_exp_t* translate_cx(label_bifunc_t genstm)
     return result;
 }
 
-tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
+static tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
 {
+    tree_exp_t* ret;
     switch (ex->tr_exp_tag) {
         case TR_EXP_EX:
-            return ex->tr_exp_ex;
+            ret = ex->tr_exp_ex;
+            break;
         case TR_EXP_NX:
-            return tree_exp_eseq(ex->tr_exp_nx, tree_exp_const(0, ac_word_size));
+            ret = tree_exp_eseq(ex->tr_exp_nx, tree_exp_const(0, ac_word_size));
+            break;
         case TR_EXP_CX:
         {
             temp_t r = temp_newtemp(ts);
             sl_sym_t t = temp_newlabel(ts);
             sl_sym_t f = temp_newlabel(ts);
 
-            return tree_exp_eseq(
+            ret = tree_exp_eseq(
                     tree_stm_seq(
                     tree_stm_seq(
                     tree_stm_seq(
@@ -89,29 +115,38 @@ tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
                         ),
                         tree_exp_temp(r, 1)
                         );
+            break;
         }
     }
+    free(ex);
+    return ret;
 }
 
-tree_stm_t* translate_un_nx(temp_state_t* ts, translate_exp_t* ex)
+static tree_stm_t* translate_un_nx(temp_state_t* ts, translate_exp_t* ex)
 {
+    tree_stm_t* ret;
     switch (ex->tr_exp_tag) {
         case TR_EXP_EX:
-            return tree_stm_exp(ex->tr_exp_ex);
+            ret = tree_stm_exp(ex->tr_exp_ex);
+            break;
         case TR_EXP_NX:
-            return ex->tr_exp_nx;
+            ret = ex->tr_exp_nx;
+            break;
         case TR_EXP_CX:
         {
             // Just evaluate the conditional and continue...
             // Not sure if it's legal to end with a label...
             // maybe we need a post-label no-op?
             sl_sym_t dst = temp_newlabel(ts);
-            return tree_stm_seq(
+            ret = tree_stm_seq(
                 lbf_call(ex->tr_exp_cx, dst, dst), /* genstm */
                 tree_stm_label(dst)
             );
+            break;
         }
     }
+    free(ex);
+    return ret;
 }
 
 static tree_stm_t* unconditional_jump(sl_sym_t dst)
@@ -138,14 +173,15 @@ static tree_stm_t* jump_not_zero(sl_sym_t t, sl_sym_t f, void* cl)
             t, f);
 }
 
-label_bifunc_t translate_un_cx(translate_exp_t* ex)
+static label_bifunc_t translate_un_cx(translate_exp_t* ex)
 {
     // Treat const 1 and const 0 specially he said
     switch (ex->tr_exp_tag) {
         case TR_EXP_EX:
         {
             tree_exp_t* e = ex->tr_exp_ex;
-            switch (ex->tr_exp_ex->te_tag) {
+            free(ex);
+            switch (e->te_tag) {
                 case TREE_EXP_CONST:
                     if (e->te_const == 0) {
                         return label_bifunc(always_false, NULL);
@@ -164,7 +200,11 @@ label_bifunc_t translate_un_cx(translate_exp_t* ex)
         case TR_EXP_NX:
             assert(0 && "impossible case");
         case TR_EXP_CX:
-            return ex->tr_exp_cx;
+        {
+            var cx = ex->tr_exp_cx;
+            free(ex);
+            return cx;
+        }
     }
 }
 
@@ -719,6 +759,8 @@ static tree_stm_t* translate_decl(
 {
     info->function_end_label = temp_newlabel(info->temp_state);
 
+    // always have non-empty body
+    assert(decl->dl_body);
     tree_stm_t* stmts = NULL;
     translate_exp_t* last_expr = NULL;
     for (sl_expr_t* e = decl->dl_body; e; e = e->ex_list) {

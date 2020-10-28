@@ -294,6 +294,7 @@ void tree_printf(FILE* out, const char* fmt, ...)
                         case TREE_BINOP_LSHIFT: op_str = "<<"; break;
                         case TREE_BINOP_RSHIFT: op_str = ">>"; break;
                         case TREE_BINOP_ARSHIFT: op_str = ">>>"; break;
+                        default: assert(0 && "binop case missing");
                     }
                     const char* cs = op_str;
                     while (*cs) { putc_unlocked(*cs++, out); }
@@ -315,6 +316,7 @@ void tree_printf(FILE* out, const char* fmt, ...)
                         case TREE_RELOP_ULE: op_str = "u<="; break;
                         case TREE_RELOP_UGT: op_str = "u>"; break;
                         case TREE_RELOP_UGE: op_str = "u>="; break;
+                        default: assert(0 && "relop case missing");
                     }
                     const char* cs = op_str;
                     while (*cs) { putc_unlocked(*cs++, out); }

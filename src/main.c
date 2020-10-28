@@ -8,6 +8,7 @@
 #include "activation.h"
 #include "temp.h"
 #include "translate.h"
+#include "canonical.h"
 
 // grammar.y
 extern sl_decl_t* parse_file(const char* filename);
@@ -114,7 +115,7 @@ int main(int argc, char* argv[])
     }
 
     temp_state_t* temp_state = temp_state_new();
-    sl_fragment_t* fragments =  translate_program(temp_state, program, frames);
+    sl_fragment_t* fragments = translate_program(temp_state, program, frames);
     // ^ after this we can free up the ast structures
     if (!fragments) {
         fprintf(stderr, "internal error: failed to translate into trees\n");
@@ -126,6 +127,12 @@ int main(int argc, char* argv[])
             fprintf(stdout, "\n");
         }
         return 0;
+    }
+
+    sl_fragment_t* canonical_frags = canonicalise_tree(temp_state, fragments);
+    if(!canonical_frags) {
+        fprintf(stderr, "internal error: failed to canonicalise trees\n");
+        return 1;
     }
 
     // end of program... maybe

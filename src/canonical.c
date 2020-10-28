@@ -1,4 +1,4 @@
-#include "fragment.h"
+#include "canonical.h"
 
 sl_fragment_t* canonicalise_tree(
         temp_state_t* temp_state, sl_fragment_t* fragments)

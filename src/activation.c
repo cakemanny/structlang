@@ -293,8 +293,6 @@ static void ptr_map_for_type(
 
                 total_size += size_of_type(program, field->dl_type);
             }
-            size_t alignment = alignment_of_type(program, type);
-            total_size = round_up_size(total_size, alignment);
             return;
         }
         case SL_TYPE_PTR:

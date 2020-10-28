@@ -457,6 +457,7 @@ void ast_printf(FILE* out, const char* fmt, ...)
                             case SL_TOK_RSH: op_str = ">>"; break;
                             case SL_TOK_SARROW: op_str = "->"; break;
                         }
+                        assert(op_str && "missing operator case");
                         const char* cs = op_str;
                         while (*cs) { putc_unlocked(*cs++, out); }
                     }
