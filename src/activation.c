@@ -147,6 +147,8 @@ static ac_frame_t* ac_frame_append_frame(ac_frame_t* head, ac_frame_t* to_append
 static int round_up_size(int size, int multiple) __attribute__((const));
 static int round_up_size(int size, int multiple)
 {
+    // fields, params and lets can't be void, so this should not happen
+    assert(multiple > 0);
     return ((size + multiple - 1) / multiple) * multiple;
 }
 
