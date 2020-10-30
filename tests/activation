@@ -118,6 +118,13 @@ fn main() -> void {
     let a: int = 1
 }
 "
+# actually crash?
+check_pass "
+fn f() -> void { let a: int = 0; }
+fn main() -> void {
+    let b: void = f();
+}
+"
 
 # function calls
 check_pass "

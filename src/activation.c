@@ -320,6 +320,7 @@ static void calculate_activation_record_expr(
         {
             recur(expr->ex_init);
             size_t size = size_of_type(program, expr->ex_type_ann);
+            assert(size > 0 && "zero-size let-bound variable");
             struct ac_frame_var* v = xmalloc(sizeof *v);
             v->acf_tag = ACF_ACCESS_FRAME;
             v->acf_name = expr->ex_name;
@@ -435,6 +436,7 @@ static void calculate_activation_record_decl_func(
     for (sl_decl_t* p = decl->dl_params; p; p = p->dl_list) {
         sl_type_t* type = p->dl_type;
         size_t size = size_of_type(program, type);
+        assert(size > 0 && "zero-size parameter");
 
         struct ac_frame_var* v = xmalloc(sizeof *v);
         v->acf_name = p->dl_name;

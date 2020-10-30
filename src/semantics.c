@@ -135,6 +135,12 @@ static _Bool type_exists(sem_info_t* sem_info, sl_type_t* type)
     return 0;
 }
 
+static _Bool type_is_void(sl_type_t* type)
+{
+    return type->ty_tag == SL_TYPE_NAME
+        && type->ty_name == symbol("void");
+}
+
 _Bool sem_is_lvalue(const sl_expr_t* expr)
 {
     // l-values:
@@ -253,6 +259,9 @@ static int verify_expr_let(sem_info_t* info, sl_expr_t* expr)
     // check type exists
     if (!type_exists(info, expr->ex_type_ann)) {
         elprintf("unknown type: '%T'", info, expr->ex_line, expr->ex_type_ann);
+        result -= 1;
+    } else if (type_is_void(expr->ex_type_ann)) {
+        elprintf("binding has incomplete type 'void'", info, expr->ex_line);
         result -= 1;
     }
 
@@ -640,6 +649,10 @@ static int verify_decl_func(sem_info_t* sem_info, sl_decl_t* decl)
             elprintf("unknown type: '%T'", sem_info, param->dl_line,
                     param->dl_type);
             result -= 1;
+        } else if (type_is_void(param->dl_type)) {
+            elprintf("void parameter '%s' not allowed", sem_info,
+                    param->dl_line, param->dl_name);
+            result -= 1;
         }
 
         param->dl_var_id = sem_info->si_next_var_id++;
@@ -700,6 +713,10 @@ static int verify_decl_struct(sem_info_t* sem_info, sl_decl_t* decl)
         if (!type_exists(sem_info, field->dl_type)) {
             elprintf("unknown type: '%T'", sem_info, field->dl_line,
                     field->dl_type);
+            result -= 1;
+        } else if (type_is_void(field->dl_type)) {
+            elprintf("field has incomplete type 'void'", sem_info,
+                    field->dl_line);
             result -= 1;
         }
 

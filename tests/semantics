@@ -64,6 +64,17 @@ struct X {
 }
 "
 
+# functions
+check_pass "fn main() -> int { 0 }"
+check_pass "fn main(x: int) -> int { 0 }"
+check_pass "fn main(x: int, y: int) -> int { 0 }"
+check_pass "fn main(x: int, y: int, z: int) -> int { 0 }"
+check_pass "fn main(x: bool) -> int { 0 }"
+
+check_fail "fn main(x: void) -> int { 0 }" # void params not allowed
+check_fail "fn main(x: int, x: int) -> int { 0 }" # repeated params not allowed
+check_fail "fn main() -> madeup { 0 }" # no such return type
+
 ## Expressions
 
 # int
@@ -211,6 +222,12 @@ check_fail "
 fn main() -> void {
     let a: int = 1;
     let a: int = 2
+}
+"
+check_fail "
+fn f() -> void { let a: int = 0; }
+fn main() -> void {
+    let b: void = f();
 }
 "
 
