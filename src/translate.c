@@ -314,8 +314,8 @@ static translate_exp_t* translate_expr_binop(
     translate_exp_t* lhs = translate_expr(info, frame, expr->ex_left);
     translate_exp_t* rhs = translate_expr(info, frame, expr->ex_right);
 
-    tree_exp_t* lhe = translate_un_ex(info->temp_state, lhs);
-    tree_exp_t* rhe = translate_un_ex(info->temp_state, rhs);
+    tree_exp_t* lhe = translate_un_ex(info->temp_state, lhs); lhs = NULL;
+    tree_exp_t* rhe = translate_un_ex(info->temp_state, rhs); rhs = NULL;
 
     // break out of here and compose some branches
     switch (expr->ex_op) {
@@ -405,7 +405,7 @@ static translate_exp_t* translate_expr_let(
     // basically, this is an assignment
     // translate the init expr as the right hand side
     translate_exp_t* rhs = translate_expr(info, frame, expr->ex_init);
-    tree_exp_t* rhe = translate_un_ex(info->temp_state, rhs);
+    tree_exp_t* rhe = translate_un_ex(info->temp_state, rhs); rhs = NULL;
 
 
     // MAYBE we need a SIZE for our MOVE instruction?
@@ -774,6 +774,7 @@ static tree_stm_t* translate_decl(
     var result_exp = (stmts)
         ? tree_exp_eseq(stmts, translate_un_ex(info->temp_state, last_expr))
         : translate_un_ex(info->temp_state, last_expr);
+    last_expr = NULL;
 
     var return_assignment = assign_return(frame, result_exp);
     // assign the return value to the right registers and declare a label for
