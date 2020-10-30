@@ -281,7 +281,7 @@ void tree_printf(FILE* out, const char* fmt, ...)
                 case 'B':
                 {
                     /* binary/unary operation */
-                    int cc = va_arg(valist, int);
+                    tree_binop_t cc = va_arg(valist, tree_binop_t);
                     char* op_str = NULL;
                     switch (cc) {
                         case TREE_BINOP_PLUS: op_str = "+"; break;
@@ -294,8 +294,8 @@ void tree_printf(FILE* out, const char* fmt, ...)
                         case TREE_BINOP_LSHIFT: op_str = "<<"; break;
                         case TREE_BINOP_RSHIFT: op_str = ">>"; break;
                         case TREE_BINOP_ARSHIFT: op_str = ">>>"; break;
-                        default: assert(0 && "binop case missing");
                     }
+                    assert(op_str && "binop case missing");
                     const char* cs = op_str;
                     while (*cs) { putc_unlocked(*cs++, out); }
                     break;
@@ -303,7 +303,7 @@ void tree_printf(FILE* out, const char* fmt, ...)
                 case 'R':
                 {
                     /* binary/unary operation */
-                    int cc = va_arg(valist, int);
+                    tree_relop_t cc = va_arg(valist, tree_relop_t);
                     char* op_str = NULL;
                     switch (cc) {
                         case TREE_RELOP_EQ: op_str = "=="; break;
@@ -316,8 +316,8 @@ void tree_printf(FILE* out, const char* fmt, ...)
                         case TREE_RELOP_ULE: op_str = "u<="; break;
                         case TREE_RELOP_UGT: op_str = "u>"; break;
                         case TREE_RELOP_UGE: op_str = "u>="; break;
-                        default: assert(0 && "relop case missing");
                     }
+                    assert(op_str && "relop case missing");
                     const char* cs = op_str;
                     while (*cs) { putc_unlocked(*cs++, out); }
                     break;
