@@ -53,6 +53,16 @@ void init_term_colours()
         return;
     }
 
+    // shortcut for common case of xterm
+    const char* term = getenv("TERM");
+    if (term && strcmp(term, "xterm-256color") == 0) {
+        term_colours.red = "\x1b[31m";
+        term_colours.magenta = "\x1b[35m";
+        term_colours.clear = "\x1b(B\x1b[m";
+        return;
+    }
+
+    // slow path
     {
         char* tput_args[] = {"tput", "setaf", "1", NULL};
         read_term_colour(&term_colours.red, tput_args);
