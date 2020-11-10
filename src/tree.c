@@ -4,6 +4,8 @@
 #include <stdio.h> // fprintf, ...
 #include <stdarg.h> // va_start, va_arg, va_end
 
+#define var __auto_type
+
 typedef tree_exp_t* exp;
 typedef tree_stm_t* stm;
 
@@ -28,6 +30,7 @@ exp tree_exp_name(sl_sym_t name)
 {
     exp e = tree_exp_new(TREE_EXP_NAME);
     e->te_name = name;
+    // FIXME: e->te_size = ??? word size?
     return e;
 }
 
@@ -45,6 +48,8 @@ exp tree_exp_binop(tree_binop_t op, exp lhs, exp rhs)
     e->te_binop = op;
     e->te_lhs = lhs;
     e->te_rhs = rhs;
+    // TODO: can left and right have different sizes?
+    e->te_size = lhs->te_size;
     return e;
 }
 
@@ -173,7 +178,7 @@ void tree_exp_print(FILE* out, const tree_exp_t* e)
             return;
         case TREE_EXP_CALL:
             tree_printf(out, "CALL(%E, [", e->te_func);
-            for (__auto_type arg = e->te_args; arg; arg = arg->te_list) {
+            for (var arg = e->te_args; arg; arg = arg->te_list) {
                 tree_exp_print(out, arg);
             }
             fprintf(out, "], %lu", e->te_size);

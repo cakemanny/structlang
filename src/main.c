@@ -10,6 +10,8 @@
 #include "translate.h"
 #include "canonical.h"
 
+#define var __auto_type
+
 // grammar.y
 extern sl_decl_t* parse_file(const char* filename);
 
@@ -26,7 +28,7 @@ options:\n\
   -t    Stop after type checking\n\
   -r    Stop after rewrites and print ast\n\
   -a    Stop after calculating activation records\n\
-  -T    Stop after calculating activation records\n\
+  -T    Stop after translating into the tree IR\n\
 ", stderr);
     exit(exit_code);
 }
@@ -122,7 +124,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     if (stop_after_translation) {
-        for (__auto_type frag = fragments; frag; frag = frag->fr_list) {
+        for (var frag = fragments; frag; frag = frag->fr_list) {
             tree_stm_print(stdout, frag->fr_body);
             fprintf(stdout, "\n");
         }
