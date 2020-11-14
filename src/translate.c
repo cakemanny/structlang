@@ -151,7 +151,7 @@ static tree_stm_t* translate_un_nx(temp_state_t* ts, translate_exp_t* ex)
 
 static tree_stm_t* unconditional_jump(sl_sym_t dst)
 {
-    sl_sym_t* labels = xmalloc(1 * sizeof * labels);
+    sl_sym_t* labels = xmalloc(1 * sizeof *labels);
     labels[0] = dst;
     return tree_stm_jump(tree_exp_name(dst), 1, labels);
 }

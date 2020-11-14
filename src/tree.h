@@ -142,6 +142,8 @@ tree_stm_t* tree_stm_seq(tree_stm_t* s1, tree_stm_t* s2);
 /* define a label such that NAME(label) may be the target of jumps */
 tree_stm_t* tree_stm_label(sl_sym_t label);
 
+tree_stm_t* tree_stm_append(tree_stm_t* hd, tree_stm_t* to_append);
+
 #include <stdio.h>
 /* print tree expression */
 void tree_printf(FILE* out, const char* fmt, ...);

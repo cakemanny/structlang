@@ -1,4 +1,5 @@
 #include "canonical.h"
+#include "mem.h"
 #include <assert.h> /* assert */
 #include <string.h> /* memcpy */
 
@@ -389,11 +390,134 @@ static tree_stm_t* linearise(temp_state_t* temp_state, tree_stm_t* s)
     return linear(do_stm(temp_state, s), NULL);
 }
 
+typedef struct basic_block_t basic_block_t;
+struct basic_block_t {
+    tree_stm_t* bb_stmts;
+    basic_block_t* bb_list;
+};
+typedef struct basic_blocks_t {
+    basic_block_t* bb_blocks;
+    sl_sym_t bb_end_label;
+} basic_blocks_t;
+
+static void bb_append_block(
+        basic_blocks_t* blocks, basic_block_t* block)
+{
+    if (blocks->bb_blocks == NULL) {
+        blocks->bb_blocks = block;
+        return;
+    }
+
+    var final_node = blocks->bb_blocks;
+    while (final_node->bb_list) {
+        final_node = final_node->bb_list;
+    }
+    final_node->bb_list = block;
+}
+
+static tree_stm_t* unconditional_jump(sl_sym_t dst)
+{
+    sl_sym_t* labels = xmalloc(1 * sizeof *labels);
+    labels[0] = dst;
+    return tree_stm_jump(tree_exp_name(dst), 1, labels);
+}
+
+/**
+ * Convert a sequence of tree statements into blocks starting with a label
+ * and ending with a jump or cjump
+ */
+/* stm list -> (stm list list * label) */
+static basic_blocks_t basic_blocks(
+        temp_state_t* temp_state, tree_stm_t* stmts)
+{
+    // TODO: if the final statement is already a label, we should remove
+    // and use it...
+    sl_sym_t done = temp_newlabel(temp_state);
+
+    basic_block_t* curr_block = NULL;
+    basic_blocks_t result = { .bb_end_label = done };
+
+    if (stmts->tst_tag != TREE_STM_LABEL) {
+        tree_stm_t* start_label =
+            tree_stm_label(temp_newlabel(temp_state));
+        start_label->tst_list = stmts;
+        stmts = start_label;
+    }
+
+    tree_stm_t x = {};
+    for (var s = stmts; s; s = s->tst_list) {
+        if (curr_block == NULL) {
+            curr_block = xmalloc(sizeof *curr_block);
+        }
+
+        // wierd work around to the fact that our stms can only be in a single
+        // list at a time
+        x = *s;
+        curr_block->bb_stmts = tree_stm_append(curr_block->bb_stmts, s);
+        // disconnect the rest of stmts from bb_stmts
+        s->tst_list = NULL;
+        // allow our loop to continue by setting s to the un-disconnected copy
+        s = &x;
+
+        if (s->tst_list == NULL || s->tst_list->tst_tag == TREE_STM_LABEL) {
+            if (s->tst_tag != TREE_STM_JUMP && s->tst_tag != TREE_STM_CJUMP) {
+                var j = unconditional_jump(
+                    s->tst_list
+                        ? s->tst_list->tst_label
+                        : done
+                );
+                curr_block->bb_stmts =
+                    tree_stm_append(curr_block->bb_stmts, j);
+            }
+            bb_append_block(&result, curr_block);
+            curr_block = NULL;
+        } else if (s->tst_tag == TREE_STM_JUMP || s->tst_tag == TREE_STM_CJUMP) {
+            // well, if there is no label upcoming, then the following code is
+            // dead
+            while (s->tst_list && s->tst_list->tst_tag != TREE_STM_LABEL) {
+                s = s->tst_list;
+            }
+        }
+    }
+
+    #ifndef NDEBUG
+        // check our expected block properties
+        for (var b = result.bb_blocks; b; b = b->bb_list) {
+            var s = b->bb_stmts;
+            // each block starts with a label
+            assert(s->tst_tag == TREE_STM_LABEL);
+            for (; s->tst_list; s = s->tst_list) {
+                // advance to final node
+            }
+            // each block ends with a jump or cjump
+            assert(s->tst_tag == TREE_STM_JUMP || s->tst_tag == TREE_STM_CJUMP);
+        }
+    #endif
+
+    return result;
+}
+
+#ifdef XXX
+static tree_stm_t* trace_schedule(basic_blocks_t* blocks)
+{
+
+}
+#endif
+
 sl_fragment_t* canonicalise_tree(
         temp_state_t* temp_state, sl_fragment_t* fragments)
 {
     for (var frag = fragments; frag; frag = frag->fr_list) {
         frag->fr_body = linearise(temp_state, frag->fr_body);
+
+#ifdef XXX
+        basic_blocks_t blocks =
+#endif
+            basic_blocks(temp_state, frag->fr_body);
+        // print blocks?
+#ifdef XXX
+        frag->fr_body = trace_schedule(blocks);
+#endif
     }
     // TODO: basic blocks
     // TODO: trace schedule
