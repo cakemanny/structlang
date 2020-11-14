@@ -109,6 +109,7 @@ struct tree_stm_t {
         }; // SEQ
         sl_sym_t tst_label; // LABEL
     };
+    tree_stm_t* tst_list;
 };
 
 /* the integer constant _value_ */

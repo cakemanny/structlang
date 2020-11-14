@@ -136,6 +136,14 @@ int main(int argc, char* argv[])
         fprintf(stderr, "internal error: failed to canonicalise trees\n");
         return 1;
     }
+    // if stop after canonicalisation
+    for (var frag = fragments; frag; frag = frag->fr_list) {
+        for (var s = frag->fr_body; s; s = s->tst_list) {
+            tree_stm_print(stdout, s);
+            fprintf(stdout, "\n");
+        }
+        fprintf(stdout, "\n");
+    }
 
     // end of program... maybe
     temp_state_free(&temp_state);

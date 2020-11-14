@@ -48,8 +48,9 @@ exp tree_exp_binop(tree_binop_t op, exp lhs, exp rhs)
     e->te_binop = op;
     e->te_lhs = lhs;
     e->te_rhs = rhs;
-    // TODO: can left and right have different sizes?
+    // can left and right have different sizes?
     e->te_size = lhs->te_size;
+    assert(lhs->te_size == rhs->te_size); // let's see
     return e;
 }
 
@@ -139,6 +140,7 @@ stm tree_stm_cjump(tree_relop_t op, exp lhs, exp rhs, sl_sym_t jtrue, sl_sym_t j
 stm tree_stm_seq(stm s1, stm s2)
 {
     stm s = tree_stm_new(TREE_STM_SEQ);
+    assert(s1);
     s->tst_seq_s1 = s1;
     s->tst_seq_s2 = s2;
     return s;

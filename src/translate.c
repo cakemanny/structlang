@@ -718,8 +718,7 @@ static translate_exp_t* translate_expr_if(
 static translate_exp_t* translate_expr(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
-    switch (expr->ex_tag)
-    {
+    switch (expr->ex_tag) {
         case SL_EXPR_VAR:
             return translate_expr_var(info, frame, expr);
         case SL_EXPR_INT:
@@ -766,7 +765,11 @@ static tree_stm_t* translate_decl(
     for (sl_expr_t* e = decl->dl_body; e; e = e->ex_list) {
         if (last_expr) {
             var stmt = translate_un_nx(info->temp_state, last_expr);
-            stmts = tree_stm_seq(stmts, stmt);
+            if (!stmts) {
+                stmts = stmt;
+            } else {
+                stmts = tree_stm_seq(stmts, stmt);
+            }
         }
         last_expr = translate_expr(info, frame, e);
     }
