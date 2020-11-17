@@ -2,6 +2,7 @@
 #include "mem.h"
 #include <assert.h> /* assert */
 #include <string.h> /* memcpy */
+#include "interfaces/table.h"
 
 #define var __auto_type
 
@@ -430,8 +431,6 @@ static tree_stm_t* unconditional_jump(sl_sym_t dst)
 static basic_blocks_t basic_blocks(
         temp_state_t* temp_state, tree_stm_t* stmts)
 {
-    // TODO: if the final statement is already a label, we should remove
-    // and use it...
     sl_sym_t done = temp_newlabel(temp_state);
 
     basic_block_t* curr_block = NULL;
@@ -497,12 +496,284 @@ static basic_blocks_t basic_blocks(
     return result;
 }
 
-#ifdef XXX
-static tree_stm_t* trace_schedule(basic_blocks_t* blocks)
-{
+typedef basic_block_t trace_t;
 
+typedef struct trace_list_t trace_list_t;
+struct trace_list_t {
+    trace_t* tl_trace;
+    trace_list_t* tl_list;
+};
+
+static trace_list_t* trace_list_new(trace_t* t)
+{
+    trace_list_t* tl = xmalloc(sizeof *tl);
+    tl->tl_trace = t;
+    return tl;
 }
-#endif
+static trace_t* append_block_to_trace(trace_t* trace, basic_block_t* b)
+{
+    assert(b->bb_list == NULL);
+    if (!trace)
+        return b;
+    var end = trace;
+    while (end->bb_list)
+        end = end->bb_list;
+    end->bb_list = b;
+    return trace;
+}
+static trace_list_t* append_trace_to_trace_list(trace_list_t* hd, trace_t* t)
+{
+    var list_item = trace_list_new(t);
+    if (!hd)
+        return list_item;
+    var end = hd;
+    while (end->tl_list)
+        end = end->tl_list;
+    end->tl_list = list_item;
+    return end;
+}
+
+static sl_sym_t label_for_block(basic_block_t* b)
+{
+    assert(b->bb_stmts->tst_tag == TREE_STM_LABEL);
+    return b->bb_stmts->tst_label;
+}
+
+static tree_stm_t* last_stm_in_block(basic_block_t* b)
+{
+    var s = b->bb_stmts;
+    while (s->tst_list)
+        s = s->tst_list;
+
+    assert(s->tst_tag == TREE_STM_JUMP || s->tst_tag == TREE_STM_CJUMP);
+    return s;
+}
+
+static basic_block_t* remove_block_from_blocks(
+        basic_block_t** pQ, basic_block_t* c)
+{
+    var Q = *pQ;
+
+    if (Q == c) {
+        *pQ = Q->bb_list;
+        c->bb_list = NULL;
+        return c;
+    }
+
+    for (var b = Q; b; b = b->bb_list) {
+        if (b->bb_list == c) {
+            b->bb_list = c->bb_list; c->bb_list = NULL;
+            return c;
+        }
+    }
+    assert(0 && "c not in Q");
+}
+
+/*
+ * XX -> JUMP(L1, [L1]) -> LABEL(L1) -> YY
+ * ===>
+ * XX -> YY
+ */
+static int remove_redundant_unconditional_jumps(tree_stm_t* result)
+{
+    int ops = 0;
+    for (var s0 = result; s0; s0 = s0->tst_list) {
+        if (!s0->tst_list)
+            continue;
+
+        var s = s0->tst_list;
+        if (s->tst_tag == TREE_STM_JUMP && s->tst_jump_num_labels == 1) {
+            if (!s->tst_list)
+                continue;
+            var s2 = s->tst_list;
+            if (s2->tst_tag == TREE_STM_LABEL
+                    && s2->tst_label == s->tst_jump_labels[0]) {
+                s0->tst_list = s2->tst_list;
+                ops++;
+            }
+        }
+    }
+    return ops;
+}
+
+static tree_relop_t invert_relop(tree_relop_t op)
+{
+    switch (op) {
+        case TREE_RELOP_EQ: return TREE_RELOP_NE;
+        case TREE_RELOP_NE: return TREE_RELOP_EQ;
+
+        case TREE_RELOP_LT: return TREE_RELOP_GE;
+        case TREE_RELOP_GE: return TREE_RELOP_LT;
+
+        case TREE_RELOP_GT: return TREE_RELOP_LE;
+        case TREE_RELOP_LE: return TREE_RELOP_GT;
+
+        case TREE_RELOP_ULT: return TREE_RELOP_UGE;
+        case TREE_RELOP_UGE: return TREE_RELOP_ULT;
+
+        case TREE_RELOP_ULE: return TREE_RELOP_UGT;
+        case TREE_RELOP_UGT: return TREE_RELOP_ULE;
+    }
+}
+
+/*
+ * CJUMP(<, a, b, Ltrue, Lfalse) -> Ltrue
+ * ==>
+ * CJUMP(>=, a, b, Lfalse, Ltrue) -> Ltrue
+ * or
+ * CJUMP(<, a, b, Ltrue, Lfalse) -> Lneither
+ * ==>
+ * CJUMP(<
+ */
+static void put_falses_after_cjumps(
+        temp_state_t* temp_state, tree_stm_t* result)
+{
+    for (var s = result; s->tst_list; s = s->tst_list) {
+        var s1 = s->tst_list;
+        if (s1->tst_tag == TREE_STM_CJUMP) {
+            var s2 = s1->tst_list;
+            _Bool s2_is_lbl = s2 && s2->tst_tag == TREE_STM_LABEL;
+            if (s2_is_lbl && s1->tst_cjump_false == s2->tst_label) {
+                // do nothing , we good!
+            } else if (s2_is_lbl && s1->tst_cjump_true == s2->tst_label) {
+                // invert the operation and flip the labels
+                s->tst_list = tree_stm_cjump(
+                        invert_relop(s1->tst_cjump_op),
+                        s1->tst_cjump_lhs,
+                        s1->tst_cjump_rhs,
+                        s1->tst_cjump_false,
+                        s1->tst_cjump_true);
+                s->tst_list->tst_list = s2;
+                // leak s1 ,lol
+            } else { // neither the t or f label follows
+                // add an unconditional jump
+                sl_sym_t f0 = temp_newlabel(temp_state);
+                s->tst_list = tree_stm_cjump(
+                        s1->tst_cjump_op,
+                        s1->tst_cjump_lhs,
+                        s1->tst_cjump_rhs,
+                        s1->tst_cjump_true,
+                        f0);
+                s->tst_list->tst_list = tree_stm_label(f0);
+                s->tst_list->tst_list->tst_list =
+                    unconditional_jump(s1->tst_cjump_false);
+                s->tst_list->tst_list->tst_list->tst_list = s2;
+            }
+        }
+    }
+}
+
+static tree_stm_t* trace_schedule(
+        temp_state_t* temp_state, basic_blocks_t blocks)
+{
+    // if the block is in the table it's not marked
+    Table_T table = Table_new(0, NULL, NULL);
+
+    for (basic_block_t* b = blocks.bb_blocks; b; b = b->bb_list) {
+        Table_put(table, label_for_block(b), b);
+    }
+
+    trace_list_t* traces = NULL;
+    var Q = blocks.bb_blocks;
+    while (Q) {
+        trace_t* T = NULL;
+        // remove the head of Q
+        var b = remove_block_from_blocks(&Q, Q);
+        while (Table_get(table, label_for_block(b))) { // !is_marked(b)
+            // mark b
+            Table_remove(table, label_for_block(b));
+
+            T = append_block_to_trace(T, b);
+
+            // examine successors of b
+            basic_block_t* c = NULL;
+            tree_stm_t* last = last_stm_in_block(b);
+            if (last->tst_tag == TREE_STM_JUMP) {
+                for (int i = 0; i < last->tst_jump_num_labels; i++) {
+                    if ((c = Table_get(table, last->tst_jump_labels[i]))) {
+                        break;
+                    }
+                }
+            } else if (last->tst_tag == TREE_STM_CJUMP) {
+                if ((c = Table_get(table, last->tst_cjump_false))) {
+                    // c has been found
+                } else if ((c = Table_get(table, last->tst_cjump_true))) {
+                    // c has been found
+                }
+            }
+            if (c) {
+                // remove c from Q;
+                b = remove_block_from_blocks(&Q, c);
+            }
+        }
+        // End trace
+        if (T)
+            traces = append_trace_to_trace_list(traces, T);
+    }
+
+    Table_free(&table);
+
+    // build a new list of basic blocks by following the traces
+
+    // fuck you c
+    int num_statements = 0;
+    for (var ti = traces; ti; ti = ti->tl_list) {
+        var trace = ti->tl_trace;
+        for (var bb = trace; bb; bb = bb->bb_list) {
+            for (var s = bb->bb_stmts; s; s = s->tst_list){
+                num_statements += 1;
+            }
+        }
+    }
+    num_statements += 1; // add one for done/end block
+    tree_stm_t* stmts_in_order[num_statements];
+    int i = 0;
+    for (var ti = traces; ti; ti = ti->tl_list) {
+        var trace = ti->tl_trace;
+        for (var bb = trace; bb; bb = bb->bb_list) {
+            for (var s = bb->bb_stmts; s; s = s->tst_list, i++){
+                stmts_in_order[i] = s;
+            }
+        }
+    }
+    stmts_in_order[num_statements - 1] = tree_stm_label(blocks.bb_end_label);
+
+    for (int i = 0; i < num_statements - 1; i++) {
+        stmts_in_order[i]->tst_list = stmts_in_order[i+1];
+    }
+    stmts_in_order[num_statements - 1]->tst_list = NULL;
+    tree_stm_t* result = stmts_in_order[0];
+
+    // reclaim some of the memory here
+    for (var ti = traces; ti;) {
+        for (var bb = ti->tl_trace; bb; ) {
+            ti->tl_trace = bb->bb_list;
+
+            bb->bb_stmts = NULL;
+            bb->bb_list = NULL;
+            free(bb);
+
+            bb = ti->tl_trace;
+        }
+        traces = ti->tl_list;
+
+        ti->tl_trace = NULL;
+        ti->tl_list = NULL;
+        free(ti);
+
+        ti = traces;
+    }
+
+    // remove unconditional jumps that are followed by their label
+    while (remove_redundant_unconditional_jumps(result) > 0) {
+        // ^------ side-effect in loop condition -----^
+    }
+
+    // rewrite cjumps so that their false label follows
+    put_falses_after_cjumps(temp_state, result);
+
+    return result;
+}
 
 sl_fragment_t* canonicalise_tree(
         temp_state_t* temp_state, sl_fragment_t* fragments)
@@ -510,16 +781,10 @@ sl_fragment_t* canonicalise_tree(
     for (var frag = fragments; frag; frag = frag->fr_list) {
         frag->fr_body = linearise(temp_state, frag->fr_body);
 
-#ifdef XXX
         basic_blocks_t blocks =
-#endif
             basic_blocks(temp_state, frag->fr_body);
-        // print blocks?
-#ifdef XXX
-        frag->fr_body = trace_schedule(blocks);
-#endif
+
+        frag->fr_body = trace_schedule(temp_state, blocks);
     }
-    // TODO: basic blocks
-    // TODO: trace schedule
     return fragments;
 }
