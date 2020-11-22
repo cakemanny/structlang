@@ -1,5 +1,6 @@
 #ifndef __CANONICAL_H__
 #define __CANONICAL_H__
+// vim:ft=c:
 
 #include "fragment.h"
 

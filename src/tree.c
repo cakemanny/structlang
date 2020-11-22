@@ -194,9 +194,10 @@ void tree_exp_print(FILE* out, const tree_exp_t* e)
         case TREE_EXP_CALL:
             tree_printf(out, "CALL(%E, [", e->te_func);
             for (var arg = e->te_args; arg; arg = arg->te_list) {
+                if (arg != e->te_args) {fprintf(out, ", ");}
                 tree_exp_print(out, arg);
             }
-            fprintf(out, "], %lu", e->te_size);
+            fprintf(out, "], %lu)", e->te_size);
             return;
         case TREE_EXP_ESEQ:
             tree_printf(out, "ESEQ(%S, %E)", e->te_eseq_stm, e->te_eseq_exp);

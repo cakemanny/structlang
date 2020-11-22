@@ -1,5 +1,6 @@
 #ifndef __ACTIVATION_H__
 #define __ACTIVATION_H__
+// vim:ft=c:
 #include "symbols.h" // sl_sym_t
 #include "ast.h" // sl_type_t
 #include <stdint.h> // uint64_t

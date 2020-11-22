@@ -10,6 +10,11 @@ typedef struct temp {
     int temp_id;
 } temp_t;
 
+typedef struct temp_list {
+    temp_t tmp_temp;
+    struct temp_list* tmp_list;
+} temp_list_t;
+
 temp_state_t* temp_state_new();
 void temp_state_free(temp_state_t** ts);
 
@@ -20,5 +25,7 @@ temp_t temp_newtemp(temp_state_t* ts);
 sl_sym_t temp_newlabel(temp_state_t* ts);
 sl_sym_t temp_namedlabel(temp_state_t* ts, const char* name);
 
+temp_list_t* temp_list(temp_t temp);
+temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail);
 
 #endif /* __TEMP_H__ */

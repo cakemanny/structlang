@@ -7,6 +7,12 @@ struct Y {
     x: X,
     y: X,
 }
+struct Z {
+    x: int,
+    y: int,
+    z: int,
+    w: int,
+}
 
 struct IntList {
     head: int,
@@ -32,6 +38,11 @@ fn x_eq(w: Y, z: Y) -> bool {
 fn ex_eq(w: Y, z: Y) -> bool {
     w.x == z.x
     && w.y == z.y
+}
+
+fn makeZ(x: int, y: int) -> Z {
+    let b: *Z = new Z { 1, 2, 3, 4 };
+    *b
 }
 
 fn main() -> int {

@@ -1,5 +1,6 @@
 #ifndef __FRAGMENT_H__
 #define __FRAGMENT_H__
+// vim:ft=c:
 
 #include "activation.h" /* ac_frame_t */
 #include "tree.h" /* tree_stm_t */

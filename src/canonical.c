@@ -249,7 +249,7 @@ static tree_stm_t* rebuild_move_temp_call(tree_exp_t* el, void* cl)
         tree_exp_t* temp;
         size_t call_size;
     } cl_ = {};
-    memcpy(&cl_, cl, sizeof cl);
+    memcpy(&cl_, cl, sizeof cl_);
     var e = el;
     el = el->te_list;
     e->te_list = NULL;

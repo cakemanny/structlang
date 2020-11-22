@@ -416,6 +416,8 @@ static void calculate_activation_record_decl_func(
     } else if (ret_type_size <= 16) {
         // result goes into RAX, RDX
     } else {
+        /// tbh we should just have a rewrite stage that removes this case
+
         // ... WTF, why do we have an assert 0, but then some code?
         // Need to allocate temporary for the return value?
         assert(0 && "TODO: larger return sizes");

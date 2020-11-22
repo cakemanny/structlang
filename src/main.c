@@ -9,6 +9,7 @@
 #include "temp.h"
 #include "translate.h"
 #include "canonical.h"
+#include "x86_64.h"
 
 #define var __auto_type
 
@@ -29,6 +30,7 @@ options:\n\
   -r    Stop after rewrites and print ast\n\
   -a    Stop after calculating activation records\n\
   -T    Stop after translating into the tree IR\n\
+  -C    Stop after canonicalising the tree IR\n\
 ", stderr);
     exit(exit_code);
 }
@@ -40,6 +42,7 @@ int main(int argc, char* argv[])
     _Bool stop_after_rewrites = 0;
     _Bool stop_after_activation_calculation = 0;
     _Bool stop_after_translation = 0;
+    _Bool stop_after_canonicalisation = 0;
     _Bool warn_about_multiple_files = 0;
     char* inarg = NULL;
     for (int i = 1; i < argc; i++) {
@@ -51,6 +54,7 @@ int main(int argc, char* argv[])
                     case 'r': stop_after_rewrites = 1; break;
                     case 'a': stop_after_activation_calculation = 1; break;
                     case 'T': stop_after_translation = 1; break;
+                    case 'C': stop_after_canonicalisation = 1; break;
                     default: fprintf(stderr, "unknown option '%c'\n", *pc);
                              print_usage_and_exit(1);
                 }
@@ -136,11 +140,25 @@ int main(int argc, char* argv[])
         fprintf(stderr, "internal error: failed to canonicalise trees\n");
         return 1;
     }
-    // if stop after canonicalisation
+    if (stop_after_canonicalisation) {
+        for (var frag = fragments; frag; frag = frag->fr_list) {
+            for (var s = frag->fr_body; s; s = s->tst_list) {
+                tree_stm_print(stdout, s);
+                fprintf(stdout, "\n");
+            }
+            fprintf(stdout, "\n");
+        }
+        return 0;
+    }
+
     for (var frag = fragments; frag; frag = frag->fr_list) {
         for (var s = frag->fr_body; s; s = s->tst_list) {
-            tree_stm_print(stdout, s);
-            fprintf(stdout, "\n");
+
+            // TODO: join these together
+            var instrs = x86_64_codegen(temp_state, frag->fr_frame, s);
+            for (var i = instrs; i; i = i->ai_list) {
+                fprintf(stdout, "%s", assm_format(i));
+            }
         }
         fprintf(stdout, "\n");
     }

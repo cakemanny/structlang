@@ -39,3 +39,16 @@ sl_sym_t temp_namedlabel(temp_state_t* temp, const char* name)
 {
     return symbol(name);
 }
+
+temp_list_t* temp_list(temp_t temp)
+{
+    return temp_list_cons(temp, NULL);
+}
+
+temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail)
+{
+    temp_list_t* list = xmalloc(sizeof *list);
+    list->tmp_temp = hd;
+    list->tmp_list = tail;
+    return list;
+}

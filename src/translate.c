@@ -603,6 +603,8 @@ static translate_exp_t* translate_expr_loop(
 static translate_exp_t* translate_expr_deref(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
+    // TODO: I think there's a bug in here
+    fprintf(stderr, "XXX\n");
     var arg_ex = translate_expr(info, frame, expr->ex_deref_arg);
     tree_exp_t* arg =
         translate_un_ex(info->temp_state, arg_ex);
