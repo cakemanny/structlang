@@ -153,11 +153,17 @@ int main(int argc, char* argv[])
 
     for (var frag = fragments; frag; frag = frag->fr_list) {
         for (var s = frag->fr_body; s; s = s->tst_list) {
+            // maybe make this ifdebug
+            fprintf(stdout, "## ");
+            tree_stm_print(stdout, s);
+            fprintf(stdout, "\n");
 
             // TODO: join these together
-            var instrs = x86_64_codegen(temp_state, frag->fr_frame, s);
+            assm_instr_t* instrs = x86_64_codegen(temp_state, frag->fr_frame, s);
             for (var i = instrs; i; i = i->ai_list) {
-                fprintf(stdout, "%s", assm_format(i));
+                char buf[128];
+                assm_format(buf, 128, i);
+                fprintf(stdout, "%s", buf);
             }
         }
         fprintf(stdout, "\n");
