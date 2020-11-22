@@ -229,7 +229,9 @@ static tree_exp_t* translate_var_mem_ref_expr(ac_frame_t* frame, int var_id)
     assert(frame_var->acf_tag == ACF_ACCESS_FRAME);
 
     tree_exp_t* result = tree_exp_mem(
-        tree_exp_binop(
+        (frame_var->acf_offset == 0)
+        ? tree_exp_temp(frame->acf_regs->acr_fp, ac_word_size) // rbp
+        : tree_exp_binop(
             TREE_BINOP_PLUS,
             tree_exp_temp(frame->acf_regs->acr_fp, ac_word_size), // rbp
             tree_exp_const(frame_var->acf_offset, ac_word_size)
@@ -458,7 +460,9 @@ static translate_exp_t* translate_expr_new(
 
         tree_stm_t* init = tree_stm_move(
                 tree_exp_mem(
-                    tree_exp_binop(
+                    (offset == 0)
+                    ? tree_exp_temp(r, ac_word_size)
+                    : tree_exp_binop(
                         TREE_BINOP_PLUS,
                         tree_exp_temp(r, ac_word_size),
                         tree_exp_const(offset, ac_word_size)
@@ -675,7 +679,9 @@ static translate_exp_t* translate_expr_member(
     tree_exp_t* base_addr = base_ref->te_mem_addr;
 
     tree_exp_t* result = tree_exp_mem(
-        tree_exp_binop(
+        (offset == 0)
+        ? base_addr
+        : tree_exp_binop(
             TREE_BINOP_PLUS,
             base_addr,
             tree_exp_const(offset, ac_word_size)

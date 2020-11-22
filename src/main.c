@@ -165,6 +165,8 @@ int main(int argc, char* argv[])
                 assm_format(buf, 128, i);
                 fprintf(stdout, "%s", buf);
             }
+
+            // TODO: function entry/exit sequences
         }
         fprintf(stdout, "\n");
     }
