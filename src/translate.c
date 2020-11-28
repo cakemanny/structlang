@@ -816,6 +816,7 @@ sl_fragment_t* translate_program(
         assert(f); // d => f
         if (d->dl_tag == SL_DECL_FUNC) {
             var body = translate_decl(&info, f, d);
+            body = proc_entry_exit_1(f, body);
             var frag = sl_fragment(body, f);
             result = fr_append(result, frag);
 

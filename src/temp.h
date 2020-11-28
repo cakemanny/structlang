@@ -27,5 +27,6 @@ sl_sym_t temp_namedlabel(temp_state_t* ts, const char* name);
 
 temp_list_t* temp_list(temp_t temp);
 temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail);
+temp_list_t* temp_list_concat(temp_list_t* lead, temp_list_t* tail);
 
 #endif /* __TEMP_H__ */

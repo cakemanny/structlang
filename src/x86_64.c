@@ -597,3 +597,30 @@ assm_instr_t* x86_64_codegen(
     munch_stm(codegen_state, stm);
     return assm_list_reverse(result);
 }
+
+assm_instr_t* proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
+{
+    temp_list_t* src_list = NULL;
+    for (int i = 0; i < NELEMS(callee_saves); i++) {
+        src_list = temp_list_cons(callee_saves[i], src_list);
+    }
+    src_list = temp_list_cons(special_regs[2], src_list);
+    src_list = temp_list_cons(special_regs[3], src_list);
+
+    sl_sym_t* empty_jump_list = xmalloc(sizeof *empty_jump_list);
+
+    var sink_instr = assm_oper(
+            strdupchk(""),
+            NULL,
+            src_list,
+            empty_jump_list);
+
+    // append sink instruction to body
+    var b = body;
+    while (b->ai_list) {
+        b = b->ai_list;
+    }
+    b->ai_list = sink_instr;
+
+    return body;
+}

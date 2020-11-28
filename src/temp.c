@@ -52,3 +52,13 @@ temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail)
     list->tmp_list = tail;
     return list;
 }
+
+temp_list_t* temp_list_concat(temp_list_t* lead, temp_list_t* tail)
+{
+    if (lead == NULL) {
+        return tail;
+    }
+    return temp_list_cons(
+            lead->tmp_temp,
+            temp_list_concat(lead->tmp_list, tail));
+}

@@ -31,6 +31,7 @@ options:\n\
   -a    Stop after calculating activation records\n\
   -T    Stop after translating into the tree IR\n\
   -C    Stop after canonicalising the tree IR\n\
+  -i    Stop after instruction selection\n\
 ", stderr);
     exit(exit_code);
 }
@@ -43,6 +44,7 @@ int main(int argc, char* argv[])
     _Bool stop_after_activation_calculation = 0;
     _Bool stop_after_translation = 0;
     _Bool stop_after_canonicalisation = 0;
+    _Bool stop_after_instruction_selection = 0;
     _Bool warn_about_multiple_files = 0;
     char* inarg = NULL;
     for (int i = 1; i < argc; i++) {
@@ -55,6 +57,7 @@ int main(int argc, char* argv[])
                     case 'a': stop_after_activation_calculation = 1; break;
                     case 'T': stop_after_translation = 1; break;
                     case 'C': stop_after_canonicalisation = 1; break;
+                    case 'i': stop_after_instruction_selection = 1; break;
                     default: fprintf(stderr, "unknown option '%c'\n", *pc);
                              print_usage_and_exit(1);
                 }
@@ -129,6 +132,7 @@ int main(int argc, char* argv[])
     }
     if (stop_after_translation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
+            fprintf(stdout, "# %s\n", frag->fr_frame->acf_name);
             tree_stm_print(stdout, frag->fr_body);
             fprintf(stdout, "\n");
         }
@@ -142,6 +146,7 @@ int main(int argc, char* argv[])
     }
     if (stop_after_canonicalisation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
+            fprintf(stdout, "# %s\n", frag->fr_frame->acf_name);
             for (var s = frag->fr_body; s; s = s->tst_list) {
                 tree_stm_print(stdout, s);
                 fprintf(stdout, "\n");
@@ -152,23 +157,33 @@ int main(int argc, char* argv[])
     }
 
     for (var frag = fragments; frag; frag = frag->fr_list) {
+        assm_instr_t* body_instrs = NULL;
+        fprintf(stdout, "# %s\n", frag->fr_frame->acf_name); // TODO: remove
         for (var s = frag->fr_body; s; s = s->tst_list) {
-            // maybe make this ifdebug
-            fprintf(stdout, "## ");
-            tree_stm_print(stdout, s);
-            fprintf(stdout, "\n");
 
-            // TODO: join these together
-            assm_instr_t* instrs = x86_64_codegen(temp_state, frag->fr_frame, s);
-            for (var i = instrs; i; i = i->ai_list) {
-                char buf[128];
-                assm_format(buf, 128, i);
-                fprintf(stdout, "%s", buf);
+            if (stop_after_instruction_selection) {
+                fprintf(stdout, "## ");
+                tree_stm_print(stdout, s);
+                fprintf(stdout, "\n");
             }
 
-            // TODO: function entry/exit sequences
+            assm_instr_t* instrs = x86_64_codegen(temp_state, frag->fr_frame, s);
+            if (stop_after_instruction_selection) {
+                for (var i = instrs; i; i = i->ai_list) {
+                    char buf[128];
+                    assm_format(buf, 128, i);
+                    fprintf(stdout, "%s", buf);
+                }
+            }
+            body_instrs = assm_list_chain(body_instrs, instrs);
         }
-        fprintf(stdout, "\n");
+        if (stop_after_instruction_selection) {
+            fprintf(stdout, "\n");
+            continue;
+        }
+        body_instrs = proc_entry_exit_2(frag->fr_frame, body_instrs);
+
+        // here: liveness analysis
     }
 
     // end of program... maybe

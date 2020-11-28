@@ -46,4 +46,6 @@ void assm_format(char* out, size_t out_len, assm_instr_t* instr);
 
 assm_instr_t* assm_list_reverse(assm_instr_t*);
 
+assm_instr_t* assm_list_chain(assm_instr_t* lead, assm_instr_t* tail);
+
 #endif /* __ASSEM_H__ */

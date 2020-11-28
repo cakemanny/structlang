@@ -43,6 +43,7 @@ static int format_temp(char* out, temp_t t)
     extern char* registers[];
     if (t.temp_id < 16) {
         *o++ = '%';
+        // FIXME: these need to be picked based on the register size
         int n = sprintf(o, "%s", registers[t.temp_id]);
         assert(n > 0); // rudimentary error check lol
         o += n;
@@ -165,3 +166,15 @@ assm_instr_t* assm_list_reverse(assm_instr_t* instrs)
     return list_rev_go(instrs, NULL);
 }
 
+assm_instr_t* assm_list_chain(assm_instr_t* lead, assm_instr_t* tail)
+{
+    if (lead == NULL) {
+        return tail;
+    }
+
+    var final = lead;
+    while (final->ai_list)
+        final = final->ai_list;
+    final->ai_list = tail;
+    return lead;
+}

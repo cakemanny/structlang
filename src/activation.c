@@ -88,9 +88,10 @@ const size_t ac_word_size = 8;
 // We might unmake this const in future?
 const target_t* const target = &target_x86_64;
 
-static ac_frame_t* ac_frame_new()
+static ac_frame_t* ac_frame_new(sl_sym_t func_name)
 {
     ac_frame_t* f = xmalloc(sizeof *f);
+    f->acf_name = func_name;
     f->acf_next_arg_offset = 16;
     f->acf_last_local_offset = 0;
     f->ac_frame_vars_end = &f->ac_frame_vars;
@@ -325,7 +326,7 @@ static void calculate_activation_record_expr(
             assert(size > 0 && "zero-size let-bound variable");
             struct ac_frame_var* v = xmalloc(sizeof *v);
             v->acf_tag = ACF_ACCESS_FRAME;
-            v->acf_name = expr->ex_name;
+            v->acf_varname = expr->ex_name;
             v->acf_size = size;
             v->acf_alignment = alignment_of_type(program, expr->ex_type_ann);
             v->acf_var_id = expr->ex_let_id;
@@ -424,7 +425,7 @@ static void calculate_activation_record_decl_func(
         // The result is converted into a by-reference param
         struct ac_frame_var* v = xmalloc(sizeof *v);
         v->acf_tag = ACF_ACCESS_REG;
-        v->acf_name = NULL; // no name TODO
+        v->acf_varname = NULL; // no name TODO
         v->acf_size = target->word_size;
         v->acf_alignment = target->word_size;
         v->acf_var_id = -1; // no name
@@ -443,7 +444,7 @@ static void calculate_activation_record_decl_func(
         assert(size > 0 && "zero-size parameter");
 
         struct ac_frame_var* v = xmalloc(sizeof *v);
-        v->acf_name = p->dl_name;
+        v->acf_varname = p->dl_name;
         v->acf_size = size;
         v->acf_alignment = alignment_of_type(program, type);
         v->acf_var_id = p->dl_var_id;
@@ -502,7 +503,7 @@ static void calculate_activation_record_decl_func(
 
     for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
         if (ac_debug) {
-            fprintf(stderr, "setting frame ptr map from var %s\n", v->acf_name);
+            fprintf(stderr, "setting frame ptr map from var %s\n", v->acf_varname);
             fprintf(stderr, "v->acf_size = %zu\n", v->acf_size);
             fprintf(stderr, "v->acf_alignment = %zu\n", v->acf_alignment);
             fprintf(stderr, "v->acf_ptr_map = %p\n", v->acf_ptr_map);
@@ -538,10 +539,17 @@ ac_frame_t* calculate_activation_records(sl_decl_t* program)
     ac_frame_t* frame_list = NULL;
     for (sl_decl_t* d = program; d; d = d->dl_list) {
         if (d->dl_tag == SL_DECL_FUNC) {
-            ac_frame_t* f = ac_frame_new();
+            ac_frame_t* f = ac_frame_new(d->dl_name);
             calculate_activation_record_decl_func(program, f, d);
             frame_list = ac_frame_append_frame(frame_list, f);
         }
     }
     return frame_list;
+}
+
+tree_stm_t* proc_entry_exit_1(ac_frame_t* frame, tree_stm_t* body)
+{
+    // Apparently we implement this later, after having completed our register
+    // allocator
+    return body;
 }
