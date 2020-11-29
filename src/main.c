@@ -10,6 +10,7 @@
 #include "translate.h"
 #include "canonical.h"
 #include "x86_64.h"
+#include "liveness.h"
 
 #define var __auto_type
 
@@ -184,6 +185,10 @@ int main(int argc, char* argv[])
         body_instrs = proc_entry_exit_2(frag->fr_frame, body_instrs);
 
         // here: liveness analysis
+
+        lv_flowgraph_t* flow = instrs2graph(body_instrs);
+        lv_print_graph(flow->lvfg_control);
+        lv_free_graph(flow->lvfg_control); flow->lvfg_control = NULL;
     }
 
     // end of program... maybe

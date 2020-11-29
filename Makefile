@@ -30,6 +30,7 @@ LFLAGS=
 
 CPPFLAGS ?= $(INC_FLAGS) -MMD -MP
 CFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer
+LDFLAGS = -L$(BUILD_DIR) -lgraph
 
 ifndef NDEBUG
   ifneq "$(OS)" "Windows_NT"
@@ -40,6 +41,8 @@ else
   CFLAGS += -O3
 endif
 
+RUSTC=rustc
+
 all: gen lib $(BUILD_DIR)/$(TARGET_EXEC)
 
 lib: gen $(BUILD_DIR)/$(TARGET_LIB)
@@ -49,9 +52,11 @@ gen: $(BUILD_DIR)/src/grammar.tab.h
 $(BUILD_DIR)/$(TARGET_LIB): $(filter-out $(MAINS),$(OBJS))
 	$(AR) rcs $@ $^
 
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
+$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(BUILD_DIR)/libgraph.a
 	$(CC) $(OBJS) -o $@ $(LDFLAGS)
 
+$(BUILD_DIR)/libgraph.a: src/graph.rs
+	$(RUSTC) --crate-type staticlib --out-dir $(BUILD_DIR) $<
 
 $(BUILD_DIR)/src/lex.yy.c: src/lexer.l
 	$(MKDIR_P) $(dir $@)
