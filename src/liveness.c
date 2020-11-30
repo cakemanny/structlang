@@ -37,6 +37,7 @@ lv_flowgraph_t* instrs2graph(assm_instr_t* instrs)
     // TODO: actually return this?
     lv_node_list_t* nodes = NULL;
 
+    typeof(instrs) prev = NULL;
     for (var instr = instrs; instr; instr = instr->ai_list) {
         var node = lv_new_node(graph);
         nodes = list_cons(node, nodes);
@@ -55,10 +56,15 @@ lv_flowgraph_t* instrs2graph(assm_instr_t* instrs)
                 }
                 break;
             case ASSM_INSTR_LABEL:
-                // in this case we don't automatically make an edge from the
-                // previous node
-                // since we want to look at jumps to decide about that, let's
-                // defer this case until we've built all our nodes
+                // we only definitely fall through to this if the previous
+                // instruction doesn't have jump targets
+                if (prev &&
+                        !(prev->ai_tag == ASSM_INSTR_OPER
+                            && prev->ai_oper_jump)) {
+                    lv_mk_edge(nodes->nl_list->nl_node, node);
+                }
+                // since we also need to consider jumps to this node
+                // we squirrel this node away in a map by label
                 Table_put(label_to_node, instr->ai_label, node);
                 break;
             case ASSM_INSTR_MOVE:
@@ -72,6 +78,7 @@ lv_flowgraph_t* instrs2graph(assm_instr_t* instrs)
                 Table_put(ismove, node, (void*)1);
                 break;
         }
+        prev = instr;
     }
     nodes = list_reverse(nodes);
 

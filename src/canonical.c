@@ -572,7 +572,7 @@ static basic_block_t* remove_block_from_blocks(
 /*
  * XX -> JUMP(L1, [L1]) -> LABEL(L1) -> YY
  * ===>
- * XX -> YY
+ * XX -> LABEL(L1) -> YY
  */
 static int remove_redundant_unconditional_jumps(tree_stm_t* result)
 {
@@ -588,7 +588,7 @@ static int remove_redundant_unconditional_jumps(tree_stm_t* result)
             var s2 = s->tst_list;
             if (s2->tst_tag == TREE_STM_LABEL
                     && s2->tst_label == s->tst_jump_labels[0]) {
-                s0->tst_list = s2->tst_list;
+                s0->tst_list = s2;
                 ops++;
             }
         }
