@@ -63,9 +63,9 @@ void* Table_get(T table, const void* key)
     i = table->hash(key) & (table->size - 1);
     for (p = table->buckets + i;
             // probe at most 12 more pockets for space
-            p < end && p->key && p < table->buckets + i + 12;
+            p < end && p < table->buckets + i + 12;
             p++) {
-        if (table->cmp(key, p->key) == 0) {
+        if (p->key && table->cmp(key, p->key) == 0) {
             return p->value;
         }
     }
@@ -100,7 +100,7 @@ static void rehash(T table)
 void* Table_put(T table, const void* key, void* value)
 {
     int i;
-    struct binding *p, *q = NULL, *end;
+    struct binding *p, *q = NULL, *r = NULL, *end;
     void* prev;
 
     assert(table);
@@ -111,16 +111,21 @@ void* Table_put(T table, const void* key, void* value)
     i = table->hash(key) & (table->size - 1);
     for (p = table->buckets + i;
             // probe at most 12 more pockets for space
-            p < end && p->key && p < table->buckets + i + 12;
+            p < end && p < table->buckets + i + 12;
             p++) {
-        if (table->cmp(key, p->key) == 0) {
+        if (p->key && table->cmp(key, p->key) == 0) {
              q = p; // found
+             break;
+        }
+        // save possible slot in case we need it
+        if (!p->key && !r) {
+            r = p;
         }
     }
 
     if (q == NULL) {
-        if (p < end && p->key == NULL) {
-            q = p;
+        if (r) {
+            q = r;
             // spare slot next to us
             q->key = key;
             table->length++;
@@ -177,12 +182,13 @@ void* Table_remove(T table, const void* key)
     i = table->hash(key) & (table->size - 1);
     for (p = table->buckets + i;
             // probe at most 12 more pockets for space
-            p < end && p->key && p < table->buckets + i + 12;
+            p < end && p < table->buckets + i + 12;
             p++) {
-        if (table->cmp(key, p->key) == 0) {
+        if (p->key && table->cmp(key, p->key) == 0) {
             void* value = p->value;
             p->key = NULL;
             p->value = NULL;
+            table->length--;
             return value;
         }
     }

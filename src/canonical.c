@@ -514,24 +514,20 @@ static trace_list_t* trace_list_new(trace_t* t)
 static trace_t* append_block_to_trace(trace_t* trace, basic_block_t* b)
 {
     assert(b->bb_list == NULL);
-    if (!trace)
-        return b;
-    var end = trace;
-    while (end->bb_list)
-        end = end->bb_list;
-    end->bb_list = b;
+    var end = &trace;
+    while (*end)
+        end = &(*end)->bb_list;
+    *end = b;
     return trace;
 }
 static trace_list_t* append_trace_to_trace_list(trace_list_t* hd, trace_t* t)
 {
     var list_item = trace_list_new(t);
-    if (!hd)
-        return list_item;
-    var end = hd;
-    while (end->tl_list)
-        end = end->tl_list;
-    end->tl_list = list_item;
-    return end;
+    var end = &hd;
+    while (*end)
+        end = &(*end)->tl_list;
+    *end = list_item;
+    return hd;
 }
 
 static sl_sym_t label_for_block(basic_block_t* b)
