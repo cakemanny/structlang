@@ -775,16 +775,97 @@ static tree_stm_t* trace_schedule(
     return result;
 }
 
+/*
+ * perform some sanity-checks of our tree
+ */
+static void verify_statements(tree_stm_t* stmts, const char* check)
+{
+    // check that labels are present for all jump targets
+    int err = 0;
+    var t = Table_new(0, NULL, NULL);
+
+    for (var s = stmts; s; s = s->tst_list) {
+        if (s->tst_tag == TREE_STM_LABEL) {
+            Table_put(t, s->tst_label, s);
+        }
+    }
+    for (var s = stmts; s; s = s->tst_list) {
+        if (s->tst_tag == TREE_STM_CJUMP) {
+            if (!Table_get(t, s->tst_cjump_true)) {
+                fprintf(stderr, "%s: missing %s label\n", check, s->tst_cjump_true);
+                err++;
+            }
+            if (!Table_get(t, s->tst_cjump_false)) {
+                fprintf(stderr, "%s: missing %s label\n", check, s->tst_cjump_false);
+                err++;
+            }
+        } else if (s->tst_tag == TREE_STM_JUMP) {
+            for (int i = 0 ; i < s->tst_jump_num_labels ; i++) {
+                var lbl = s->tst_jump_labels[i];
+                if (!Table_get(t, lbl)){
+                    fprintf(stderr, "%s: missing %s label\n", check, lbl);
+                    err++;
+                }
+            }
+        }
+    }
+
+    Table_free(&t);
+    assert(err == 0);
+}
+
+static void verify_basic_blocks(basic_blocks_t blocks, const char* check)
+{
+    int err = 0;
+    Table_T t = Table_new(0, NULL, NULL);
+
+    for (basic_block_t* b = blocks.bb_blocks; b; b = b->bb_list) {
+        for (var s = b->bb_stmts; s; s = s->tst_list) {
+            if (s->tst_tag == TREE_STM_LABEL) {
+                Table_put(t, s->tst_label, s);
+            }
+        }
+    }
+    for (basic_block_t* b = blocks.bb_blocks; b; b = b->bb_list) {
+        for (var s = b->bb_stmts; s; s = s->tst_list) {
+            if (s->tst_tag == TREE_STM_CJUMP) {
+                if (!Table_get(t, s->tst_cjump_true)) {
+                    fprintf(stderr, "%s: missing %s label\n", check, s->tst_cjump_true);
+                    err++;
+                }
+                if (!Table_get(t, s->tst_cjump_false)) {
+                    fprintf(stderr, "%s: missing %s label\n", check, s->tst_cjump_false);
+                    err++;
+                }
+            } else if (s->tst_tag == TREE_STM_JUMP) {
+                for (int i = 0 ; i < s->tst_jump_num_labels ; i++) {
+                    var lbl = s->tst_jump_labels[i];
+                    if (!Table_get(t, lbl)){
+                        fprintf(stderr, "%s: missing %s label\n", check, lbl);
+                        err++;
+                    }
+                }
+            }
+        }
+    }
+
+    Table_free(&t);
+    assert(err == 0);
+}
+
 sl_fragment_t* canonicalise_tree(
         temp_state_t* temp_state, sl_fragment_t* fragments)
 {
     for (var frag = fragments; frag; frag = frag->fr_list) {
         frag->fr_body = linearise(temp_state, frag->fr_body);
+        verify_statements(frag->fr_body, "post-linearise");
 
         basic_blocks_t blocks =
             basic_blocks(temp_state, frag->fr_body);
+        verify_basic_blocks(blocks, "post-basic_blocks");
 
         frag->fr_body = trace_schedule(temp_state, blocks);
+        verify_statements(frag->fr_body, "post-trace_schedule");
     }
     return fragments;
 }
