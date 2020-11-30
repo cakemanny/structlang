@@ -404,16 +404,10 @@ typedef struct basic_blocks_t {
 static void bb_append_block(
         basic_blocks_t* blocks, basic_block_t* block)
 {
-    if (blocks->bb_blocks == NULL) {
-        blocks->bb_blocks = block;
-        return;
-    }
-
-    var final_node = blocks->bb_blocks;
-    while (final_node->bb_list) {
-        final_node = final_node->bb_list;
-    }
-    final_node->bb_list = block;
+    var final_node = &(blocks->bb_blocks);
+    while (*final_node)
+        final_node = &(*final_node)->bb_list;
+    *final_node = block;
 }
 
 static tree_stm_t* unconditional_jump(sl_sym_t dst)
@@ -443,41 +437,48 @@ static basic_blocks_t basic_blocks(
         stmts = start_label;
     }
 
-    tree_stm_t x = {};
-    for (var s = stmts; s; s = s->tst_list) {
+    while (stmts) {
+        // pop the top statement off the list
+        tree_stm_t* s = stmts; stmts = stmts->tst_list; s->tst_list = NULL;
+
+        // start a new block if necessary
         if (curr_block == NULL) {
+            assert(s->tst_tag == TREE_STM_LABEL);
             curr_block = xmalloc(sizeof *curr_block);
         }
 
-        // wierd work around to the fact that our stms can only be in a single
-        // list at a time
-        x = *s;
+        // append this statement to the current block
         curr_block->bb_stmts = tree_stm_append(curr_block->bb_stmts, s);
-        // disconnect the rest of stmts from bb_stmts
-        s->tst_list = NULL;
-        // allow our loop to continue by setting s to the un-disconnected copy
-        s = &x;
 
-        if (s->tst_list == NULL || s->tst_list->tst_tag == TREE_STM_LABEL) {
+        // if this statement is jump, then we are going to end the current
+        // block
+        if (s->tst_tag == TREE_STM_JUMP || s->tst_tag == TREE_STM_CJUMP) {
+            // well, if there is no label upcoming, then the following code is
+            // dead
+            while (stmts && stmts->tst_tag != TREE_STM_LABEL) {
+                #ifndef NDEBUG
+                    tree_printf(stderr, "deleting dead code: %S\n", stmts);
+                #endif
+                stmts = stmts->tst_list;
+            }
+            // now we will be ready to end the current block
+        }
+
+        // if the next statement is a label, end the current block
+        if (stmts == NULL || stmts->tst_tag == TREE_STM_LABEL) {
             if (s->tst_tag != TREE_STM_JUMP && s->tst_tag != TREE_STM_CJUMP) {
                 var j = unconditional_jump(
-                    s->tst_list
-                        ? s->tst_list->tst_label
-                        : done
+                    stmts ? stmts->tst_label : done
                 );
                 curr_block->bb_stmts =
                     tree_stm_append(curr_block->bb_stmts, j);
             }
             bb_append_block(&result, curr_block);
             curr_block = NULL;
-        } else if (s->tst_tag == TREE_STM_JUMP || s->tst_tag == TREE_STM_CJUMP) {
-            // well, if there is no label upcoming, then the following code is
-            // dead
-            while (s->tst_list && s->tst_list->tst_tag != TREE_STM_LABEL) {
-                s = s->tst_list;
-            }
         }
     }
+    // check we ended the final block
+    assert(curr_block == NULL);
 
     #ifndef NDEBUG
         // check our expected block properties
@@ -829,18 +830,20 @@ static void verify_basic_blocks(basic_blocks_t blocks, const char* check)
     for (basic_block_t* b = blocks.bb_blocks; b; b = b->bb_list) {
         for (var s = b->bb_stmts; s; s = s->tst_list) {
             if (s->tst_tag == TREE_STM_CJUMP) {
-                if (!Table_get(t, s->tst_cjump_true)) {
+                if (!Table_get(t, s->tst_cjump_true)
+                        && s->tst_cjump_true != blocks.bb_end_label) {
                     fprintf(stderr, "%s: missing %s label\n", check, s->tst_cjump_true);
                     err++;
                 }
-                if (!Table_get(t, s->tst_cjump_false)) {
+                if (!Table_get(t, s->tst_cjump_false)
+                        && s->tst_cjump_false != blocks.bb_end_label) {
                     fprintf(stderr, "%s: missing %s label\n", check, s->tst_cjump_false);
                     err++;
                 }
             } else if (s->tst_tag == TREE_STM_JUMP) {
                 for (int i = 0 ; i < s->tst_jump_num_labels ; i++) {
                     var lbl = s->tst_jump_labels[i];
-                    if (!Table_get(t, lbl)){
+                    if (!Table_get(t, lbl) && lbl != blocks.bb_end_label){
                         fprintf(stderr, "%s: missing %s label\n", check, lbl);
                         err++;
                     }

@@ -134,8 +134,7 @@ int main(int argc, char* argv[])
     if (stop_after_translation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
             fprintf(stdout, "# %s\n", frag->fr_frame->acf_name);
-            tree_stm_print(stdout, frag->fr_body);
-            fprintf(stdout, "\n");
+            tree_printf(stdout, "%S\n", frag->fr_body);
         }
         return 0;
     }
@@ -149,8 +148,7 @@ int main(int argc, char* argv[])
         for (var frag = fragments; frag; frag = frag->fr_list) {
             fprintf(stdout, "# %s\n", frag->fr_frame->acf_name);
             for (var s = frag->fr_body; s; s = s->tst_list) {
-                tree_stm_print(stdout, s);
-                fprintf(stdout, "\n");
+                tree_printf(stdout, "%S\n", s);
             }
             fprintf(stdout, "\n");
         }
@@ -163,9 +161,7 @@ int main(int argc, char* argv[])
         for (var s = frag->fr_body; s; s = s->tst_list) {
 
             if (stop_after_instruction_selection) {
-                fprintf(stdout, "## ");
-                tree_stm_print(stdout, s);
-                fprintf(stdout, "\n");
+                tree_printf(stdout, "## %S\n", s);
             }
 
             assm_instr_t* instrs = x86_64_codegen(temp_state, frag->fr_frame, s);

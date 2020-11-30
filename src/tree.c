@@ -155,14 +155,10 @@ stm tree_stm_label(sl_sym_t label)
 
 stm tree_stm_append(stm hd, stm to_append)
 {
-    if (!hd)
-        return to_append;
-
-    stm final_node = hd;
-    while (final_node->tst_list)
-        final_node = final_node->tst_list;
-    final_node->tst_list = to_append;
-
+    stm* p = &hd;
+    while (*p)
+        p = &(*p)->tst_list;
+    *p = to_append;
     return hd;
 }
 
