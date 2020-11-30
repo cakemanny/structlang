@@ -363,7 +363,10 @@ static void munch_stm(codegen_t state, tree_stm_t* stm)
                         if (addr->te_rhs->te_tag == TREE_EXP_BINOP
                                 && addr->te_rhs->te_binop == TREE_BINOP_MUL
                                 && addr->te_rhs->te_rhs->te_tag == TREE_EXP_CONST
-                                && addr->te_rhs->te_rhs->te_const > 0) {
+                                && (addr->te_rhs->te_rhs->te_const == 1
+                                    || addr->te_rhs->te_rhs->te_const == 2
+                                    || addr->te_rhs->te_rhs->te_const == 4
+                                    || addr->te_rhs->te_rhs->te_const == 8) > 0) {
                             int scale = addr->te_rhs->te_rhs->te_const;
                             char* s = NULL;
                             Asprintf(&s, "mov%s `s2, (`s0,`s1,%d)\n",
