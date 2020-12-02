@@ -182,9 +182,16 @@ int main(int argc, char* argv[])
 
         // here: liveness analysis
 
-        lv_flowgraph_t* flow = instrs2graph(body_instrs);
+        var flow_and_nodes = instrs2graph(body_instrs);
+        lv_flowgraph_t* flow = flow_and_nodes.flowgraph;
         lv_print_graph(flow->lvfg_control);
+
+        // var igraph_and_table =
+            intererence_graph(flow);
+
         lv_free_graph(flow->lvfg_control); flow->lvfg_control = NULL;
+        // todo: free nodes from flow_and_nodes
+        // todo: 
     }
 
     // end of program... maybe

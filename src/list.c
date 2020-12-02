@@ -4,8 +4,8 @@
 void* list_cons(void* head, void* tail)
 {
     struct list_t* node = xmalloc(sizeof *node);
-    node->tail = tail;
     node->head = head;
+    node->tail = tail;
     return node;
 }
 

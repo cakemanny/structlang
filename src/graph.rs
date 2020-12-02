@@ -1,10 +1,22 @@
+use std::ptr::null;
+
 type Node_ = usize;
-type Node = (*mut Graph, Node_);
+
+#[repr(C)]
+pub struct Node {
+    graph: *mut Graph,
+    idx: Node_,
+}
+
+#[repr(C)]
+pub struct NodeList {
+    nl_node: *mut Node,
+    nl_list: *const NodeList,
+}
 
 #[derive(Debug)]
 pub struct Graph {
     nodes: Vec<NodeRep>,
-    deleted: Vec<Node_>,
 }
 
 #[derive(Debug)]
@@ -23,18 +35,52 @@ impl NodeRep {
 }
 
 #[no_mangle]
-pub extern "C" fn lv_eq(a: *const Node, b: *const Node) -> bool {
-    let (ga, a_idx) = unsafe { *a };
-    let (gb, b_idx) = unsafe { *b };
+pub extern "C" fn lv_nodes(g: *mut Graph) -> *const NodeList {
+    let mut result = null();
 
-    ga == gb && a_idx == b_idx
+    let graph = unsafe { &*g };
+    for j in 1..=graph.nodes.len() {
+        let i = graph.nodes.len() - j;
+        let new_node = Box::new(Node{graph: g, idx: i});
+        let nodeptr = Box::into_raw(new_node);
+        result = Box::into_raw(Box::new(NodeList {
+            nl_node: nodeptr,
+            nl_list: result,
+        }));
+    }
+    return result;
+}
+
+#[no_mangle]
+pub extern "C" fn lv_succ(n: *mut Node) -> *const NodeList {
+    let mut result = null();
+
+    let node = unsafe { &*n };
+    let graph = unsafe { &*node.graph };
+
+    for idx in graph.nodes[node.idx].succ.iter() {
+        let new_node = Box::new(Node{ graph: node.graph, idx: *idx });
+        let nodeptr = Box::into_raw(new_node);
+        result = Box::into_raw(Box::new(NodeList {
+            nl_node: nodeptr,
+            nl_list: result,
+        }));
+    }
+    return result;
+}
+
+#[no_mangle]
+pub extern "C" fn lv_eq(a: *const Node, b: *const Node) -> bool {
+    let nodea = unsafe { &*a };
+    let nodeb = unsafe { &*b };
+
+    nodea.graph == nodeb.graph  && nodea.idx == nodeb.idx
 }
 
 #[no_mangle]
 pub extern "C" fn lv_new_graph() -> *mut Graph {
     let g = Box::new(Graph {
         nodes: Vec::new(),
-        deleted: Vec::new(),
     });
 
     Box::into_raw(g)
@@ -49,50 +95,46 @@ pub extern "C" fn lv_free_graph(g: *mut Graph) {
 #[no_mangle]
 pub extern "C" fn lv_new_node(g: *mut Graph) -> *mut Node  {
     let graph = unsafe { &mut *g };
-    if let Some(idx) = graph.deleted.pop() {
-        let new_node = Box::new((g, idx));
-        Box::into_raw(new_node)
-    } else {
-        graph.nodes.push(NodeRep::new());
-        let new_node = Box::new((g, graph.nodes.len() - 1));
-        Box::into_raw(new_node)
-    }
+
+    graph.nodes.push(NodeRep::new());
+    let new_node = Box::new(Node{graph: g, idx: graph.nodes.len() - 1});
+    Box::into_raw(new_node)
 }
 
 #[no_mangle]
 pub extern "C" fn lv_mk_edge(pfrom: *mut Node, pto: *mut Node) {
-    let (g, from_idx) = unsafe { *pfrom };
-    let (g2, to_idx) = unsafe { *pto };
-    if g != g2 {
+    let from = unsafe { &*pfrom };
+    let to = unsafe { &*pto };
+    if from.graph != to.graph {
         panic!("from and to not from same graph");
     }
-    let graph = unsafe { &mut *g };
-    graph.nodes[from_idx].succ.push(to_idx);
-    graph.nodes[to_idx].pred.push(from_idx);
+    let graph = unsafe { &mut *from.graph };
+    graph.nodes[from.idx].succ.push(to.idx);
+    graph.nodes[to.idx].pred.push(from.idx);
 }
 
 #[no_mangle]
 pub extern "C" fn lv_rm_edge(pfrom: *mut Node, pto: *mut Node) {
-    let (g, from_idx) = unsafe { *pfrom };
-    let (g2, to_idx) = unsafe { *pto };
-    if g != g2 {
+    let from = unsafe { &*pfrom };
+    let to = unsafe { &*pto };
+    if from.graph != to.graph {
         panic!("from and to not from same graph");
     }
-    let graph = unsafe { &mut *g };
+    let graph = unsafe { &mut *from.graph };
     // there's got to be a prettier way of doing this...
     // but I have no idea
     let mut i = 0;
-    while i < graph.nodes[from_idx].succ.len() {
-        if graph.nodes[from_idx].succ[i] == to_idx {
-            graph.nodes[from_idx].succ.remove(i);
+    while i < graph.nodes[from.idx].succ.len() {
+        if graph.nodes[from.idx].succ[i] == to.idx {
+            graph.nodes[from.idx].succ.remove(i);
         } else {
             i += 1;
         }
     }
     i = 0;
-    while i < graph.nodes[to_idx].pred.len() {
-        if graph.nodes[to_idx].pred[i] == from_idx {
-            graph.nodes[to_idx].pred.remove(i);
+    while i < graph.nodes[to.idx].pred.len() {
+        if graph.nodes[to.idx].pred[i] == from.idx {
+            graph.nodes[to.idx].pred.remove(i);
         } else {
             i += 1;
         }

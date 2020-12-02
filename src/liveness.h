@@ -22,7 +22,8 @@ typedef struct lv_node_list_t {
     struct lv_node_list_t* nl_list;
 } lv_node_list_t;
 
-// todo: lv_node_list_t* lv_nodes(lv_graph_t*)
+extern lv_node_list_t* lv_nodes(lv_graph_t*);
+extern lv_node_list_t* lv_succ(lv_node_t*);
 // todo: succ
 // todo: pred
 // todo: adj
@@ -55,7 +56,36 @@ struct lv_flowgraph_t {
 /*
  * MakeGraph
  */
-// this should also return a node list...
-lv_flowgraph_t* instrs2graph(assm_instr_t*);
+struct flowgraph_and_node_list {
+    lv_flowgraph_t* flowgraph;
+    lv_node_list_t* node_list;
+} instrs2graph(const assm_instr_t*);
+
+/*
+ * Liveness
+ */
+typedef struct lv_node_pair_t {
+    lv_node_t* np_node0;
+    lv_node_t* np_node1;
+} lv_node_pair_t;
+
+typedef struct lv_node_pair_list_t {
+    lv_node_pair_t* nl_node;
+    struct lv_node_list_t* nl_list;
+} lv_node_pair_list_t;
+
+
+typedef struct lv_igraph_t lv_igraph_t;
+struct lv_igraph_t {
+    lv_graph_t* lvig_graph;
+    Table_T lvig_tnode; // should be a function?
+    Table_T lvig_gtemp; // should be a function?
+    lv_node_pair_list_t lvig_moves;
+};
+
+struct igraph_and_table {
+    lv_igraph_t* igraph;
+    Table_T live_outs;
+} intererence_graph(lv_flowgraph_t*);
 
 #endif /* __LIVENESS_H__ */
