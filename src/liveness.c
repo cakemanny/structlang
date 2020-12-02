@@ -15,6 +15,18 @@ static _Bool debug = 1;
 
 static temp_list_t* temp_list_sort(temp_list_t* tl);
 
+// a free function that can be mapped over tables
+static void vfree(const void* key, void** value, void* cl)
+{
+    free(*value);
+    // our table doesn't allow null values
+    // *value = NULL;
+}
+static void freeif(void*const ptr)
+{
+    if (ptr)
+        free(ptr);
+}
 
 static int cmpnode(const void* x, const void* y)
 {
@@ -241,11 +253,41 @@ static _Bool temp_list_eq(const temp_list_t* a, const temp_list_t* b)
     return 1;
 }
 
+// prove that we can use the list.h routines on it
+static_assert(sizeof(lv_node_pair_t) == sizeof(struct list_t),
+        "lv_node_pair_t size");
+static_assert(sizeof(lv_node_pair_list_t) == sizeof(struct list_t),
+        "lv_node_pair_list_t size");
+
+lv_node_pair_t* lv_node_pair(lv_node_t* m, lv_node_t* n)
+{
+    assert(m);
+    assert(n);
+    return list_cons(m, n);
+}
+
+lv_node_pair_list_t* lv_node_pair_cons(
+        lv_node_pair_t* hd, lv_node_pair_list_t* tl)
+{
+    assert(hd);
+    return list_cons(hd, tl);
+}
+
+static lv_node_t* ig_get_node_for_temp(lv_igraph_t* igraph, temp_t* ptemp)
+{
+    lv_node_t* ig_node = Table_get(igraph->lvig_tnode, ptemp);
+    if (!ig_node) {
+        ig_node = lv_new_node(igraph->lvig_graph);
+        Table_put(igraph->lvig_tnode, ptemp, ig_node);
+        Table_put(igraph->lvig_gtemp, ig_node, ptemp);
+    }
+    return ig_node;
+}
+
 struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
 {
     // compute live out
     struct live_set {
-        Table_T t; // temp_t* -> unit
         temp_list_t* temp_list;
     };
     // live out
@@ -256,14 +298,8 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
 
     var nodes = lv_nodes(flow->lvfg_control);
     for (var n = nodes; n; n = n->nl_list) {
-        struct live_set* live_in_set = xmalloc(sizeof *live_in_set);
-        live_in_set->temp_list = NULL;
-
-        Table_put(live_in_map, n->nl_node, live_in_set);
-
-        struct live_set* live_out_set = xmalloc(sizeof *live_out_set);
-        live_out_set->temp_list = NULL;
-        Table_put(live_out_map, n->nl_node, live_in_set);
+        Table_put(live_in_map, n->nl_node, xmalloc(sizeof(struct live_set)));
+        Table_put(live_out_map, n->nl_node, xmalloc(sizeof(struct live_set)));
     }
 
     // TODO: order nodes by depth-first search
@@ -280,17 +316,17 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
             // copy the previous iteration
             // TODO: collect and free the old sets / reuse them a/b style
             // in'[n] = in[n]; out'[n] = out[n]
-            Table_put(live_in_map_, node, Table_get(live_in_map, node));
+            freeif(Table_put(live_in_map_, node, Table_get(live_in_map, node)));
             struct live_set* out_ns = Table_get(live_out_map, node);
-            Table_put(live_out_map_, node, out_ns);
+            freeif(Table_put(live_out_map_, node, out_ns));
 
             // in[n] = use[n] union (out[n] setminus def[n])
             temp_list_t* use_n = Table_get(flow->lvfg_use, node);
             temp_list_t* def_n = Table_get(flow->lvfg_def, node);
 
-            var in_n = temp_list_union(
-                    use_n,
-                    temp_list_minus(out_ns->temp_list, def_n));
+            var out_minus_def = temp_list_minus(out_ns->temp_list, def_n);
+            var in_n = temp_list_union(use_n, out_minus_def);
+            // TODO: free `out_minus_def` list structure
 
             // out[n] = union {in[s] for s in succ[n]}
             temp_list_t* out_n = NULL;
@@ -334,19 +370,72 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
             break;
     }
 
-    // fill in the membership table of each of the live-out sets
+    // we are done with live_in_map and the diff maps
+    Table_map(live_in_map_, vfree, NULL);
+    Table_free(&live_in_map_);
+    Table_map(live_out_map_, vfree, NULL);
+    Table_free(&live_out_map_);
+    Table_map(live_in_map, vfree, NULL);
+    Table_free(&live_in_map);
+
+    // Now we have the live-out sets, we can compute the interference graph
+    lv_igraph_t* igraph = xmalloc(sizeof *igraph);
+    igraph->lvig_graph = lv_new_graph();
+    igraph->lvig_tnode = Table_new(0, cmptemp, hashtemp);
+    igraph->lvig_gtemp = Table_new(0, cmpnode, hashnode);
+    igraph->lvig_moves = NULL;
+
+    // ok, now we need a node in the graph for each temp?
+    // and a way of associating them
+
     for (var n = nodes; n; n = n->nl_list) {
-        struct live_set* out_ns = Table_get(live_out_map, n->nl_node);
-        out_ns->t = Table_new(0, cmptemp, hashtemp);
-        for (var t = out_ns->temp_list; t; t = t->tmp_list) {
-            Table_put(out_ns->t, &t->tmp_temp, (void*)1);
+        var node = n->nl_node;
+        temp_list_t* def_n = Table_get(flow->lvfg_def, node);
+        struct live_set* out_ns = Table_get(live_out_map, node);
+
+        for (var d = def_n; d; d = d->tmp_list) {
+            lv_node_t* d_node = ig_get_node_for_temp(igraph, &d->tmp_temp);
+
+            for (var t = out_ns->temp_list; t; t = t->tmp_list) {
+                lv_node_t* t_node = ig_get_node_for_temp(igraph, &t->tmp_temp);
+
+                lv_mk_edge(d_node, t_node);
+
+                if (Table_get(flow->lvfg_ismove, node)) {
+                    igraph->lvig_moves = lv_node_pair_cons(
+                            lv_node_pair(d_node, t_node), igraph->lvig_moves);
+                }
+            }
         }
     }
 
-    // Now we have the live-out sets, we can compute the interference graph
+    Table_T live_outs = Table_new(0, cmpnode, hashnode);
 
-    // TODO: continue here
+    // convert the live outs into a map just to temp_list
+    for (var n = nodes; n; n = n->nl_list) {
+        struct live_set* out_ns = Table_remove(live_out_map, n->nl_node);
+        if (out_ns->temp_list) {
+            Table_put(live_outs, n->nl_node, out_ns->temp_list);
+        }
+    }
+    Table_map(live_out_map, vfree, NULL);
+    Table_free(&live_out_map);
 
-    struct igraph_and_table result = {};
+    // TODO: free `nodes`
+
+    struct igraph_and_table result = {
+        .igraph = igraph,
+        .live_outs = live_outs,
+    };
     return result;
+}
+
+void igraph_show(FILE* out, lv_igraph_t* igraph)
+{
+
+    var nodes = lv_nodes(igraph->lvig_graph);
+
+    for (var n = nodes; n; n = n->nl_list) {
+        // TODO
+    }
 }

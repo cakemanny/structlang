@@ -24,7 +24,6 @@ typedef struct lv_node_list_t {
 
 extern lv_node_list_t* lv_nodes(lv_graph_t*);
 extern lv_node_list_t* lv_succ(lv_node_t*);
-// todo: succ
 // todo: pred
 // todo: adj
 extern _Bool lv_eq(const lv_node_t*, const lv_node_t*);
@@ -74,18 +73,26 @@ typedef struct lv_node_pair_list_t {
     struct lv_node_list_t* nl_list;
 } lv_node_pair_list_t;
 
+lv_node_pair_t* lv_node_pair(lv_node_t* m, lv_node_t* n);
+lv_node_pair_list_t* lv_node_pair_cons(
+        lv_node_pair_t* hd, lv_node_pair_list_t* tl);
 
+// an interference graph
 typedef struct lv_igraph_t lv_igraph_t;
 struct lv_igraph_t {
     lv_graph_t* lvig_graph;
     Table_T lvig_tnode; // should be a function?
     Table_T lvig_gtemp; // should be a function?
-    lv_node_pair_list_t lvig_moves;
+    lv_node_pair_list_t* lvig_moves;
 };
 
 struct igraph_and_table {
     lv_igraph_t* igraph;
     Table_T live_outs;
 } intererence_graph(lv_flowgraph_t*);
+
+#include <stdio.h>
+void igraph_show(FILE* out, lv_igraph_t* igraph);
+
 
 #endif /* __LIVENESS_H__ */

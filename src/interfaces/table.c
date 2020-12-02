@@ -79,6 +79,9 @@ static void rehash(T table)
     struct binding* new_buckets = calloc(new_size, sizeof *new_buckets);
 
     for (p = table->buckets; p < end; p++) {
+        if (!p->key) {
+            continue;
+        }
         int i = table->hash(p->key) & (new_size - 1);
 
         for (q = new_buckets + i;
