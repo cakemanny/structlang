@@ -58,7 +58,7 @@ struct flowgraph_and_node_list instrs2graph(const assm_instr_t* instrs)
     // TODO: actually return this?
     lv_node_list_t* nodes = NULL;
 
-    typeof(instrs) prev = NULL;
+    const assm_instr_t* prev = NULL;
     for (var instr = instrs; instr; instr = instr->ai_list) {
         var node = lv_new_node(graph);
         nodes = list_cons(node, nodes);
@@ -430,12 +430,42 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
     return result;
 }
 
+// Yeah... so... the return value must be used immediately, or copied by the
+// caller
+char* lv_nodename(lv_node_t* node)
+{
+    static char buf[64] = {};
+    snprintf(buf, 64, "%lu", node->lvn_idx);
+    return buf;
+}
+
 void igraph_show(FILE* out, lv_igraph_t* igraph)
 {
-
     var nodes = lv_nodes(igraph->lvig_graph);
 
+    fprintf(out, "# ---- Interference Graph ----\n");
+
     for (var n = nodes; n; n = n->nl_list) {
-        // TODO
+        var node = n->nl_node;
+
+        if (0) {
+            temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, node);
+            assert(temp_for_node);
+            // TODO: include the temp in the printing?
+        }
+
+        fprintf(out, "# %s [", lv_nodename(node));
+
+        lv_node_list_t* adj = lv_adj(node);
+        for (var s = adj; s; s = s->nl_list) {
+            if (0) {
+                temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, s->nl_node);
+                assert(temp_for_node);
+                // TODO: include the temp in the printing?
+            }
+            fprintf(out, "%s,", lv_nodename(s->nl_node));
+        }
+        fprintf(out, "]\n");
     }
+    fprintf(out, "# ----------------------------\n");
 }

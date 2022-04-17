@@ -24,8 +24,8 @@ typedef struct lv_node_list_t {
 
 extern lv_node_list_t* lv_nodes(lv_graph_t*);
 extern lv_node_list_t* lv_succ(lv_node_t*);
-// todo: pred
-// todo: adj
+extern lv_node_list_t* lv_pred(lv_node_t*);
+extern lv_node_list_t* lv_adj(lv_node_t*);
 extern _Bool lv_eq(const lv_node_t*, const lv_node_t*);
 
 // I'm putting extern here for functions implemented in Rust
@@ -92,6 +92,11 @@ struct igraph_and_table {
 } intererence_graph(lv_flowgraph_t*);
 
 #include <stdio.h>
+/*
+ * The function igraph_show just prints out - for debugging purposes - a list
+ * of nodes in the interference graph, and for each node, a list of nodes
+ * adjacent to it.
+ */
 void igraph_show(FILE* out, lv_igraph_t* igraph);
 
 

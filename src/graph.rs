@@ -70,6 +70,53 @@ pub extern "C" fn lv_succ(n: *mut Node) -> *const NodeList {
 }
 
 #[no_mangle]
+pub extern "C" fn lv_pred(n: *mut Node) -> *const NodeList {
+    let mut result = null();
+
+    let node = unsafe { &*n };
+    let graph = unsafe { &*node.graph };
+
+    for idx in graph.nodes[node.idx].pred.iter() {
+        let new_node = Box::new(Node{ graph: node.graph, idx: *idx });
+        let nodeptr = Box::into_raw(new_node);
+        result = Box::into_raw(Box::new(NodeList {
+            nl_node: nodeptr,
+            nl_list: result,
+        }));
+    }
+    return result;
+}
+
+// Returns all nodes with an edge from or to `n`
+#[no_mangle]
+pub extern "C" fn lv_adj(n: *mut Node) -> *const NodeList {
+    let mut result = null();
+
+    let node = unsafe { &*n };
+    let graph = unsafe { &*node.graph };
+
+    let mut adj: Vec<Node_> = Vec::new();
+
+    for idx in graph.nodes[node.idx].pred.iter().chain(graph.nodes[node.idx].succ.iter()) {
+        if !adj.contains(idx) {
+            adj.push(*idx);
+        }
+    }
+
+    adj.sort();
+
+    for idx in adj.iter().rev() {
+        let new_node = Box::new(Node{ graph: node.graph, idx: *idx });
+        let nodeptr = Box::into_raw(new_node);
+        result = Box::into_raw(Box::new(NodeList {
+            nl_node: nodeptr,
+            nl_list: result,
+        }));
+    }
+    return result;
+}
+
+#[no_mangle]
 pub extern "C" fn lv_eq(a: *const Node, b: *const Node) -> bool {
     let nodea = unsafe { &*a };
     let nodeb = unsafe { &*b };
@@ -109,8 +156,10 @@ pub extern "C" fn lv_mk_edge(pfrom: *mut Node, pto: *mut Node) {
         panic!("from and to not from same graph");
     }
     let graph = unsafe { &mut *from.graph };
-    graph.nodes[from.idx].succ.push(to.idx);
-    graph.nodes[to.idx].pred.push(from.idx);
+    if !graph.nodes[from.idx].succ.contains(&to.idx) {
+        graph.nodes[from.idx].succ.push(to.idx);
+        graph.nodes[to.idx].pred.push(from.idx);
+    }
 }
 
 #[no_mangle]
