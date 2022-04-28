@@ -10,8 +10,8 @@ Beyond the the parser and semantic analysis stages, the design follows
 
 [modernml]: https://www.cs.princeton.edu/~appel/modern/ml/
 
-For simplicity, in many places memory in leaked unashamedly.
-Given the one-shot nature of this compiler
+For simplicity, in many places memory is leaked unashamedly.
+Given the one-shot nature of this compiler, that's not a problem.
 
 
 ```
