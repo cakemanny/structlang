@@ -37,27 +37,30 @@ assm_instr_t* assm_move(const char* assem, temp_t dst, temp_t src)
 }
 
 // returns chars written not including null term
-static int format_temp(char* out, temp_t t)
+static int format_temp(char* const out, const size_t size, temp_t t)
 {
+    assert(size > 0);
     char* o = out;
     extern char* registers[];
     if (t.temp_id < 16) {
         *o++ = '%';
         // FIXME: these need to be picked based on the register size
-        int n = sprintf(o, "%s", registers[t.temp_id]);
+        int n = snprintf(o, size - (o - out), "%s", registers[t.temp_id]);
         assert(n > 0); // rudimentary error check lol
         o += n;
     } else {
         *o++ = 't';
-        int n = sprintf(o, "%d", t.temp_id);
+        int n = snprintf(o, size - (o - out), "%d", t.temp_id);
         assert(n > 0); // rudimentary error check lol
         o += n;
     }
+    // Check the remaining space in the buffer
+    assert(size - (o - out) > 0);
     *o++ = '\0';
     return o - out - 1;
 }
 
-void assm_format(char* out, size_t out_len, assm_instr_t* instr)
+void assm_format(char* const out, const size_t out_len, assm_instr_t* instr)
 {
     switch (instr->ai_tag) {
         case ASSM_INSTR_OPER:
@@ -102,12 +105,13 @@ void assm_format(char* out, size_t out_len, assm_instr_t* instr)
                     temp_t t = temp_array[idx];
                     // at this point we would like to call our temp_formatting
                     // function
-                    o += format_temp(o, t);
+                    o += format_temp(o, out_len - (o - out), t);
                 } else {
                     *o++ = c;
                 }
                 assert(o - out < out_len);
             }
+            assert(o - out < out_len);
             *o++ = '\0';
             return;
         }
@@ -133,19 +137,19 @@ void assm_format(char* out, size_t out_len, assm_instr_t* instr)
             assert(parts[3][1] == 's' || parts[3][1] == 'd');
 
             *o++ = '\t'; // indent
-            o += sprintf(o, "%s", parts[0]);
+            o += snprintf(o, out_len - (o - out), "%s", parts[0]);
             if (parts[1][1] == 's') {
-                o += format_temp(o, instr->ai_move_src);
+                o += format_temp(o, out_len - (o - out), instr->ai_move_src);
             } else {
-                o += format_temp(o, instr->ai_move_dst);
+                o += format_temp(o, out_len - (o - out), instr->ai_move_dst);
             }
-            o += sprintf(o, "%s", parts[2]);
+            o += snprintf(o, out_len - (o - out), "%s", parts[2]);
             if (parts[3][3] == 's') {
-                o += format_temp(o, instr->ai_move_src);
+                o += format_temp(o, out_len - (o - out), instr->ai_move_src);
             } else {
-                o += format_temp(o, instr->ai_move_dst);
+                o += format_temp(o, out_len - (o - out), instr->ai_move_dst);
             }
-            o += sprintf(o, "%s", parts[4]);
+            o += snprintf(o, out_len - (o - out), "%s", parts[4]);
             *o++ = '\0';
             return;
         }

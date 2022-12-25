@@ -42,7 +42,7 @@ assm_instr_t* assm_move(const char* assem, temp_t dst, temp_t src);
  * The caller provides an adequately sized buffer `out` of size `out_len`
  * that the formatted instruction is written into
  */
-void assm_format(char* out, size_t out_len, assm_instr_t* instr);
+void assm_format(char* const out, const size_t out_len, assm_instr_t* instr);
 
 assm_instr_t* assm_list_reverse(assm_instr_t*);
 
