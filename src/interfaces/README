@@ -1,0 +1,14 @@
+
+This uses Atom from Ch.3 of C Interfaces and Implementations by David R. Hanson.
+Table is based on the interface from the Table interface in Ch.8 of the same
+book, but uses power of 2 sized tables and free space reuse based on some ideas
+recalled from a talk by Cliff Click. https://youtu.be/HJ-719EGIts
+
+The website for C Interfaces and Implementations can be found at
+https://drh.github.io/cii/
+
+The source code from that book is now released under MIT over at
+https://github.com/drh/cii
+
+I don't think this counts as a substantial portion of the software, so
+I haven't copied across the MIT license text.
