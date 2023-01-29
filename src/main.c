@@ -12,6 +12,7 @@
 #include "canonical.h"
 #include "x86_64.h"
 #include "liveness.h"
+#include "reg_alloc.h"
 
 #define var __auto_type
 
@@ -181,18 +182,8 @@ int main(int argc, char* argv[])
         }
         body_instrs = proc_entry_exit_2(frag->fr_frame, body_instrs);
 
-        // here: liveness analysis
 
-        var flow_and_nodes = instrs2graph(body_instrs);
-        lv_flowgraph_t* flow = flow_and_nodes.flowgraph;
-
-        var igraph_and_table =
-            intererence_graph(flow);
-        igraph_show(stdout, igraph_and_table.igraph);
-
-        lv_free_graph(flow->lvfg_control); flow->lvfg_control = NULL;
-        // todo: free nodes from flow_and_nodes
-        Table_free(&igraph_and_table.live_outs);
+        ra_alloc(body_instrs, frag->fr_frame);
     }
 
     // end of program... maybe
