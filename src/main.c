@@ -1,6 +1,7 @@
 // vim:sw=4:
 #include <stdlib.h> // exit
 #include <stdio.h>
+#include <stdbool.h>
 #include "colours.h"
 #include "ast.h"
 #include "semantics.h"
@@ -39,14 +40,14 @@ options:\n\
 
 int main(int argc, char* argv[])
 {
-    _Bool parse_only = 0;
-    _Bool stop_after_type_checking = 0;
-    _Bool stop_after_rewrites = 0;
-    _Bool stop_after_activation_calculation = 0;
-    _Bool stop_after_translation = 0;
-    _Bool stop_after_canonicalisation = 0;
-    _Bool stop_after_instruction_selection = 0;
-    _Bool warn_about_multiple_files = 0;
+    bool parse_only = 0;
+    bool stop_after_type_checking = 0;
+    bool stop_after_rewrites = 0;
+    bool stop_after_activation_calculation = 0;
+    bool stop_after_translation = 0;
+    bool stop_after_canonicalisation = 0;
+    bool stop_after_instruction_selection = 0;
+    bool warn_about_multiple_files = 0;
     char* inarg = NULL;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] != '\0') {

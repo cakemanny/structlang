@@ -1,5 +1,6 @@
 #include "translate.h"
 #include <assert.h> /* assert */
+#include <stdbool.h> /* bool */
 #include "mem.h" // xmalloc
 #include "grammar.tab.h"
 
@@ -11,7 +12,7 @@ typedef struct translate_info_t {
     temp_state_t* temp_state;
     sl_sym_t current_loop_end;
     sl_sym_t function_end_label;
-    _Bool is_end_label_used;
+    bool is_end_label_used;
 } translate_info_t;
 
 struct translate_exp_t;

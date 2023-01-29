@@ -1,8 +1,10 @@
 #ifndef __COLOURS_H__
 #define __COLOURS_H__
 
+#include <stdbool.h>
+
 extern struct term_colours {
-    _Bool isatty;
+    bool isatty;
     char* red;
     char* magenta;
     char* clear;

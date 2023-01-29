@@ -112,7 +112,7 @@ static sl_decl_t* lookup_struct_decl(sem_info_t* sem_info, sl_sym_t type_name)
     return lookup_decl(sem_info, type_name, SL_DECL_STRUCT);
 }
 
-static _Bool type_exists(sem_info_t* sem_info, sl_type_t* type)
+static bool type_exists(sem_info_t* sem_info, sl_type_t* type)
 {
     // extract type name only, e.g. **int[] -> *int[] -> int[] -> int
     const sl_type_t* t = type;
@@ -135,13 +135,13 @@ static _Bool type_exists(sem_info_t* sem_info, sl_type_t* type)
     return 0;
 }
 
-static _Bool type_is_void(sl_type_t* type)
+static bool type_is_void(sl_type_t* type)
 {
     return type->ty_tag == SL_TYPE_NAME
         && type->ty_name == symbol("void");
 }
 
-_Bool sem_is_lvalue(const sl_expr_t* expr)
+bool sem_is_lvalue(const sl_expr_t* expr)
 {
     // l-values:
     // - vars

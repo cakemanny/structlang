@@ -4,6 +4,7 @@
 #include "symbols.h" // sl_sym_t
 #include "ast.h" // sl_type_t
 #include <stdint.h> // uint64_t
+#include <stdbool.h> // bool
 #include "temp.h"
 #include "tree.h"
 
@@ -39,8 +40,8 @@ typedef struct ac_frame {
             int acf_offset;         // ACF_ACCESS_FRAME
             temp_t acf_reg;         // ACF_ACCESS_REG
         };
-        //_Bool acf_escapes; //?
-        _Bool acf_is_formal; // i.e. function parameter
+        //bool acf_escapes; //?
+        bool acf_is_formal; // i.e. function parameter
         uint64_t* acf_ptr_map; // bitset
 
         struct ac_frame_var* acf_list;
@@ -59,7 +60,7 @@ size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);
 
 extern const size_t ac_word_size;
 
-extern _Bool ac_debug;
+extern bool ac_debug;
 
 /*
  * adds instructions to the beginning of the function that move arguments

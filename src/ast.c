@@ -135,7 +135,7 @@ sl_expr_t* sl_expr_int(int value)
     return node;
 }
 
-sl_expr_t* sl_expr_bool(_Bool value)
+sl_expr_t* sl_expr_bool(bool value)
 {
     sl_expr_t* node = ex_alloc(SL_EXPR_BOOL);
     node->ex_value = value;

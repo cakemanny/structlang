@@ -2,6 +2,7 @@
 #define __LIVENESS_H__
 // vim:ft=c:
 
+#include <stdbool.h>
 #include "assem.h" // assm_instr_t
 #include "interfaces/table.h"
 
@@ -26,7 +27,7 @@ extern lv_node_list_t* lv_nodes(lv_graph_t*);
 extern lv_node_list_t* lv_succ(lv_node_t*);
 extern lv_node_list_t* lv_pred(lv_node_t*);
 extern lv_node_list_t* lv_adj(lv_node_t*);
-extern _Bool lv_eq(const lv_node_t*, const lv_node_t*);
+extern bool lv_eq(const lv_node_t*, const lv_node_t*);
 
 // I'm putting extern here for functions implemented in Rust
 extern lv_graph_t* lv_new_graph();

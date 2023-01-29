@@ -2,6 +2,7 @@
 #include "mem.h"
 #include <assert.h> /* assert */
 #include <string.h> /* memcpy */
+#include <stdbool.h> /* bool */
 #include "interfaces/table.h"
 
 #define var __auto_type
@@ -14,7 +15,7 @@ typedef struct canon_stm_exp_pair_t {
 static canon_stm_exp_pair_t do_exp(temp_state_t*, tree_exp_t*);
 static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s);
 
-static _Bool is_nop(tree_stm_t* s)
+static bool is_nop(tree_stm_t* s)
 {
     return s->tst_tag == TREE_STM_EXP
         && s->tst_exp->te_tag == TREE_EXP_CONST;
@@ -31,7 +32,7 @@ static tree_stm_t* seq(tree_stm_t* s1, tree_stm_t* s2)
     return tree_stm_seq(s1, s2);
 }
 
-static _Bool commute(tree_stm_t* s, tree_exp_t* e)
+static bool commute(tree_stm_t* s, tree_exp_t* e)
 {
     // TODO: there is an exercise to find more cases to add here
     return is_nop(s)
@@ -629,7 +630,7 @@ static void put_falses_after_cjumps(
         var s1 = s->tst_list;
         if (s1->tst_tag == TREE_STM_CJUMP) {
             var s2 = s1->tst_list;
-            _Bool s2_is_lbl = s2 && s2->tst_tag == TREE_STM_LABEL;
+            bool s2_is_lbl = s2 && s2->tst_tag == TREE_STM_LABEL;
             if (s2_is_lbl && s1->tst_cjump_false == s2->tst_label) {
                 // do nothing , we good!
             } else if (s2_is_lbl && s1->tst_cjump_true == s2->tst_label) {

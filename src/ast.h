@@ -4,6 +4,7 @@
 #define __AST_H__
 
 #include <stdio.h> // FILE*
+#include <stdbool.h>
 #include "symbols.h"
 
 typedef struct sl_expr_t sl_expr_t;
@@ -149,7 +150,7 @@ sl_type_t* ty_type_func();
 
 sl_expr_t* ex_append(sl_expr_t* exn, sl_expr_t* to_append);
 sl_expr_t* sl_expr_int(int value);
-sl_expr_t* sl_expr_bool(_Bool value);
+sl_expr_t* sl_expr_bool(bool value);
 sl_expr_t* sl_expr_void();
 sl_expr_t* sl_expr_binop(int op, sl_expr_t* left, sl_expr_t* right);
 sl_expr_t* sl_expr_let(sl_sym_t name, sl_type_t* type, sl_expr_t* init);

@@ -37,13 +37,13 @@ Two bitmaps, one for arguments, another for locals.
 
  */
 
-_Bool ac_debug = 0;
+bool ac_debug = 0;
 
 const struct ac_builtin_type {
     char* name;
     size_t alignment;
     size_t size;
-    _Bool is_ptr;
+    bool is_ptr;
 } builtin_sizes[] = {
     { "int", 4, 4, 0 },
     { "bool", 1, 1, 0 },

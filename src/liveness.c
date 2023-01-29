@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <stdbool.h>
 #include <assert.h>
 #include <string.h>
 #include "liveness.h"
@@ -8,9 +9,9 @@
 #define var __auto_type
 
 #ifdef NDEBUG
-static _Bool debug = 0;
+static const bool debug = 0;
 #else
-static _Bool debug = 1;
+static const bool debug = 1;
 #endif
 
 static temp_list_t* temp_list_sort(temp_list_t* tl);
@@ -238,19 +239,19 @@ static temp_list_t* temp_list_minus(const temp_list_t* a, const temp_list_t* b)
     return list_reverse(result);
 }
 
-static _Bool temp_list_eq(const temp_list_t* a, const temp_list_t* b)
+static bool temp_list_eq(const temp_list_t* a, const temp_list_t* b)
 {
     while (a || b) {
         if (!(a && b)) {
-            return 0;
+            return false;
         }
         if (cmptemp(&a->tmp_temp, &b->tmp_temp) != 0) {
-            return 0;
+            return false;
         }
         a = a->tmp_list;
         b = b->tmp_list;
     }
-    return 1;
+    return true;
 }
 
 // prove that we can use the list.h routines on it
@@ -348,21 +349,21 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
             Table_put(live_in_map, node, in_ns);
         }
 
-        _Bool match = 1;
+        bool match = true;
         for (var n = nodes; n; n = n->nl_list) {
             var node = n->nl_node;
 
             struct live_set* in_ns_ = Table_get(live_in_map_, node);
             struct live_set* in_ns = Table_get(live_in_map, node);
             if (!temp_list_eq(in_ns_->temp_list, in_ns->temp_list)) {
-                match = 0;
+                match = false;
                 break;
             }
 
             struct live_set* out_ns_ = Table_get(live_out_map_, node);
             struct live_set* out_ns = Table_get(live_out_map, node);
             if (!temp_list_eq(out_ns_->temp_list, out_ns->temp_list)) {
-                match = 0;
+                match = false;
                 break;
             }
         }

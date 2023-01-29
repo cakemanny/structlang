@@ -72,7 +72,7 @@ static void rewrite_decompose_equal_expr(rewrite_info_t* info, sl_expr_t* expr)
                     assert(sem_is_lvalue(expr->ex_left));
                     assert(sem_is_lvalue(expr->ex_right));
 
-                    _Bool is_eq = (expr->ex_op == SL_TOK_EQ);
+                    bool is_eq = (expr->ex_op == SL_TOK_EQ);
                     var comb_op = is_eq ? SL_TOK_LAND : SL_TOK_LOR;
 
                     sl_expr_t* head = rewrite_decompose_equal_expr_field(

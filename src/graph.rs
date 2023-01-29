@@ -135,6 +135,8 @@ pub extern "C" fn lv_new_graph() -> *mut Graph {
 
 #[no_mangle]
 pub extern "C" fn lv_free_graph(g: *mut Graph) {
+    // As per the docs for Box::into_raw, converting the raw back into a Box
+    // and then letting it go out of scope will run its destructor.
     unsafe { Box::from_raw(g) };
 }
 
