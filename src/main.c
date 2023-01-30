@@ -183,7 +183,7 @@ int main(int argc, char* argv[])
         body_instrs = proc_entry_exit_2(frag->fr_frame, body_instrs);
 
 
-        ra_alloc(body_instrs, frag->fr_frame);
+        ra_alloc(temp_state, body_instrs, frag->fr_frame);
     }
 
     // end of program... maybe
