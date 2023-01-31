@@ -453,9 +453,10 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
             temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, node);
             assert(temp_for_node);
             // TODO: include the temp in the printing?
+            fprintf(out, "# %d [", temp_for_node->temp_id);
+        } else {
+            fprintf(out, "# %s [", lv_nodename(node));
         }
-
-        fprintf(out, "# %s [", lv_nodename(node));
 
         lv_node_list_t* adj = lv_adj(node);
         for (var s = adj; s; s = s->nl_list) {
@@ -463,8 +464,10 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
                 temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, s->nl_node);
                 assert(temp_for_node);
                 // TODO: include the temp in the printing?
+                fprintf(out, "%d,", temp_for_node->temp_id);
+            } else {
+                fprintf(out, "%s,", lv_nodename(s->nl_node));
             }
-            fprintf(out, "%s,", lv_nodename(s->nl_node));
         }
         fprintf(out, "]\n");
     }

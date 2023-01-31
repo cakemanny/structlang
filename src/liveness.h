@@ -82,8 +82,16 @@ lv_node_pair_list_t* lv_node_pair_cons(
 typedef struct lv_igraph_t lv_igraph_t;
 struct lv_igraph_t {
     lv_graph_t* lvig_graph;
+
+    /*
+     * lvig_tnode is a map from temp_t* -> lv_node_t*
+     * It gives the interference graph node for a given register or temporary
+     */
     Table_T lvig_tnode; // should be a function?
-    Table_T lvig_gtemp; // should be a function?
+    /*
+     * lvig_gtemp is a map from lv_node_t* -> temp_t*
+     */
+    Table_T lvig_gtemp;
     lv_node_pair_list_t* lvig_moves;
 };
 
