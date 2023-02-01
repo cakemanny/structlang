@@ -35,6 +35,7 @@ options:\n\
   -T    Stop after translating into the tree IR\n\
   -C    Stop after canonicalising the tree IR\n\
   -i    Stop after instruction selection\n\
+  -l    Stop after liveness analysis\n\
 ", stderr);
     exit(exit_code);
 }
@@ -49,6 +50,7 @@ int main(int argc, char* argv[])
     bool stop_after_canonicalisation = 0;
     bool stop_after_instruction_selection = 0;
     bool warn_about_multiple_files = 0;
+    bool stop_after_liveness_analysis = 0;
     char* inarg = NULL;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] != '\0') {
@@ -61,6 +63,7 @@ int main(int argc, char* argv[])
                     case 'T': stop_after_translation = 1; break;
                     case 'C': stop_after_canonicalisation = 1; break;
                     case 'i': stop_after_instruction_selection = 1; break;
+                    case 'l': stop_after_liveness_analysis = 1; break;
                     default: fprintf(stderr, "unknown option '%c'\n", *pc);
                              print_usage_and_exit(1);
                 }
@@ -170,7 +173,7 @@ int main(int argc, char* argv[])
             if (stop_after_instruction_selection) {
                 for (var i = instrs; i; i = i->ai_list) {
                     char buf[128];
-                    assm_format(buf, 128, i);
+                    assm_format(buf, 128, i, frag->fr_frame->acf_temp_map);
                     fprintf(stdout, "%s", buf);
                 }
             }
@@ -182,8 +185,15 @@ int main(int argc, char* argv[])
         }
         body_instrs = proc_entry_exit_2(frag->fr_frame, body_instrs);
 
+        var instrs_and_allocation =
+            ra_alloc(temp_state, body_instrs, frag->fr_frame,
+                    stop_after_liveness_analysis);
 
-        ra_alloc(temp_state, body_instrs, frag->fr_frame);
+        for (var i = instrs_and_allocation.ra_instrs; i; i = i->ai_list) {
+            char buf[128];
+            assm_format(buf, 128, i, instrs_and_allocation.ra_allocation);
+            fprintf(stdout, "%s", buf);
+        }
     }
 
     // end of program... maybe

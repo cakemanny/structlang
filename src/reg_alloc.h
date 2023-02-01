@@ -18,7 +18,8 @@ typedef struct ra_reg_alloc_t {
 struct instr_list_and_allocation {
     assm_instr_t* ra_instrs;
     Table_T ra_allocation; // temp_t -> register (char*)
-} ra_alloc(temp_state_t*, assm_instr_t*, ac_frame_t* frame);
+} ra_alloc(temp_state_t*, assm_instr_t*, ac_frame_t* frame,
+        bool print_interference_and_return);
 
 
 

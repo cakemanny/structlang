@@ -73,6 +73,21 @@ node_list_contains(const lv_node_list_t* haystack, const lv_node_t* node)
 }
 
 /*
+ * These are used when we have Tables with temp_t's as keys
+ */
+static int cmptemp(const void* x, const void* y)
+{
+    const temp_t* xx = x;
+    const temp_t* yy = y;
+    return xx->temp_id - yy->temp_id;
+}
+static unsigned hashtemp(const void* key)
+{
+    const temp_t* k = key;
+    return k->temp_id;
+}
+
+/*
  *
  */
 static void
@@ -99,7 +114,6 @@ decrement_degree(
  * the select stack and decrements the degree of each node
  * in the adjacent set of n
  */
-// TODO: make static once in use
 static void
 simplify(
         reg_alloc_info_t* info) {
@@ -211,21 +225,25 @@ assign_colors(
 }
 
 
+static
 struct ra_color_result {
-    Table_T racr_allocation; // temp_t -> register (char*)
-    temp_list_t* racr_temp_list; // a list of spills
+    Table_T racr_allocation; // temp_t* -> register (char*)
+    temp_list_t* racr_spills; // a list of spills
 } ra_color(
     lv_igraph_t* interference,
-    Table_T initial_allocation, // temp_t -> register (char*)
+    lv_flowgraph_t* flowgraph,
+    Table_T initial_allocation, // temp_t* -> register (char*)
     /* registers is just a list of all machine registers */
-    temp_list_t* registers) // maybe this could be an array?
+    const char* registers[]) // maybe this could be an array?
 {
     // Prepare
-    reg_alloc_info_t info = {.K = 0}; // FIXME: add flowgraph
+    reg_alloc_info_t info = {
+        .K = Table_length(initial_allocation),
+        .flowgraph = flowgraph,
+    };
 
     var nodes = lv_nodes(interference->lvig_graph);
-    var count_nodes = list_length(nodes);
-    assert(count_nodes == Table_length(interference->lvig_gtemp));
+    var count_nodes = Table_length(interference->lvig_gtemp);
     info.degree = xmalloc(count_nodes * sizeof *info.degree);
     info.color = xmalloc(count_nodes * sizeof *info.color);
 
@@ -256,10 +274,12 @@ struct ra_color_result {
             // add to spill_worklist
             info.initial = n->nl_list;
             n->nl_list = info.spill_worklist;
+            info.spill_worklist = n;
         } else {
             // add to simplify_worklist
             info.initial = n->nl_list;
             n->nl_list = info.simplify_worklist;
+            info.simplify_worklist = n;
         }
     }
 
@@ -280,6 +300,37 @@ struct ra_color_result {
     // the correct result structure.
 
     struct ra_color_result result = {};
+
+    // Return Spills
+    for (var n = info.spilled_nodes; n; n = n->nl_list) {
+        var node = n->nl_node;
+        temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
+        assert(temp_for_node);
+        result.racr_spills =
+            temp_list_cons(*temp_for_node, result.racr_spills);
+    }
+
+    // Return Allocation
+    result.racr_allocation = Table_new(0, cmptemp, hashtemp);
+    for (var n = info.colored_nodes; n; n = n->nl_list) {
+        var node = n->nl_node;
+        temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
+        assert(temp_for_node);
+
+        var color_idx = info.color[node->lvn_idx];
+        var register_name = registers[color_idx];
+
+        Table_put(
+                result.racr_allocation,
+                temp_for_node,
+                // cast away const
+                (void*)register_name);
+    }
+
+    // clean up
+    free(info.degree); info.degree = NULL;
+    free(info.color); info.color = NULL;
+
     return result;
 }
 
@@ -288,7 +339,8 @@ struct instr_list_and_allocation
 ra_alloc(
         temp_state_t* temp_state,
         assm_instr_t* body_instrs,
-        ac_frame_t* frame)
+        ac_frame_t* frame,
+        bool print_interference_and_return)
 {
     // here: liveness analysis
     var flow_and_nodes = instrs2graph(body_instrs);
@@ -296,15 +348,26 @@ ra_alloc(
 
     var igraph_and_table =
         intererence_graph(flow);
-    igraph_show(stdout, igraph_and_table.igraph);
+    if (print_interference_and_return) {
+        igraph_show(stdout, igraph_and_table.igraph);
+        struct instr_list_and_allocation result = {};
+        return result;
+    }
 
 
-    // here: 
+    extern const char* registers[]; // FIXME
+    var color_result =
+        ra_color(igraph_and_table.igraph, flow, frame->acf_temp_map, registers);
 
-    // TODO: spilling and calling color
     // :: check for spilled nodes, and rewrite program if so ::
+    if (color_result.racr_spills) {
+        assert(!"TODO: spilling");
+    }
 
-    struct instr_list_and_allocation result = {};
+    struct instr_list_and_allocation result = {
+        .ra_instrs = body_instrs,
+        .ra_allocation = color_result.racr_allocation
+    };
 
     lv_free_graph(flow->lvfg_control); flow->lvfg_control = NULL;
     // todo: free nodes from flow_and_nodes

@@ -7,6 +7,7 @@
 #include <stdbool.h> // bool
 #include "temp.h"
 #include "tree.h"
+#include "interfaces/table.h"
 
 typedef struct ac_registers_t {
     temp_t acr_sp;
@@ -25,6 +26,9 @@ typedef struct ac_frame {
     int acf_next_arg_reg; // temp
 
     ac_registers_t* acf_regs;
+
+    // The mapping from temp_t* to register names
+    Table_T acf_temp_map;
 
     struct ac_frame_var {
         enum {

@@ -62,6 +62,14 @@ temp_t argument_regs[] = {
 const char* return_registers[] = { "rax", "rdx" };
 const char* frame_pointer = "rbp";
 
+/* Used for creating the initial tempMap
+ */
+const temp_t temp_map_temps[] = {
+    {.temp_id = 0}, {.temp_id = 1}, {.temp_id = 2}, {.temp_id = 3},
+    {.temp_id = 4}, {.temp_id = 5}, {.temp_id = 6}, {.temp_id = 7},
+    {.temp_id = 8}, {.temp_id = 9}, {.temp_id = 10}, {.temp_id = 11},
+    {.temp_id = 12}, {.temp_id = 13}, {.temp_id = 14}, {.temp_id = 15},
+};
 const char* registers[] = {
     "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
     "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
@@ -88,7 +96,7 @@ const size_t ac_word_size = 8;
 // We might unmake this const in future?
 const target_t* const target = &target_x86_64;
 
-static ac_frame_t* ac_frame_new(sl_sym_t func_name)
+static ac_frame_t* ac_frame_new(sl_sym_t func_name, Table_T temp_map)
 {
     ac_frame_t* f = xmalloc(sizeof *f);
     f->acf_name = func_name;
@@ -96,6 +104,7 @@ static ac_frame_t* ac_frame_new(sl_sym_t func_name)
     f->acf_last_local_offset = 0;
     f->ac_frame_vars_end = &f->ac_frame_vars;
     f->acf_regs = &register_temps;
+    f->acf_temp_map = temp_map;
     return f;
 }
 
@@ -531,15 +540,41 @@ static void calculate_activation_record_decl_func(
     }
 }
 
+/*
+ * These are used when we have Tables with temp_t's as keys
+ */
+static int cmptemp(const void* x, const void* y)
+{
+    const temp_t* xx = x;
+    const temp_t* yy = y;
+    return xx->temp_id - yy->temp_id;
+}
+static unsigned hashtemp(const void* key)
+{
+    const temp_t* k = key;
+    return k->temp_id;
+}
+
+Table_T x86_64_temp_map()
+{
+    Table_T result = Table_new(0, cmptemp, hashtemp);
+    for (int i = 0; i < 16; i++) {
+        Table_put(result, &(temp_map_temps[i]), (void*)registers[i]);
+    }
+    return result;
+}
+
 ac_frame_t* calculate_activation_records(sl_decl_t* program)
 {
     if (ac_debug) {
         fprintf(stderr, "calculating activation records\n");
     }
+    Table_T temp_map = x86_64_temp_map();
+
     ac_frame_t* frame_list = NULL;
     for (sl_decl_t* d = program; d; d = d->dl_list) {
         if (d->dl_tag == SL_DECL_FUNC) {
-            ac_frame_t* f = ac_frame_new(d->dl_name);
+            ac_frame_t* f = ac_frame_new(d->dl_name, temp_map);
             calculate_activation_record_decl_func(program, f, d);
             frame_list = ac_frame_append_frame(frame_list, f);
         }

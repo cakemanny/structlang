@@ -97,7 +97,7 @@ struct lv_igraph_t {
 
 struct igraph_and_table {
     lv_igraph_t* igraph;
-    Table_T live_outs;
+    Table_T live_outs; // lv_node_t* -> temp_list_t*
 } intererence_graph(lv_flowgraph_t*);
 
 #include <stdio.h>
