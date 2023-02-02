@@ -29,7 +29,8 @@ typedef struct reg_alloc_info_t {
     lv_node_list_t* select_stack;
 
     int* degree; // an array containing the degree of each node.
-    int* color; // ?
+    int* color; // colours assigned to the node with ID idx;
+    lv_node_list_t** adj_list; // a list of non-precoloured adjacents
 
     lv_flowgraph_t* flowgraph;
 
@@ -70,6 +71,17 @@ node_list_contains(const lv_node_list_t* haystack, const lv_node_t* node)
         }
     }
     return false;
+}
+
+
+static void
+node_list_free(lv_node_list_t** pnode_list)
+{
+    while (*pnode_list) {
+        var to_free = *pnode_list;
+        *pnode_list = (*pnode_list)->nl_list;
+        free(to_free);
+    }
 }
 
 /*
@@ -130,13 +142,11 @@ simplify(
     info->select_stack = n_cell;
 
 
-    var node = info->simplify_worklist->nl_node;
+    var node = n_cell->nl_node;
 
-    lv_node_list_t* adj = lv_adj(node);
-    for (var s = adj; s; s = s->nl_list) {
+    for (var s = info->adj_list[node->lvn_idx]; s; s = s->nl_list) {
         var m = s->nl_node;
         decrement_degree(info, m);
-        // TODO: free node list cell and node?
     }
 }
 
@@ -199,7 +209,7 @@ assign_colors(
         }
 
         // Remove colors which are already used by adjacent nodes.
-        lv_node_list_t* adj = lv_adj(node);
+        lv_node_list_t* adj = info->adj_list[node->lvn_idx];
         for (var w = adj; w; w = w->nl_list) {
             if (node_list_contains(info->colored_nodes, w->nl_node)
                     || node_list_contains(info->precolored, w->nl_node)) {
@@ -246,23 +256,42 @@ struct ra_color_result {
     var count_nodes = Table_length(interference->lvig_gtemp);
     info.degree = xmalloc(count_nodes * sizeof *info.degree);
     info.color = xmalloc(count_nodes * sizeof *info.color);
+    info.adj_list = xmalloc(count_nodes * sizeof *info.adj_list);
 
     for (var n = nodes; n; n = n->nl_list) {
         var node = n->nl_node;
         temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
         assert(temp_for_node);
-        // FIXME: this should use initial_allocation, oder?
-        if (temp_for_node->temp_id < 100) {
+
+        if (Table_get(initial_allocation, temp_for_node)) {
             info.precolored = list_cons(node, info.precolored);
         } else {
             info.initial = list_cons(node, info.initial);
         }
 
-        // This might be wrong.... since the guide constructs a
-        // new interference graph not considering precolored nodes
         lv_node_list_t* adj = lv_adj(node);
-        info.degree[node->lvn_idx] = list_length(adj);
+        for (var s = adj; s; s = s->nl_list) {
+            temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
+            // degree is the number of adjacent but not precolored nodes
+            var is_precolored = !!Table_get(initial_allocation, temp_for_node);
+            if (!is_precolored) {
+                info.degree[node->lvn_idx] += 1;
+
+                info.adj_list[node->lvn_idx] =
+                    list_cons(s->nl_node, info.adj_list[node->lvn_idx]);
+            }
+        }
         // FIXME: free (via rust) adj;
+    }
+    if (0) {
+        fprintf(stderr, "len(precolored) = %d\n", list_length(info.precolored));
+        fprintf(stderr, "len(initial) = %d\n", list_length(info.initial));
+
+        fprintf(stderr, "degree = [");
+        for (int i = 0; i < count_nodes; i++) {
+            fprintf(stderr, "%d,", info.degree[i]);
+        }
+        fprintf(stderr, "]\n");
     }
 
     /*
@@ -312,6 +341,14 @@ struct ra_color_result {
 
     // Return Allocation
     result.racr_allocation = Table_new(0, cmptemp, hashtemp);
+    for (var n = info.precolored; n; n = n->nl_list) {
+        var node = n->nl_node;
+        temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
+        assert(temp_for_node);
+        Table_put(result.racr_allocation,
+                temp_for_node,
+                Table_get(initial_allocation, temp_for_node));
+    }
     for (var n = info.colored_nodes; n; n = n->nl_list) {
         var node = n->nl_node;
         temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
@@ -327,7 +364,32 @@ struct ra_color_result {
                 (void*)register_name);
     }
 
-    // clean up
+    if (0) {
+        fprintf(stderr, "degree = [");
+        for (int i = 0; i < count_nodes; i++) {
+            fprintf(stderr, "%d,", info.degree[i]);
+        }
+        fprintf(stderr, "]\n");
+    }
+
+    // :: clean up ::
+
+    // This does not clean up the actual nodes themselves...
+    // Those came from Rust, so we need to write something that gives them
+    // back.
+    node_list_free(&info.spilled_nodes);
+    node_list_free(&info.colored_nodes);
+    node_list_free(&info.precolored);
+    assert(info.initial == NULL);
+    assert(info.simplify_worklist == NULL);
+    assert(info.spill_worklist == NULL);
+
+    // dealloc all adj_lists
+    for (int i = 0; i < count_nodes; i++) {
+        node_list_free(&(info.adj_list[i]));
+    }
+    free(info.adj_list); info.adj_list = NULL;
+
     free(info.degree); info.degree = NULL;
     free(info.color); info.color = NULL;
 
