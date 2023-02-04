@@ -560,7 +560,7 @@ static unsigned hashtemp(const void* key)
     return k->temp_id;
 }
 
-Table_T x86_64_temp_map()
+static Table_T x86_64_temp_map()
 {
     Table_T result = Table_new(0, cmptemp, hashtemp);
     for (int i = 0; i < 16; i++) {
@@ -585,6 +585,27 @@ ac_frame_t* calculate_activation_records(sl_decl_t* program)
         }
     }
     return frame_list;
+}
+
+/*
+ * Creates some space in the frame to store a temporary
+ */
+struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame)
+{
+    size_t size = target->word_size;
+    struct ac_frame_var* v = xmalloc(sizeof *v);
+    v->acf_tag = ACF_ACCESS_FRAME;
+    v->acf_varname = NULL; // ?? t_n
+    v->acf_size = size;
+    v->acf_alignment = target->word_size;
+    v->acf_var_id = -1;
+    v->acf_offset = frame->acf_last_local_offset - size;
+    while ((v->acf_offset % v->acf_alignment) != 0)
+        v->acf_offset--;
+    v->acf_is_formal = 0;
+    // TODO: think about the ptr_map stuff ...
+    ac_frame_append_var(frame, v);
+    return v;
 }
 
 tree_stm_t* proc_entry_exit_1(

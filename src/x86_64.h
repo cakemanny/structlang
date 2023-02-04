@@ -30,9 +30,15 @@ x86_64_codegen(temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* stm);
 assm_instr_t* /* list */
 proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body);
 
-
+/*
+ * This adds a function prologue and epilogue.
+ */
 assm_fragment_t
 proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body);
+
+assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp);
+
+assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp);
 
 
 #endif /* __X86_64_H__ */

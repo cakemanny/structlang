@@ -101,17 +101,47 @@ static void emit(codegen_t state, assm_instr_t* new_instr)
  * return the at&t syntax instruction suffix that needs to be used for
  * the expression
  */
-static const char* suff(tree_exp_t* exp)
+static const char* suff_from_size(size_t size)
 {
-    switch (exp->te_size)
+    switch (size)
     {
         case 8: return "q";
         case 4: return "l";
         case 2: return "w";
         case 1: return "b";
     }
-    fprintf(stderr, "invalid size %lu\n", exp->te_size);
+    fprintf(stderr, "invalid size %lu\n", size);
     assert(0 && "invalid size");
+}
+
+static const char* suff(tree_exp_t* exp)
+{
+    return suff_from_size(exp->te_size);
+}
+
+
+assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp)
+{
+    char* s = NULL;
+    Asprintf(&s, "mov%s %d(`s0), `d0\n", suff_from_size(v->acf_size),
+            v->acf_offset);
+    var src_list = temp_list(special_regs[3]);
+    return assm_oper(s, temp_list(temp), src_list, NULL);
+}
+
+assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp)
+{
+    char* s = NULL;
+    Asprintf(&s, "mov%s `s1, %d(`s0)	# spill\n",
+            suff_from_size(v->acf_size), v->acf_offset);
+    var src_list =
+        temp_list_cons(special_regs[3],
+                temp_list(temp));
+    return assm_oper(
+            s,
+            NULL, /* dst list */
+            src_list,
+            NULL /* jump=None */);
 }
 
 static temp_list_t* munch_args(codegen_t state, int arg_idx, tree_exp_t* exp)
@@ -594,6 +624,8 @@ assm_instr_t* x86_64_codegen(
     return assm_list_reverse(result);
 }
 
+
+
 assm_instr_t* proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
 {
     temp_list_t* src_list = NULL;
@@ -620,6 +652,9 @@ assm_instr_t* proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
 
     return body;
 }
+
+
+
 
 /* An example empty linux function
 

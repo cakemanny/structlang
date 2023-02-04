@@ -3,6 +3,7 @@
 #include <assert.h>
 #include "list.h"
 #include "mem.h"
+#include "x86_64.h"
 
 #define var __auto_type
 
@@ -114,7 +115,7 @@ node_list_free(lv_node_list_t** pnode_list)
 }
 
 /*
- * These are used when we have Tables with temp_t's as keys
+ * These two are used when we have Tables with temp_t's as keys
  */
 static int cmptemp(const void* x, const void* y)
 {
@@ -126,6 +127,23 @@ static unsigned hashtemp(const void* key)
 {
     const temp_t* k = key;
     return k->temp_id;
+}
+
+static bool
+temp_eq(temp_t a, temp_t b)
+{
+    return a.temp_id == b.temp_id;
+}
+
+static bool
+temp_list_contains(const temp_list_t* haystack, temp_t temp)
+{
+    for (var h = haystack; h; h = h->tmp_list) {
+        if (temp_eq(h->tmp_temp, temp)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /*
@@ -433,6 +451,83 @@ struct ra_color_result {
     return result;
 }
 
+static void
+replace_temp(temp_list_t* temp_list, temp_t to_be_replaced, temp_t replacement)
+{
+    for (var t = temp_list; t; t = t->tmp_list)
+    {
+        if (temp_eq(t->tmp_temp, to_be_replaced)) {
+            t->tmp_temp = replacement;
+        }
+    }
+}
+
+static void
+spill_temp(
+        temp_state_t* temp_state,
+        ac_frame_t* frame,
+        assm_instr_t** pbody_instrs,
+        temp_t temp_to_spill
+        )
+{
+    struct ac_frame_var* new_frame_var = ac_spill_temporary(frame);
+    for (var pinstr = pbody_instrs; *pinstr; pinstr = &((*pinstr)->ai_list)) {
+        var instr = *pinstr;
+        switch (instr->ai_tag) {
+            case ASSM_INSTR_OPER:
+                if (temp_list_contains(instr->ai_oper_dst, temp_to_spill)) {
+                    // Want to store to our new stack location
+                    // after
+                    var new_temp = temp_newtemp(temp_state);
+                    replace_temp(instr->ai_oper_dst, temp_to_spill, new_temp);
+                    var new_instr = x86_64_store_temp(new_frame_var, new_temp);
+
+                    // graft in
+                    new_instr->ai_list = instr->ai_list;
+                    instr->ai_list = new_instr;
+                }
+                if (temp_list_contains(instr->ai_oper_src, temp_to_spill)) {
+                    // Want to fetch from our new stack location
+                    // before
+                    var new_temp = temp_newtemp(temp_state);
+                    replace_temp(instr->ai_oper_src, temp_to_spill, new_temp);
+                    var new_instr = x86_64_load_temp(new_frame_var, new_temp);
+                    // graft in
+                    new_instr->ai_list = instr;
+                    *pinstr = new_instr;
+                }
+                break;
+            case ASSM_INSTR_LABEL:
+                break;
+            case ASSM_INSTR_MOVE:
+                if (temp_eq(instr->ai_move_dst, temp_to_spill)) {
+                    // Want to store to our new stack location
+                    // after
+                    var new_temp = temp_newtemp(temp_state);
+                    instr->ai_oper_dst->tmp_temp = new_temp;
+                    var new_instr = x86_64_store_temp(new_frame_var, new_temp);
+
+                    // graft in
+                    new_instr->ai_list = instr->ai_list;
+                    instr->ai_list = new_instr;
+                }
+                if (temp_eq(instr->ai_move_src, temp_to_spill)) {
+                    // Want to fetch from our new stack location
+                    // before
+                    var new_temp = temp_newtemp(temp_state);
+                    instr->ai_move_src = new_temp;
+                    var new_instr = x86_64_load_temp(new_frame_var, new_temp);
+                    // graft in
+                    new_instr->ai_list = instr;
+                    *pinstr = new_instr;
+                }
+                break;
+        }
+    }
+
+}
+
+
 
 struct instr_list_and_allocation
 ra_alloc(
@@ -460,7 +555,13 @@ ra_alloc(
 
     // :: check for spilled nodes, and rewrite program if so ::
     if (color_result.racr_spills) {
-        assert(!"TODO: spilling");
+        if (debug) {fprintf(stderr, "spilling!\n");}
+
+        for (temp_list_t* x = color_result.racr_spills; x; x = x->tmp_list) {
+            spill_temp(temp_state, frame, &body_instrs, x->tmp_temp);
+        }
+        // TODO: free structures
+        return ra_alloc(temp_state, body_instrs, frame, false);
     }
 
     struct instr_list_and_allocation result = {

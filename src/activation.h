@@ -66,6 +66,8 @@ extern const size_t ac_word_size;
 
 extern bool ac_debug;
 
+struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame);
+
 /*
  * adds instructions to the beginning of the function that move arguments
  * into their stack location (of reg location?)
