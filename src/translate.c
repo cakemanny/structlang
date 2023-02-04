@@ -630,7 +630,7 @@ static translate_exp_t* translate_expr_addrof(
         translate_un_ex(info->temp_state, arg_ex);
 
     /*
-     * 3 cases (until we add array subscribt)
+     * 3 cases (until we add array subscript)
      *   * var
      *   * member
      *   * deref
@@ -817,7 +817,7 @@ sl_fragment_t* translate_program(
         assert(f); // d => f
         if (d->dl_tag == SL_DECL_FUNC) {
             var body = translate_decl(&info, f, d);
-            body = proc_entry_exit_1(f, body);
+            body = proc_entry_exit_1(temp_state, f, body);
             var frag = sl_fragment(body, f);
             result = fr_append(result, frag);
 

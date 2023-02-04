@@ -50,4 +50,13 @@ assm_instr_t* assm_list_reverse(assm_instr_t*);
 
 assm_instr_t* assm_list_chain(assm_instr_t* lead, assm_instr_t* tail);
 
+
+typedef struct assm_fragment_t assm_fragment_t;
+
+struct assm_fragment_t {
+    char* asf_prologue;
+    assm_instr_t* asf_instrs; /* list of instructions */
+    char* asf_epilogue;
+};
+
 #endif /* __ASSEM_H__ */

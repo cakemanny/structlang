@@ -188,12 +188,22 @@ int main(int argc, char* argv[])
         var instrs_and_allocation =
             ra_alloc(temp_state, body_instrs, frag->fr_frame,
                     stop_after_liveness_analysis);
+        if (stop_after_liveness_analysis) {
+            break;
+        }
 
-        for (var i = instrs_and_allocation.ra_instrs; i; i = i->ai_list) {
+        var final_fragment = proc_entry_exit_3(
+                frag->fr_frame, instrs_and_allocation.ra_instrs);
+
+        fputs(final_fragment.asf_prologue, stdout);
+        for (var i = final_fragment.asf_instrs; i; i = i->ai_list) {
+            // FIXME: we need to provide a separate allocation for each
+            // instruction size
             char buf[128];
             assm_format(buf, 128, i, instrs_and_allocation.ra_allocation);
             fprintf(stdout, "%s", buf);
         }
+        fputs(final_fragment.asf_epilogue, stdout);
     }
 
     // end of program... maybe

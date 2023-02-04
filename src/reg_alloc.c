@@ -11,6 +11,8 @@
 #define SetBit(x, i) (x)[(i)>>6] |= (1ULL<<((i)&63))
 #define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
 
+static const bool debug = 1;
+
 /*
  * Holds all of our worklists and state, etc for the graph colouring
  * algorithm.
@@ -146,7 +148,9 @@ simplify(
 
     for (var s = info->adj_list[node->lvn_idx]; s; s = s->nl_list) {
         var m = s->nl_node;
-        decrement_degree(info, m);
+        if (!node_list_contains(info->select_stack, m)){
+            decrement_degree(info, m);
+        }
     }
 }
 
@@ -256,6 +260,8 @@ struct ra_color_result {
     var count_nodes = Table_length(interference->lvig_gtemp);
     info.degree = xmalloc(count_nodes * sizeof *info.degree);
     info.color = xmalloc(count_nodes * sizeof *info.color);
+    // This is correct, since we are allocating an array of pointers
+    // NOLINTNEXTLINE(bugprone-sizeof-expression)
     info.adj_list = xmalloc(count_nodes * sizeof *info.adj_list);
 
     for (var n = nodes; n; n = n->nl_list) {
@@ -263,27 +269,24 @@ struct ra_color_result {
         temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
         assert(temp_for_node);
 
-        if (Table_get(initial_allocation, temp_for_node)) {
+        var is_precolored = !!Table_get(initial_allocation, temp_for_node);
+        if (is_precolored) {
             info.precolored = list_cons(node, info.precolored);
         } else {
             info.initial = list_cons(node, info.initial);
-        }
 
-        lv_node_list_t* adj = lv_adj(node);
-        for (var s = adj; s; s = s->nl_list) {
-            temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
-            // degree is the number of adjacent but not precolored nodes
-            var is_precolored = !!Table_get(initial_allocation, temp_for_node);
-            if (!is_precolored) {
+            lv_node_list_t* adj = lv_adj(node);
+            for (var s = adj; s; s = s->nl_list) {
+                // degree is the number of adjacent but not precolored nodes
                 info.degree[node->lvn_idx] += 1;
 
                 info.adj_list[node->lvn_idx] =
                     list_cons(s->nl_node, info.adj_list[node->lvn_idx]);
             }
+            // FIXME: free (via rust) adj;
         }
-        // FIXME: free (via rust) adj;
     }
-    if (0) {
+    if (debug) {
         fprintf(stderr, "len(precolored) = %d\n", list_length(info.precolored));
         fprintf(stderr, "len(initial) = %d\n", list_length(info.initial));
 
@@ -364,7 +367,7 @@ struct ra_color_result {
                 (void*)register_name);
     }
 
-    if (0) {
+    if (debug) {
         fprintf(stderr, "degree = [");
         for (int i = 0; i < count_nodes; i++) {
             fprintf(stderr, "%d,", info.degree[i]);

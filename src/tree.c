@@ -141,6 +141,7 @@ stm tree_stm_seq(stm s1, stm s2)
 {
     stm s = tree_stm_new(TREE_STM_SEQ);
     assert(s1);
+    // TODO: why do we not assert s2 ?
     s->tst_seq_s1 = s1;
     s->tst_seq_s2 = s2;
     return s;

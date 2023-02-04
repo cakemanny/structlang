@@ -71,6 +71,7 @@ extern bool ac_debug;
  * into their stack location (of reg location?)
  * and ergh, some other bits
  */
-tree_stm_t* proc_entry_exit_1(ac_frame_t* frame, tree_stm_t* body);
+tree_stm_t* proc_entry_exit_1(
+        temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* body);
 
 #endif /* __ACTIVATION_H__ */

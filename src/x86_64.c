@@ -47,14 +47,7 @@ temp_t argregs[] = {
 };
 
 // registers that won't be trashed by a called function
-temp_t callee_saves[] = {
-    {.temp_id = 3}, // rbx
-    // {.temp_id = 5}, // rbp  -- commented since it's in special regs
-    {.temp_id = 12}, // r12
-    {.temp_id = 13}, // r13
-    {.temp_id = 14}, // r14
-    {.temp_id = 15}, // r15
-};
+temp_t callee_saves[] = X86_68_CALLEE_SAVES;
 
 // things we trash
 temp_t caller_saves[] = {
@@ -613,7 +606,7 @@ assm_instr_t* proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
     sl_sym_t* empty_jump_list = xmalloc(sizeof *empty_jump_list);
 
     var sink_instr = assm_oper(
-            strdupchk(""),
+            strdupchk("\n"),
             NULL,
             src_list,
             empty_jump_list);
@@ -626,4 +619,65 @@ assm_instr_t* proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
     b->ai_list = sink_instr;
 
     return body;
+}
+
+/* An example empty linux function
+
+	.globl	f                               # -- Begin function f
+	.p2align	4, 0x90
+	.type	f,@function
+f:                                      # @f
+.Lfunc_begin0:
+	.file	1 "/Users/daniel/src/c/tmp" "xxx.c"
+	.loc	1 4 0                           # xxx.c:4:0
+	.cfi_startproc
+# %bb.0:
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+.Ltmp0:
+	.loc	1 5 12 prologue_end             # xxx.c:5:12
+	movl	-4(%rbp), %eax
+	.loc	1 5 5 is_stmt 0                 # xxx.c:5:5
+	popq	%rbp
+	.cfi_def_cfa %rsp, 8
+	retq
+.Ltmp1:
+.Lfunc_end0:
+	.size	f, .Lfunc_end0-f
+	.cfi_endproc
+                                        # -- End function
+*/
+
+assm_fragment_t proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
+{
+    const char* fn_label = frame->acf_name;
+    char* prologue = NULL;
+    Asprintf(&prologue, "\
+	.globl	%s\n\
+	.p2align	4, 0x90\n\
+	.type	%s,@function\n\
+%s:\n\
+	.cfi_startproc\n\
+	pushq	%%rbp\n\
+	movq	%%rsp, %%rbp\n\
+",
+            fn_label, fn_label, fn_label);
+
+    char* epilogue = NULL;
+    Asprintf(&epilogue, "\
+# Epilogue\n\
+	popq	%%rbp\n\
+	retq\n\
+	.cfi_endproc\n\
+"          );
+    // TODO function size ?
+    return (assm_fragment_t){
+        .asf_prologue = prologue,
+        .asf_instrs = body,
+        .asf_epilogue = epilogue,
+    };
 }

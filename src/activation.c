@@ -1,6 +1,9 @@
 #include "activation.h"
+#include "x86_64.h"
 #include "mem.h" // xmalloc
 #include <assert.h>
+
+#define var __auto_type
 
 #define BitsetLen(len) (((len) + 63) / 64)
 #define IsBitSet(x, i) (( (x)[(i)>>6] & (1ULL<<((i)&63)) ) != 0ULL)
@@ -80,6 +83,8 @@ ac_registers_t register_temps = {
     .acr_ret0 = {.temp_id = 0}, // rax
     .acr_ret1 = {.temp_id = 2}, // rdx
 };
+
+static temp_t callee_saves[] = X86_68_CALLEE_SAVES;
 
 
 typedef struct target {
@@ -582,9 +587,60 @@ ac_frame_t* calculate_activation_records(sl_decl_t* program)
     return frame_list;
 }
 
-tree_stm_t* proc_entry_exit_1(ac_frame_t* frame, tree_stm_t* body)
+tree_stm_t* proc_entry_exit_1(
+        temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* body)
 {
-    // Apparently we implement this later, after having completed our register
-    // allocator
+    // 1. we have to move each incoming register parameter to where it
+    // is seen from in the function
+
+    // 2. If we are not doing spilling, then we make room in the frame for
+    // all callee-save registers and add instructions here to save them at
+    // the start and to restore them at the end.
+    // If we are doing spilling, then we save them to and restore them from
+    // temporaries.
+
+    // 1. Move register args to temps
+
+    tree_stm_t* arg_moves = NULL;
+    for (var v = frame->ac_frame_vars; v; v = v->acf_list) {
+        if (v->acf_is_formal && v->acf_tag == ACF_ACCESS_REG) {
+            temp_t param_reg = v->acf_reg;
+            v->acf_reg = temp_newtemp(temp_state);
+            var move = tree_stm_move(
+                    tree_exp_temp(v->acf_reg, v->acf_size), // <- dest
+                    tree_exp_temp(param_reg, v->acf_size)); // <- src
+
+            arg_moves = (arg_moves) ? tree_stm_seq(arg_moves, move) : move;
+        }
+    }
+    if (arg_moves) {
+        body = tree_stm_seq(arg_moves, body);
+    }
+
+    // 2. Save callee saves
+
+    temp_t temps_for_callee_saves[NELEMS(callee_saves)];
+    for (int i = 0; i < NELEMS(callee_saves); i++) {
+        temps_for_callee_saves[i] = temp_newtemp(temp_state);
+    }
+
+    tree_stm_t* saves = NULL;
+    for (int i = 0; i < NELEMS(callee_saves); i++) {
+        var dst_access = tree_exp_temp(temps_for_callee_saves[i], ac_word_size);
+        var src_access = tree_exp_temp(callee_saves[i], ac_word_size);
+        var move = tree_stm_move(dst_access, src_access);
+        saves = (saves) ? tree_stm_seq(saves, move) : move;
+    }
+
+    tree_stm_t* restores = NULL;
+    for (int i = 0; i < NELEMS(callee_saves); i++) {
+        var dst_access = tree_exp_temp(callee_saves[i], ac_word_size);
+        var src_access = tree_exp_temp(temps_for_callee_saves[i], ac_word_size);
+        var move = tree_stm_move(dst_access, src_access);
+        restores = (restores) ? tree_stm_seq(restores, move) : move;
+    }
+
+    body = tree_stm_seq(tree_stm_seq(saves, body), restores);
+
     return body;
 }

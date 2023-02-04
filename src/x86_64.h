@@ -6,6 +6,15 @@
 #include "tree.h" /* tree_stm_t */
 #include "assem.h" /* assm_instr_t */
 
+// rbp is not included since it's a speccial reg (the frame pointer)
+#define X86_68_CALLEE_SAVES { \
+    {.temp_id = 3}, /* rbx */ \
+    {.temp_id = 12}, /* r12 */ \
+    {.temp_id = 13}, /* r13 */ \
+    {.temp_id = 14}, /* r14 */ \
+    {.temp_id = 15}, /* r15 */ \
+}
+
 /*
  * x86_64_codegen selects instructions for a single statement in the tree IR
  * language. It returns a list of instructions in the x86_64 architecture
@@ -20,5 +29,10 @@ x86_64_codegen(temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* stm);
  */
 assm_instr_t* /* list */
 proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body);
+
+
+assm_fragment_t
+proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body);
+
 
 #endif /* __X86_64_H__ */

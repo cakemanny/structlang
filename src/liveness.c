@@ -449,7 +449,7 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
     for (var n = nodes; n; n = n->nl_list) {
         var node = n->nl_node;
 
-        if (0) {
+        if (1) {
             temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, node);
             assert(temp_for_node);
             // TODO: include the temp in the printing?
@@ -460,7 +460,7 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
 
         lv_node_list_t* adj = lv_adj(node);
         for (var s = adj; s; s = s->nl_list) {
-            if (0) {
+            if (1) {
                 temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, s->nl_node);
                 assert(temp_for_node);
                 // TODO: include the temp in the printing?
