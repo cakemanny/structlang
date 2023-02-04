@@ -11,7 +11,7 @@
 #define SetBit(x, i) (x)[(i)>>6] |= (1ULL<<((i)&63))
 #define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
 
-static const bool debug = 1;
+static const bool debug = 0;
 
 /*
  * Holds all of our worklists and state, etc for the graph colouring
@@ -35,11 +35,38 @@ typedef struct reg_alloc_info_t {
     lv_node_list_t** adj_list; // a list of non-precoloured adjacents
 
     lv_flowgraph_t* flowgraph;
+    lv_igraph_t* interference;
 
 } reg_alloc_info_t;
 
-// if we haven't implemented coalescing then
-// def get_alias(n): return n
+
+static temp_t* temp_for_node(reg_alloc_info_t* info, lv_node_t* node)
+{
+    temp_t* result = Table_get(info->interference->lvig_gtemp, node);
+    assert(result);
+    return result;
+}
+
+static void print_adj_list(reg_alloc_info_t* info, lv_node_list_t* adj)
+{
+    fprintf(stderr, "adj_list = [");
+    for (var w = adj; w; w = w->nl_list) {
+        temp_t* t = temp_for_node(info, w->nl_node);
+        fprintf(stderr, "%d,", t->temp_id);
+    }
+    fprintf(stderr, "]\n");
+}
+
+static void print_ok_colors(reg_alloc_info_t* info, uint64_t* ok_colors)
+{
+    fprintf(stderr, "ok_colors = [");
+    for (int i = 0; i < info->K; i++) {
+        if (IsBitSet(ok_colors, i)) {
+            fprintf(stderr, "%d,", i);
+        }
+    }
+    fprintf(stderr, "]\n");
+}
 
 
 /*
@@ -148,7 +175,7 @@ simplify(
 
     for (var s = info->adj_list[node->lvn_idx]; s; s = s->nl_list) {
         var m = s->nl_node;
-        if (!node_list_contains(info->select_stack, m)){
+        if (!node_list_contains(info->select_stack, m)) {
             decrement_degree(info, m);
         }
     }
@@ -212,8 +239,13 @@ assign_colors(
             SetBit(ok_colors, i);
         }
 
+        if (debug) {
+            fprintf(stderr, "temp=%d\n", temp_for_node(info, node)->temp_id);
+        }
+
         // Remove colors which are already used by adjacent nodes.
         lv_node_list_t* adj = info->adj_list[node->lvn_idx];
+        if (debug) { print_adj_list(info, adj); }
         for (var w = adj; w; w = w->nl_list) {
             if (node_list_contains(info->colored_nodes, w->nl_node)
                     || node_list_contains(info->precolored, w->nl_node)) {
@@ -222,8 +254,11 @@ assign_colors(
                 ClearBit(ok_colors, w_color);
             }
         }
+        if (debug) { print_ok_colors(info, ok_colors); }
+
         // If we have no remaining colours, spill.
         if (__builtin_popcountll(_ok_colors) == 0) {
+            if (debug) { fprintf(stderr, "spill\n"); }
             n_cell->nl_list = info->spilled_nodes;
             info->spilled_nodes = n_cell;
         } else {
@@ -233,6 +268,7 @@ assign_colors(
 
             // store the new first available colour for n
             int new_color = __builtin_ctzll(_ok_colors);
+            if (debug) { fprintf(stderr, "new_color = %d\n", new_color); }
             info->color[node->lvn_idx] = new_color;
         }
     }
@@ -254,6 +290,7 @@ struct ra_color_result {
     reg_alloc_info_t info = {
         .K = Table_length(initial_allocation),
         .flowgraph = flowgraph,
+        .interference = interference,
     };
 
     var nodes = lv_nodes(interference->lvig_graph);
@@ -266,12 +303,13 @@ struct ra_color_result {
 
     for (var n = nodes; n; n = n->nl_list) {
         var node = n->nl_node;
-        temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
-        assert(temp_for_node);
 
-        var is_precolored = !!Table_get(initial_allocation, temp_for_node);
+        temp_t* t = temp_for_node(&info, node);
+
+        var is_precolored = !!Table_get(initial_allocation, t);
         if (is_precolored) {
             info.precolored = list_cons(node, info.precolored);
+            info.color[node->lvn_idx] = t->temp_id;
         } else {
             info.initial = list_cons(node, info.initial);
 
@@ -336,33 +374,29 @@ struct ra_color_result {
     // Return Spills
     for (var n = info.spilled_nodes; n; n = n->nl_list) {
         var node = n->nl_node;
-        temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
-        assert(temp_for_node);
+        temp_t* temp = temp_for_node(&info, node);
         result.racr_spills =
-            temp_list_cons(*temp_for_node, result.racr_spills);
+            temp_list_cons(*temp, result.racr_spills);
     }
 
     // Return Allocation
     result.racr_allocation = Table_new(0, cmptemp, hashtemp);
     for (var n = info.precolored; n; n = n->nl_list) {
         var node = n->nl_node;
-        temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
-        assert(temp_for_node);
+        temp_t* temp = temp_for_node(&info, node);
         Table_put(result.racr_allocation,
-                temp_for_node,
-                Table_get(initial_allocation, temp_for_node));
+                temp,
+                Table_get(initial_allocation, temp));
     }
     for (var n = info.colored_nodes; n; n = n->nl_list) {
         var node = n->nl_node;
-        temp_t* temp_for_node = Table_get(interference->lvig_gtemp, node);
-        assert(temp_for_node);
 
         var color_idx = info.color[node->lvn_idx];
         var register_name = registers[color_idx];
 
         Table_put(
                 result.racr_allocation,
-                temp_for_node,
+                temp_for_node(&info, node),
                 // cast away const
                 (void*)register_name);
     }
