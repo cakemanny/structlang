@@ -12,7 +12,7 @@ fi
 # TODO rewrite to check our expected error messages
 
 check_pass() {
-    output=$(echo "$1" | $SLC -t -)
+    _=$(echo "$1" | $SLC -t -)
     result=$?
     if [[ $result == 0 ]]; then
         echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"
@@ -26,7 +26,7 @@ check_pass() {
 }
 
 check_fail() {
-    output=$(echo "$1" | $SLC -t -)
+    _=$(echo "$1" | $SLC -t -)
     result=$?
     if [[ $result == 1 ]]; then
         echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"

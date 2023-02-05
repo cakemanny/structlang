@@ -15,7 +15,7 @@ fi
 # TODO rewrite to check the records
 
 check_pass() {
-    output=$(echo "$1" | $SLC -a -)
+    _=$(echo "$1" | $SLC -a -)
     result=$?
     if [[ $result == 0 ]]; then
         echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"

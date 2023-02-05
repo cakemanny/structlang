@@ -1,0 +1,76 @@
+#!/bin/sh
+
+args=`getopt v: $*`
+if [ $? -ne 0 ]; then
+    echo "usage: $0 [-v]"
+    exit 2
+fi
+set -- $args
+
+verbose=
+while :; do
+    case "$1" in
+        -v)
+            verbose=1
+            shift
+            ;;
+        --)
+            shift; break
+            ;;
+    esac
+done
+
+BUILD_DIR="$(dirname "$0")/../build/debug"
+test -x "$BUILD_DIR/structlangc" || exit 1
+SLC="$BUILD_DIR/structlangc"
+
+red=$(tput setaf 1)
+grn=$(tput setaf 2)
+rst=$(tput sgr0)
+exitcode=0
+
+LD="zig cc"
+LDFLAGS="--target=x86_64-linux-gnu -Wno-unused-command-line-argument"
+LDLIBS=""
+
+expect () {
+    code="$1"
+    expected="$2"
+    tmp_d=$(mktemp -d) || exit 1
+    stmp="${tmp_d}/test.s"
+    atmp="${tmp_d}/a.out"
+    if (echo "$code" | $SLC - > $stmp); then
+        # Link
+        $LD $LDFLAGS $stmp -o $atmp $LDLIBS
+        # Run
+        # We write to a file because docker seems to spit a carriage return out
+        docker run -it --rm --platform=linux/amd64 -v "$tmp_d:/app" -w /app \
+            debian:latest sh -c './a.out; echo $? > test.result'
+
+        result=$(cat ${tmp_d}/test.result)
+        if [ "$result" = "$expected" ]; then
+            if [ -n "$verbose" ]; then
+                echo "${grn}pass${rst}: '$code'"
+            else
+                echo "${grn}pass${rst}"
+            fi
+        else
+            echo "${red}FAIL:${rst} '$code'"
+            echo "  expected: '$expected'"
+            echo "  actual:   '$result'"
+            exitcode=$((1 + $exitcode))
+        fi
+    else
+        echo "${red}FAILED${rst} to compile '$code'"
+        exitcode=$((1 + $exitcode))
+    fi
+    rm -rf ${tmp_d}
+}
+
+# The tests
+
+expect 'fn main() -> int { let a: int = 0; a }' '0'
+expect 'fn main() -> int { let a: int = 1; a }' '1'
+expect 'fn main() -> int { let a: int = 1; let b: int = 2; a + b }' '3'
+
+exit ${exitcode}
