@@ -8,11 +8,11 @@
 
 // rbp is not included since it's a speccial reg (the frame pointer)
 #define X86_68_CALLEE_SAVES { \
-    {.temp_id = 3}, /* rbx */ \
-    {.temp_id = 12}, /* r12 */ \
-    {.temp_id = 13}, /* r13 */ \
-    {.temp_id = 14}, /* r14 */ \
-    {.temp_id = 15}, /* r15 */ \
+    {.temp_id = 3 , .temp_size = 8}, /* rbx */ \
+    {.temp_id = 12, .temp_size = 8}, /* r12 */ \
+    {.temp_id = 13, .temp_size = 8}, /* r13 */ \
+    {.temp_id = 14, .temp_size = 8}, /* r14 */ \
+    {.temp_id = 15, .temp_size = 8}, /* r15 */ \
 }
 
 /*

@@ -478,7 +478,7 @@ spill_temp(
                 if (temp_list_contains(instr->ai_oper_dst, temp_to_spill)) {
                     // Want to store to our new stack location
                     // after
-                    var new_temp = temp_newtemp(temp_state);
+                    var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     replace_temp(instr->ai_oper_dst, temp_to_spill, new_temp);
                     var new_instr = x86_64_store_temp(new_frame_var, new_temp);
 
@@ -489,7 +489,7 @@ spill_temp(
                 if (temp_list_contains(instr->ai_oper_src, temp_to_spill)) {
                     // Want to fetch from our new stack location
                     // before
-                    var new_temp = temp_newtemp(temp_state);
+                    var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     replace_temp(instr->ai_oper_src, temp_to_spill, new_temp);
                     var new_instr = x86_64_load_temp(new_frame_var, new_temp);
                     // graft in
@@ -503,7 +503,7 @@ spill_temp(
                 if (temp_eq(instr->ai_move_dst, temp_to_spill)) {
                     // Want to store to our new stack location
                     // after
-                    var new_temp = temp_newtemp(temp_state);
+                    var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     instr->ai_oper_dst->tmp_temp = new_temp;
                     var new_instr = x86_64_store_temp(new_frame_var, new_temp);
 
@@ -514,7 +514,7 @@ spill_temp(
                 if (temp_eq(instr->ai_move_src, temp_to_spill)) {
                     // Want to fetch from our new stack location
                     // before
-                    var new_temp = temp_newtemp(temp_state);
+                    var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     instr->ai_move_src = new_temp;
                     var new_instr = x86_64_load_temp(new_frame_var, new_temp);
                     // graft in

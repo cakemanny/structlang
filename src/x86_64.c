@@ -27,12 +27,13 @@ typedef struct codegen_t {
 // pre-declarations
 static temp_t munch_exp(codegen_t state, tree_exp_t* exp);
 
+static const int word_size = 8;
 
 temp_t special_regs[] = {
-    {.temp_id = 0}, // rax  return value pt1
-    {.temp_id = 2}, // rdx  return value pt2
-    {.temp_id = 4}, // rsp  stack pointer
-    {.temp_id = 5}, // rbp  frame pointer
+    {.temp_id = 0, .temp_size = word_size}, // rax  return value pt1
+    {.temp_id = 2, .temp_size = word_size}, // rdx  return value pt2
+    {.temp_id = 4, .temp_size = word_size}, // rsp  stack pointer
+    {.temp_id = 5, .temp_size = word_size}, // rbp  frame pointer
 };
 
 // is this what he meant by outgoing arguments?
@@ -51,8 +52,8 @@ temp_t callee_saves[] = X86_68_CALLEE_SAVES;
 
 // things we trash
 temp_t caller_saves[] = {
-    {.temp_id = 10}, // r10  could be used for static chain pointer - if wanted
-    {.temp_id = 11}, // r11
+    {.temp_id = 10, .temp_size = word_size}, // r10  could be used for static chain pointer - if wanted
+    {.temp_id = 11, .temp_size = word_size}, // r11
 };
 
 static temp_list_t* calldefs = NULL;
@@ -70,9 +71,11 @@ static void init_calldefs()
     // -- the next line is commented because we included it already in args
     //c = temp_list_cons(special_regs[1], c); // rdx
 
-    // should all the argument registers be included also?
-    for (int i = 0; i < NELEMS(argregs); i++) {
-        c = temp_list_cons(argregs[i], c);
+    if (0) { // I think not
+        // should all the argument registers be included also?
+        for (int i = 0; i < NELEMS(argregs); i++) {
+            c = temp_list_cons(argregs[i], c);
+        }
     }
 
     // we should include the return address register here
@@ -155,6 +158,7 @@ static temp_list_t* munch_args(codegen_t state, int arg_idx, tree_exp_t* exp)
     var param_reg = argregs[arg_idx];
 
     if (exp->te_size <= 8) {
+        param_reg.temp_size = exp->te_size;
         var src = munch_exp(state, exp);
         char* s = NULL;
         Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
@@ -165,8 +169,10 @@ static temp_list_t* munch_args(codegen_t state, int arg_idx, tree_exp_t* exp)
                 munch_args(state, arg_idx + 1, exp->te_list)
                 );
     } else if (exp->te_size <= 16) {
+        param_reg.temp_size = word_size;
         assert(arg_idx + 1 < NELEMS(argregs));
         var param_reg2 = argregs[arg_idx + 1];
+        param_reg2.temp_size = exp->te_size - word_size;
 
         munch_exp(state, exp);
         // TODO: change munch to return a list of temps
@@ -198,7 +204,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                     && addr->te_binop == TREE_BINOP_PLUS) {
                 // MEM(BINOP(+, e1, CONST))
                 if (addr->te_rhs->te_tag == TREE_EXP_CONST) {
-                    var r = temp_newtemp(state.temp_state);
+                    var r = temp_newtemp(state.temp_state, exp->te_size);
                     char* s = NULL;
                     Asprintf(&s, "mov%s %d(`s0), `d0\n", suff(exp),
                             addr->te_rhs->te_const);
@@ -217,7 +223,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
             }
 
             // MEM(e1)
-            var r = temp_newtemp(state.temp_state);
+            var r = temp_newtemp(state.temp_state, exp->te_size);
             char* s = NULL;
             Asprintf(&s, "mov%s (`s0), `d0\n", suff(exp));
             var src_list = temp_list(Munch_exp(addr));
@@ -232,7 +238,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                 {
                     // BINOP(+, e1, CONST)
                     if (exp->te_rhs->te_tag == TREE_EXP_CONST) {
-                        temp_t r = temp_newtemp(state.temp_state);
+                        temp_t r = temp_newtemp(state.temp_state, exp->te_size);
                         char* s = NULL;
                         Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                         var lhs = Munch_exp(exp->te_lhs);
@@ -256,7 +262,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                     // this has to be done in two instructions due to the
                     // ciscness. but hopefully the reg-allocator can elide the
                     // first move
-                    temp_t r = temp_newtemp(state.temp_state);
+                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
                     char* s = NULL;
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                     var lhs = Munch_exp(exp->te_lhs);
@@ -274,7 +280,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                 case TREE_BINOP_MUL:
                 {
                     // TODO: more cases, incl w/ consts or maybe mem refs
-                    temp_t r = temp_newtemp(state.temp_state);
+                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
                     char* s = NULL;
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                     var lhs = Munch_exp(exp->te_lhs);
@@ -296,7 +302,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
         case TREE_EXP_CONST:
         {
             assert(exp->te_size <= 8);
-            temp_t r = temp_newtemp(state.temp_state);
+            temp_t r = temp_newtemp(state.temp_state, exp->te_size);
             char* s = NULL;
             Asprintf(&s, "mov%s $%d, `d0\n", suff(exp), exp->te_const);
             emit(state, assm_oper(s, temp_list(r), NULL, NULL));
@@ -340,7 +346,10 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                                 munch_args(state, 0, args)),
                             NULL));
             }
-            return state.frame->acf_regs->acr_ret0;
+            temp_t result = state.frame->acf_regs->acr_ret0;
+            result.temp_size = exp->te_size;
+            assert(result.temp_size);
+            return result;
         }
         case TREE_EXP_ESEQ:
         {

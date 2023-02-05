@@ -1,6 +1,7 @@
 #include "temp.h"
 #include "mem.h"
 #include <stdio.h> // snprintf
+#include <assert.h>
 
 struct temp_state {
     int next_temp;
@@ -21,9 +22,9 @@ void temp_state_free(temp_state_t** ts)
     *ts = NULL;
 }
 
-temp_t temp_newtemp(temp_state_t* ts)
+temp_t temp_newtemp(temp_state_t* ts, unsigned size)
 {
-    temp_t result = { .temp_id = ts->next_temp++ };
+    temp_t result = { .temp_id = ts->next_temp++, .temp_size = size };
     return result;
 }
 
@@ -47,6 +48,7 @@ temp_list_t* temp_list(temp_t temp)
 
 temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail)
 {
+    assert(hd.temp_size != 0);
     temp_list_t* list = xmalloc(sizeof *list);
     list->tmp_temp = hd;
     list->tmp_list = tail;

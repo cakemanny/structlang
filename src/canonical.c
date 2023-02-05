@@ -51,7 +51,7 @@ static canon_stm_exp_pair_t
         return result;
     }
     if (es->te_tag == TREE_EXP_CALL) {
-        var t = temp_newtemp(temp_state);
+        var t = temp_newtemp(temp_state, es->te_size);
         var new_head = tree_exp_eseq(
                 tree_stm_move(tree_exp_temp(t, es->te_size), es),
                 tree_exp_temp(t, es->te_size)
@@ -77,7 +77,7 @@ static canon_stm_exp_pair_t
         result.cnp_exp = e;
         return result;
     } else {
-        var t = temp_newtemp(temp_state);
+        var t = temp_newtemp(temp_state, e->te_size);
         result.cnp_stm = seq(seq(
                     stms,
                     tree_stm_move(tree_exp_temp(t, e->te_size),  e)),

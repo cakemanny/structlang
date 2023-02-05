@@ -8,6 +8,7 @@ typedef struct temp_state temp_state_t;
 
 typedef struct temp {
     int temp_id;
+    unsigned temp_size;
 } temp_t;
 
 typedef struct temp_list {
@@ -18,7 +19,7 @@ typedef struct temp_list {
 temp_state_t* temp_state_new();
 void temp_state_free(temp_state_t** ts);
 
-temp_t temp_newtemp(temp_state_t* ts);
+temp_t temp_newtemp(temp_state_t* ts, unsigned size);
 // Not sure what this is for
 // char* temp_makestring(temp_state_t* ts,  int tempval);
 

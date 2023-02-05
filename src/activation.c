@@ -78,8 +78,8 @@ const char* registers[] = {
     "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
 };
 ac_registers_t register_temps = {
-    .acr_sp = {.temp_id = 4}, // rsp
-    .acr_fp = {.temp_id = 5}, // rbp
+    .acr_sp = {.temp_id = 4, .temp_size = 8}, // rsp
+    .acr_fp = {.temp_id = 5, .temp_size = 8}, // rbp
     .acr_ret0 = {.temp_id = 0}, // rax
     .acr_ret1 = {.temp_id = 2}, // rdx
 };
@@ -444,6 +444,7 @@ static void calculate_activation_record_decl_func(
         v->acf_alignment = target->word_size;
         v->acf_var_id = -1; // no name
         v->acf_reg = argument_regs[frame->acf_next_arg_reg++];
+        v->acf_reg.temp_size = target->word_size;
         v->acf_is_formal = 1; // ... not really though ...
         v->acf_ptr_map = xmalloc(
             BitsetLen(num_words(ret_type_size)) * sizeof *v->acf_ptr_map);
@@ -471,6 +472,7 @@ static void calculate_activation_record_decl_func(
             // passed in register
             v->acf_tag = ACF_ACCESS_REG;
             v->acf_reg = argument_regs[frame->acf_next_arg_reg++];
+            v->acf_reg.temp_size = size;
         } else {
             // Add formal parameter
             v->acf_tag = ACF_ACCESS_FRAME;
@@ -626,7 +628,7 @@ tree_stm_t* proc_entry_exit_1(
     for (var v = frame->ac_frame_vars; v; v = v->acf_list) {
         if (v->acf_is_formal && v->acf_tag == ACF_ACCESS_REG) {
             temp_t param_reg = v->acf_reg;
-            v->acf_reg = temp_newtemp(temp_state);
+            v->acf_reg = temp_newtemp(temp_state, v->acf_size);
             var move = tree_stm_move(
                     tree_exp_temp(v->acf_reg, v->acf_size), // <- dest
                     tree_exp_temp(param_reg, v->acf_size)); // <- src
@@ -642,7 +644,7 @@ tree_stm_t* proc_entry_exit_1(
 
     temp_t temps_for_callee_saves[NELEMS(callee_saves)];
     for (int i = 0; i < NELEMS(callee_saves); i++) {
-        temps_for_callee_saves[i] = temp_newtemp(temp_state);
+        temps_for_callee_saves[i] = temp_newtemp(temp_state, ac_word_size);
     }
 
     tree_stm_t* saves = NULL;

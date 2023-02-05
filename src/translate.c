@@ -93,7 +93,7 @@ static tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
             break;
         case TR_EXP_CX:
         {
-            temp_t r = temp_newtemp(ts);
+            temp_t r = temp_newtemp(ts, 1);
             sl_sym_t t = temp_newlabel(ts);
             sl_sym_t f = temp_newlabel(ts);
 
@@ -431,7 +431,7 @@ static translate_exp_t* translate_expr_new(
     // 1. allocate some memory, assigning the locations to a temp r
     // 2. evaluate each param and assign it to the correct offset from r
 
-    temp_t r = temp_newtemp(info->temp_state);
+    temp_t r = temp_newtemp(info->temp_state, ac_word_size);
 
     // to work out the size, we need the struct size
     sl_type_t* struct_type = expr->ex_type->ty_pointee;
@@ -439,7 +439,7 @@ static translate_exp_t* translate_expr_new(
     assert(struct_size > 0);
 
     tree_stm_t* assign = tree_stm_move(
-            tree_exp_temp(r, ac_word_size),
+            tree_exp_temp(r, r.temp_size),
             tree_exp_call(
                 tree_exp_name("malloc"),
                 tree_exp_const(struct_size, ac_word_size),
@@ -462,10 +462,10 @@ static translate_exp_t* translate_expr_new(
         tree_stm_t* init = tree_stm_move(
                 tree_exp_mem(
                     (offset == 0)
-                    ? tree_exp_temp(r, ac_word_size)
+                    ? tree_exp_temp(r, r.temp_size)
                     : tree_exp_binop(
                         TREE_BINOP_PLUS,
-                        tree_exp_temp(r, ac_word_size),
+                        tree_exp_temp(r, r.temp_size),
                         tree_exp_const(offset, ac_word_size)
                     ),
                     arg_size
@@ -482,7 +482,7 @@ static translate_exp_t* translate_expr_new(
 
     tree_exp_t* result = tree_exp_eseq(
             init_seq,
-            tree_exp_temp(r, ac_word_size)
+            tree_exp_temp(r, r.temp_size)
     );
     return translate_ex(result);
 }
@@ -517,8 +517,11 @@ static translate_exp_t* translate_expr_call(
 static tree_stm_t* assign_return(ac_frame_t* frame, tree_exp_t* arg)
 {
     if (arg->te_size <= ac_word_size) {
+        // FIXME: why are we not using the size from arg?
+        temp_t t = frame->acf_regs->acr_ret0;
+        t.temp_size = ac_word_size;
         return tree_stm_move(
-            tree_exp_temp(frame->acf_regs->acr_ret0, ac_word_size),
+            tree_exp_temp(t, ac_word_size),
             arg
         );
     } else if (arg->te_size <= 2 * ac_word_size) {
@@ -706,9 +709,9 @@ static translate_exp_t* translate_expr_if(
     sl_sym_t tlabel = temp_newlabel(info->temp_state);
     sl_sym_t flabel = temp_newlabel(info->temp_state);
     sl_sym_t join = temp_newlabel(info->temp_state);
-    temp_t r = temp_newtemp(info->temp_state);
 
     size_t cons_sz = size_of_type(info->program, expr->ex_if_cons->ex_type);
+    temp_t r = temp_newtemp(info->temp_state, cons_sz);
     tree_exp_t* r_exp = tree_exp_temp(r, cons_sz);
 
     // TODO: What about the void if/else expressions?

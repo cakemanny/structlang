@@ -38,6 +38,7 @@ exp tree_exp_temp(temp_t temp, size_t size)
 {
     exp e = tree_exp_new(TREE_EXP_TEMP);
     e->te_temp = temp;
+    assert(size == temp.temp_size);
     e->te_size = size;
     return e;
 }
@@ -64,6 +65,7 @@ exp tree_exp_mem(exp addr, size_t size)
 
 exp tree_exp_call(exp func, exp args, size_t size)
 {
+    assert(size);
     exp e = tree_exp_new(TREE_EXP_CALL);
     e->te_func = func;
     e->te_args = args;
