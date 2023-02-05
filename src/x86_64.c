@@ -126,7 +126,7 @@ static const char* suff(tree_exp_t* exp)
 assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp)
 {
     char* s = NULL;
-    Asprintf(&s, "mov%s %d(`s0), `d0\n", suff_from_size(v->acf_size),
+    Asprintf(&s, "mov%s %d(`s0), `d0	# unspill\n", suff_from_size(v->acf_size),
             v->acf_offset);
     var src_list = temp_list(special_regs[3]);
     return assm_oper(s, temp_list(temp), src_list, NULL);

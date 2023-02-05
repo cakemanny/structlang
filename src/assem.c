@@ -43,9 +43,15 @@ static int format_temp(char* const out, const size_t size, temp_t t, Table_T all
     char* o = out;
     const char* allocated_reg = Table_get(allocation, &t);
     if (allocated_reg != NULL) {
+        char regname_buf[8] = {};
+        strncpy(regname_buf, allocated_reg, 8);
         *o++ = '%';
+        // HACK!
+        if (t.temp_size == 4 && regname_buf[0] == 'r') {
+            regname_buf[0] = 'e';
+        }
         // FIXME: these need to be picked based on the register size
-        int n = snprintf(o, size - (o - out), "%s", allocated_reg);
+        int n = snprintf(o, size - (o - out), "%s", regname_buf);
         assert(n > 0); // rudimentary error check lol
         o += n;
     } else {
