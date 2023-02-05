@@ -7,6 +7,8 @@
 
 #define var __auto_type
 
+static const bool debug = 0;
+
 typedef struct canon_stm_exp_pair_t {
     tree_stm_t* cnp_stm;
     tree_exp_t* cnp_exp;
@@ -808,6 +810,11 @@ static void verify_statements(tree_stm_t* stmts, const char* check)
         }
     }
 
+    if (debug && err) {
+        for (var s = stmts; s; s = s->tst_list) {
+            tree_printf(stderr, "%S\n", s);
+        }
+    }
     Table_free(&t);
     assert(err == 0);
 }

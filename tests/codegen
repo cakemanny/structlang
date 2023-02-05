@@ -1,6 +1,6 @@
 #!/bin/sh
 
-args=`getopt v: $*`
+args=`getopt v $*`
 if [ $? -ne 0 ]; then
     echo "usage: $0 [-v]"
     exit 2
@@ -52,7 +52,7 @@ expect () {
             if [ -n "$verbose" ]; then
                 echo "${grn}pass${rst}: '$code'"
             else
-                echo "${grn}pass${rst}"
+                echo "${grn}pass${rst}: $(echo "$code" | tr $'\n' $' ')"
             fi
         else
             echo "${red}FAIL:${rst} '$code'"
@@ -72,5 +72,17 @@ expect () {
 expect 'fn main() -> int { let a: int = 0; a }' '0'
 expect 'fn main() -> int { let a: int = 1; a }' '1'
 expect 'fn main() -> int { let a: int = 1; let b: int = 2; a + b }' '3'
+expect 'fn main() -> int { let a: int = 1; let b: int = 2; a - b }' '255'
+expect "fn main() -> bool { true }" '1'
+expect "fn main() -> bool { false }" '0'
+
+# Calls
+expect 'fn f() -> int { 5 }
+fn main() -> int { f() }' '5'
+
+expect 'fn f(x: int) -> int { x }
+fn main() -> int { f(5) }' '5'
+
+
 
 exit ${exitcode}

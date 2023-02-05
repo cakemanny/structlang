@@ -295,6 +295,23 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                          assm_oper(s, temp_list(r), src_list, NULL));
                     return r;
                 }
+                case TREE_BINOP_MINUS:
+                {
+                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    char* s = NULL;
+                    Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
+                    var lhs = Munch_exp(exp->te_lhs);
+                    emit(state, assm_move(s, r, lhs));
+
+                    Asprintf(&s, "sub%s `s0, `d0\n", suff(exp));
+                    // r has to be in both sources and destinations
+                    var src_list =
+                        temp_list_cons(Munch_exp(exp->te_rhs),
+                                temp_list(r));
+                    emit(state,
+                         assm_oper(s, temp_list(r), src_list, NULL));
+                    return r;
+                }
                 default:
                     assert(0 && "unhandled binary operator");
             }

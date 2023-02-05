@@ -724,6 +724,7 @@ static translate_exp_t* translate_expr_if(
     res = tree_stm_seq(res, tree_stm_label(flabel));
     res = tree_stm_seq(res, tree_stm_move(r_exp, alt));
     res = tree_stm_seq(res, unconditional_jump(join));
+    res = tree_stm_seq(res, tree_stm_label(join));
     return translate_ex(tree_exp_eseq(res, r_exp));
 }
 

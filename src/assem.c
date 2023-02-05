@@ -49,6 +49,11 @@ static int format_temp(char* const out, const size_t size, temp_t t, Table_T all
         // HACK!
         if (t.temp_size == 4 && regname_buf[0] == 'r') {
             regname_buf[0] = 'e';
+        } else if (t.temp_size == 1
+                && regname_buf[0] == 'r' && regname_buf[1] == 'a') {
+            regname_buf[0] = 'a';
+            regname_buf[1] = 'l';
+            regname_buf[2] = '\0';
         }
         // FIXME: these need to be picked based on the register size
         int n = snprintf(o, size - (o - out), "%s", regname_buf);
