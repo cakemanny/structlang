@@ -23,9 +23,9 @@ void* list_reverse(void* _list)
     return head;
 }
 
-int list_length(void* _list)
+int list_length(const void* _list)
 {
-    struct list_t* list = _list;
+    const struct list_t* list = _list;
     int n = 0;
     for (; list; list = list->tail) {
         n++;

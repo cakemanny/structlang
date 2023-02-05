@@ -144,7 +144,10 @@ static unsigned hashtemp(const void* key)
 // prove that we can use the list.h routines on it
 static_assert(sizeof(temp_list_t) == sizeof(struct list_t), "temp_list_t size");
 
-// sorts a temp list, in place...
+// sorts a temp list
+// may or may not return the same list
+// NB: Must not sort in place, since these lists are used in the formatting
+// of the operations when they are omitted
 static temp_list_t* temp_list_sort(temp_list_t* tl)
 {
     int len = list_length(tl);
@@ -159,12 +162,11 @@ static temp_list_t* temp_list_sort(temp_list_t* tl)
 
     qsort(temp_array, len, sizeof(struct temp), cmptemp);
 
-    // write the elements back to the list
-    i = 0;
-    for (var t = tl; t; t = t->tmp_list, i++) {
-        memcpy(&t->tmp_temp, temp_array + i, sizeof t->tmp_temp);
+    temp_list_t* result = NULL;
+    for (int i = len - 1; i >= 0; --i) {
+        result = temp_list_cons(temp_array[i], result);
     }
-    return tl;
+    return result;
 }
 
 static void check_sorted(const temp_list_t* tl)

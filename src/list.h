@@ -17,6 +17,6 @@ void* list_cons(void* head, void* tail);
 
 void* list_reverse(void* list);
 
-int list_length(void* list);
+int list_length(const void* list);
 
 #endif /* __LIST_H__ */
