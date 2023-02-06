@@ -4,6 +4,9 @@
 #include <assert.h>
 #include <string.h> // strdup
 
+// Useful references
+// - https://web.stanford.edu/class/cs107/guide/x86-64.html
+
 #define var __auto_type
 
 #define NELEMS(A) ((sizeof A) / sizeof A[0])
@@ -376,6 +379,9 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
 #undef Munch_exp
 }
 
+// TODO: We might need to consider sign-extending and zero extending moves
+// that move from smaller to larger registers
+
 static void munch_stm(codegen_t state, tree_stm_t* stm)
 {
 #define Munch_stm(_stm) munch_stm(state, _stm)
@@ -567,10 +573,13 @@ static void munch_stm(codegen_t state, tree_stm_t* stm)
                             temp_list(Munch_exp(stm->tst_cjump_rhs)));
                 emit(state, assm_oper(s, NULL, src_list, NULL));
             }
-            // CJUMP(==, e1, CONST i, Ltrue, Lfalse)
+            // CJUMP(op, e1, CONST i, Ltrue, Lfalse)
             else if (stm->tst_cjump_rhs->te_tag == TREE_EXP_CONST) {
-                fprintf(stderr, "$$$ CJUMP(==, e1, CONST i, Ltrue, Lfalse)\n");
-                assert(0 && "TODO");
+                char* s = NULL;
+                Asprintf(&s, "cmp%s $%d, `s0\n", suff(stm->tst_cjump_rhs),
+                        stm->tst_cjump_rhs->te_const);
+                var src_list = temp_list(Munch_exp(stm->tst_cjump_lhs));
+                emit(state, assm_oper(s, NULL, src_list, NULL));
             }
             // CJUMP(==, CONST i, e1, Ltrue, Lfalse)
             else if (stm->tst_cjump_lhs->te_tag == TREE_EXP_CONST
@@ -583,8 +592,10 @@ static void munch_stm(codegen_t state, tree_stm_t* stm)
                         stm->tst_cjump_lhs->te_const);
                 var src_list = temp_list(Munch_exp(stm->tst_cjump_rhs));
                 emit(state, assm_oper(s, NULL, src_list, NULL));
+                // TODO: we could also implement comparisons by changing the
+                // op...
             }
-            // CJUMP(==, e1, e2, Ltrue, Lfalse)
+            // CJUMP(op, e1, e2, Ltrue, Lfalse)
             else {
                 char* s = NULL;
                 Asprintf(&s, "cmp%s `s1, `s0\n", suff(stm->tst_cjump_lhs));

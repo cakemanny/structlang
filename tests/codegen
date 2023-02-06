@@ -76,6 +76,7 @@ expect 'fn main() -> int { let a: int = 1; let b: int = 2; a - b }' '255'
 expect "fn main() -> bool { true }" '1'
 expect "fn main() -> bool { false }" '0'
 
+
 # Calls
 expect 'fn f() -> int { 5 }
 fn main() -> int { f() }' '5'
@@ -83,6 +84,7 @@ fn main() -> int { f() }' '5'
 expect 'fn f(x: int) -> int { x }
 fn main() -> int { f(5) }' '5'
 
-
+# Conditionals
+expect 'fn main() -> int { if 1 < 2 { 1 } else { 2 } }' '1'
 
 exit ${exitcode}
