@@ -280,6 +280,23 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                          assm_oper(s, temp_list(r), src_list, NULL));
                     return r;
                 }
+                case TREE_BINOP_MINUS:
+                {
+                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    char* s = NULL;
+                    Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
+                    var lhs = Munch_exp(exp->te_lhs);
+                    emit(state, assm_move(s, r, lhs));
+
+                    Asprintf(&s, "sub%s `s0, `d0\n", suff(exp));
+                    // r has to be in both sources and destinations
+                    var src_list =
+                        temp_list_cons(Munch_exp(exp->te_rhs),
+                                temp_list(r));
+                    emit(state,
+                         assm_oper(s, temp_list(r), src_list, NULL));
+                    return r;
+                }
                 case TREE_BINOP_MUL:
                 {
                     // TODO: more cases, incl w/ consts or maybe mem refs
@@ -298,7 +315,24 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                          assm_oper(s, temp_list(r), src_list, NULL));
                     return r;
                 }
-                case TREE_BINOP_MINUS:
+                case TREE_BINOP_DIV:
+                {
+                    assert(0 && "TREE_BINOP_DIV not yet handled");
+                    // division on x86 is a bit crazy
+                    // idiv t0
+                    // <=>
+                    // rax <- rdx:rax / t0
+                    // rdx <- rdx:rax mod t0
+                    //
+                    // so need to clear rdx, put rax as both src and dest
+                    // and put rax, rdx and t0 in src list
+                }
+                case TREE_BINOP_AND:
+                case TREE_BINOP_OR:
+                case TREE_BINOP_XOR:
+                case TREE_BINOP_LSHIFT:
+                case TREE_BINOP_RSHIFT:
+                case TREE_BINOP_ARSHIFT:
                 {
                     temp_t r = temp_newtemp(state.temp_state, exp->te_size);
                     char* s = NULL;
@@ -306,7 +340,16 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                     var lhs = Munch_exp(exp->te_lhs);
                     emit(state, assm_move(s, r, lhs));
 
-                    Asprintf(&s, "sub%s `s0, `d0\n", suff(exp));
+                    const char* instr_prefix =
+                        (exp->te_binop == TREE_BINOP_AND) ? "and"
+                        : (exp->te_binop == TREE_BINOP_OR) ? "or"
+                        : (exp->te_binop == TREE_BINOP_XOR) ? "xor"
+                        : (exp->te_binop == TREE_BINOP_LSHIFT) ? "shl"
+                        : (exp->te_binop == TREE_BINOP_RSHIFT) ? "shr"
+                        : (exp->te_binop == TREE_BINOP_ARSHIFT) ? "sar"
+                        : (assert(!"broken binop case"), NULL)
+                    ;
+                    Asprintf(&s, "%s%s `s0, `d0\n", instr_prefix, suff(exp));
                     // r has to be in both sources and destinations
                     var src_list =
                         temp_list_cons(Munch_exp(exp->te_rhs),
@@ -315,8 +358,6 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                          assm_oper(s, temp_list(r), src_list, NULL));
                     return r;
                 }
-                default:
-                    assert(0 && "unhandled binary operator");
             }
         }
         case TREE_EXP_CONST:
@@ -529,8 +570,18 @@ static void munch_stm(codegen_t state, tree_stm_t* stm)
         }
         case TREE_STM_EXP:
         {
-            // Can this only be a function call?
-            assert(stm->tst_exp->te_tag == TREE_EXP_CALL);
+            // All non-function calls in statement position have no effect
+            // on the world. e.g.
+            // fn f() -> int { 2 - 1; 0 }
+            //                 ^---^
+            //                  This can be dropped
+            // Maybe in the future we can emit an error
+            if(stm->tst_exp->te_tag != TREE_EXP_CALL) {
+                #ifndef NDEBUG
+                    tree_printf(stderr, "dropping dead code: %S\n", stm);
+                #endif
+                break;
+            }
             var func = stm->tst_exp->te_func;
             var args = stm->tst_exp->te_args;
             if (func->te_tag == TREE_EXP_NAME) {

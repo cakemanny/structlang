@@ -44,16 +44,17 @@ static int format_temp(char* const out, const size_t size, temp_t t, Table_T all
     const char* allocated_reg = Table_get(allocation, &t);
     if (allocated_reg != NULL) {
         char regname_buf[8] = {};
-        strncpy(regname_buf, allocated_reg, 8);
+        strncpy(regname_buf, allocated_reg, sizeof(regname_buf) - 1);
         *o++ = '%';
         // HACK!
         if (t.temp_size == 4 && regname_buf[0] == 'r') {
             regname_buf[0] = 'e';
-        } else if (t.temp_size == 1
-                && regname_buf[0] == 'r' && regname_buf[1] == 'a') {
-            regname_buf[0] = 'a';
-            regname_buf[1] = 'l';
-            regname_buf[2] = '\0';
+        } else if (t.temp_size == 1 && strcmp(regname_buf, "rax") == 0) {
+            strncpy(regname_buf, "al", sizeof(regname_buf) - 1);
+        } else if (t.temp_size == 1 && strcmp(regname_buf, "rcx") == 0) {
+            strncpy(regname_buf, "cl", sizeof(regname_buf) - 1);
+        } else if (t.temp_size == 1 && strcmp(regname_buf, "r8") == 0) {
+            strncpy(regname_buf, "r8b", sizeof(regname_buf) - 1);
         }
         // FIXME: these need to be picked based on the register size
         int n = snprintf(o, size - (o - out), "%s", regname_buf);
@@ -129,7 +130,8 @@ void assm_format(char* const out, const size_t out_len, assm_instr_t* instr,
         }
         case ASSM_INSTR_LABEL:
         {
-            strncpy(out, instr->ai_assem, out_len);
+            strncpy(out, instr->ai_assem, out_len - 1);
+            out[out_len - 1] = '\0';
             return;
         }
         case ASSM_INSTR_MOVE:
