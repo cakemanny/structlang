@@ -517,8 +517,7 @@ static translate_exp_t* translate_expr_call(
 static tree_stm_t* assign_return(ac_frame_t* frame, tree_exp_t* arg)
 {
     if (arg->te_size <= ac_word_size) {
-        // FIXME: why are we not using the size from arg?
-        temp_t t = frame->acf_regs->acr_ret0;
+        temp_t t = frame->acf_regs->acr_ret0; // Take a COPY of acr_ret0
         t.temp_size = arg->te_size;
         return tree_stm_move(
             tree_exp_temp(t, t.temp_size),

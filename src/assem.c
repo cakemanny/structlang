@@ -36,6 +36,8 @@ assm_instr_t* assm_move(const char* assem, temp_t dst, temp_t src)
     return instr;
 }
 
+const char* register_for_size(const char* regname, size_t size);
+
 // returns chars written not including null term
 static int format_temp(char* const out, const size_t size, temp_t t, Table_T allocation)
 {
@@ -44,19 +46,8 @@ static int format_temp(char* const out, const size_t size, temp_t t, Table_T all
     const char* allocated_reg = Table_get(allocation, &t);
     if (allocated_reg != NULL) {
         char regname_buf[8] = {};
-        strncpy(regname_buf, allocated_reg, sizeof(regname_buf) - 1);
-        *o++ = '%';
-        // HACK!
-        if (t.temp_size == 4 && regname_buf[0] == 'r') {
-            regname_buf[0] = 'e';
-        } else if (t.temp_size == 1 && strcmp(regname_buf, "rax") == 0) {
-            strncpy(regname_buf, "al", sizeof(regname_buf) - 1);
-        } else if (t.temp_size == 1 && strcmp(regname_buf, "rcx") == 0) {
-            strncpy(regname_buf, "cl", sizeof(regname_buf) - 1);
-        } else if (t.temp_size == 1 && strcmp(regname_buf, "r8") == 0) {
-            strncpy(regname_buf, "r8b", sizeof(regname_buf) - 1);
-        }
-        // FIXME: these need to be picked based on the register size
+        const char* sized_reg_name = register_for_size(allocated_reg, t.temp_size);
+        strncpy(regname_buf, sized_reg_name, sizeof(regname_buf) - 1);
         int n = snprintf(o, size - (o - out), "%s", regname_buf);
         assert(n > 0); // rudimentary error check lol
         o += n;

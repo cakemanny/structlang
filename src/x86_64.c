@@ -59,6 +59,25 @@ temp_t caller_saves[] = {
     {.temp_id = 11, .temp_size = word_size}, // r11
 };
 
+
+const char* registers_8bit[] = {
+    "%al", "%cl", "%dl", "%bl", "%spl", "%bpl", "%sil", "%dil",
+    "%r8b", "%r9b", "%r10b", "%r11b", "%r12b", "%r13b", "%r14b", "%r15b"
+};
+const char* registers_16bit[] = {
+    "%ax", "%cx", "%dx", "%bx", "%sp", "%bp", "%si", "%di",
+    "%r8w", "%r9w", "%r10w", "%r11w", "%r12w", "%r13w", "%r14w", "%r15w"
+};
+const char* registers_32bit[] = {
+    "%eax", "%ecx", "%edx", "%ebx", "%esp", "%ebp", "%esi", "%edi",
+    "%r8d", "%r9d", "%r10d", "%r11d", "%r12d", "%r13d", "%r14d", "%r15d"
+};
+const char* registers_64bit[] = {
+    "%rax", "%rcx", "%rdx", "%rbx", "%rsp", "%rbp", "%rsi", "%rdi",
+    "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15"
+};
+
+
 static temp_list_t* calldefs = NULL;
 
 static void init_calldefs()
@@ -118,6 +137,54 @@ static const char* suff_from_size(size_t size)
     }
     fprintf(stderr, "invalid size %lu\n", size);
     assert(0 && "invalid size");
+}
+
+const char* register_for_size(const char* regname, size_t size)
+{
+    assert(regname);
+    assert(strlen(regname) >= 2 && strlen(regname) <= 3);
+    assert(regname[0] == 'r');
+    assert(size == 8 || size == 4 || size == 2 || size == 1);
+
+    const char** possible_registers[] = {
+        registers_8bit, registers_16bit, registers_32bit, registers_64bit
+    };
+    const char** registers = possible_registers[__builtin_ctzll(size)];
+
+    switch (regname[1]) {
+        // rax
+        case 'a': return registers[0];
+        // rbx
+        case 'b': {
+                      if (regname[2] == 'x') return registers[3]; // rbx
+                      assert(regname[2] == 'p'); return registers[5]; // rbp
+                  }
+        case 'c': return registers[2]; // rcx
+        case 'd': {
+                      if (regname[2] == 'x') return registers[2]; // rdx
+                      assert(regname[2] == 'i'); return registers[7]; // rdi
+                  }
+        case 's': {
+                      if (regname[2] == 'p') return registers[4]; // rsp
+                      assert(regname[2] == 'i'); return registers[6]; // rsi
+                  }
+        case '8': return registers[8];
+        case '9': return registers[9];
+        case '1':
+        {
+            switch (regname[2]) {
+                case '0': return registers[10];
+                case '1': return registers[11];
+                case '2': return registers[12];
+                case '3': return registers[13];
+                case '4': return registers[14];
+                case '5': return registers[15];
+            }
+        }
+    }
+
+    fprintf(stderr, "unexpected register name %s\n", regname);
+    assert(!"unexpected register name");
 }
 
 static const char* suff(tree_exp_t* exp)

@@ -48,12 +48,11 @@ const struct ac_builtin_type {
     size_t size;
     bool is_ptr;
 } builtin_sizes[] = {
-    { "int", 4, 4, 0 },
-    { "bool", 1, 1, 0 },
-    { "void", 0, 0, 0 },
+    { "int", 4, 4, false },
+    { "bool", 1, 1, false },
+    { "void", 0, 0, false },
 };
 
-const char* argument_reg_names[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 temp_t argument_regs[] = {
     {.temp_id = 7}, // rdi
     {.temp_id = 6}, // rsi
@@ -62,8 +61,6 @@ temp_t argument_regs[] = {
     {.temp_id = 8}, // r8
     {.temp_id = 9}, // r9
 };
-const char* return_registers[] = { "rax", "rdx" };
-const char* frame_pointer = "rbp";
 
 /* Used for creating the initial tempMap
  */
