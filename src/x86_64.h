@@ -6,7 +6,7 @@
 #include "tree.h" /* tree_stm_t */
 #include "assem.h" /* assm_instr_t */
 
-// rbp is not included since it's a speccial reg (the frame pointer)
+// rbp is not included since it's a special reg (the frame pointer)
 #define X86_68_CALLEE_SAVES { \
     {.temp_id = 3 , .temp_size = 8}, /* rbx */ \
     {.temp_id = 12, .temp_size = 8}, /* r12 */ \

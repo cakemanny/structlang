@@ -159,7 +159,7 @@ const char* register_for_size(const char* regname, size_t size)
                       if (regname[2] == 'x') return registers[3]; // rbx
                       assert(regname[2] == 'p'); return registers[5]; // rbp
                   }
-        case 'c': return registers[2]; // rcx
+        case 'c': return registers[1]; // rcx
         case 'd': {
                       if (regname[2] == 'x') return registers[2]; // rdx
                       assert(regname[2] == 'i'); return registers[7]; // rdi
@@ -384,7 +384,8 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                 }
                 case TREE_BINOP_DIV:
                 {
-                    assert(0 && "TREE_BINOP_DIV not yet handled");
+                    // BINOP(/, e1, e2)
+
                     // division on x86 is a bit crazy
                     // idiv t0
                     // <=>
@@ -393,6 +394,35 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                     //
                     // so need to clear rdx, put rax as both src and dest
                     // and put rax, rdx and t0 in src list
+
+                    temp_t rhs = Munch_exp(exp->te_rhs);
+
+                    char* s = NULL;
+                    Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
+                    temp_t rax = special_regs[0];
+                    rax.temp_size = exp->te_size;
+                    var lhs = Munch_exp(exp->te_lhs);
+                    emit(state, assm_move(s, rax, lhs));
+
+                    temp_t rdx = special_regs[1];
+                    Asprintf(&s, "xorq `s0, `d0\n");
+                    emit(state,
+                         assm_oper(s, temp_list(rdx), temp_list(rdx), NULL));
+
+                    Asprintf(&s, "idiv%s `s0\n", suff(exp));
+                    // r has to be in both sources and destinations
+                    var src_list =
+                        temp_list_cons(rhs,
+                                temp_list_cons(rax,
+                                    temp_list(rdx)));
+                    emit(state,
+                         assm_oper(s, temp_list(rax), src_list, NULL));
+
+                    // Move the result out of rax again to keep it free
+                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
+                    emit(state, assm_move(s, r, rax));
+                    return r;
                 }
                 case TREE_BINOP_AND:
                 case TREE_BINOP_OR:
