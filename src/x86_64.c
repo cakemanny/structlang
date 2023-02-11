@@ -637,6 +637,14 @@ static void munch_stm(codegen_t state, tree_stm_t* stm)
                 // movq %rbx, %rax
                 // movq $7, %rax
                 if (src->te_tag == TREE_EXP_CONST) {
+                    if (dst->te_temp.temp_size == 0) {
+                        // Omit size 0 move.
+                        #ifndef NDEBUG
+                            tree_printf(stderr, "dropping dead code: %S\n", stm);
+                        #endif
+                        break;
+                    }
+
                     char* s = NULL;
                     Asprintf(&s, "mov%s $%d, `d0\n", suff(src), src->te_const);
                     emit(state,
@@ -645,12 +653,22 @@ static void munch_stm(codegen_t state, tree_stm_t* stm)
                 // MOVE(TEMP t, TEMP t) -- this is covered by the munch
                 // MOVE(TEMP t, e1)
                 else {
+                    temp_t src_t = Munch_exp(src);
+                    assert (src_t.temp_size == dst->te_temp.temp_size);
+                    if (src_t.temp_size == 0) {
+                        // Omit size 0 move.
+                        #ifndef NDEBUG
+                            tree_printf(stderr, "dropping dead code: %S\n", stm);
+                        #endif
+                        break;
+                    }
+
                     char* s = NULL;
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(src));
                     emit(state,
                          assm_oper(s,
                                    temp_list(dst->te_temp),
-                                   temp_list(Munch_exp(src)),
+                                   temp_list(src_t),
                                    NULL));
                 }
             } else {
