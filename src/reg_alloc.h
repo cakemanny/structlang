@@ -5,12 +5,8 @@
 #include "assem.h" // assm_instr_t
 #include "activation.h" // ac_frame_t
 #include "interfaces/table.h"
-#include "liveness.h"
 
 /* type allocation = Table[temp_t, Frame.register] */
-
-typedef struct ra_reg_alloc_t {
-} ra_reg_alloc_t;
 
 /**
  * val alloc : Assem.instr list * Frame.frame -> Assem.instr list * allocation

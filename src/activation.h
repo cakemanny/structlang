@@ -8,6 +8,7 @@
 #include "temp.h"
 #include "tree.h"
 #include "interfaces/table.h"
+#include "assem.h"
 
 typedef struct ac_registers_t {
     temp_t acr_sp;
@@ -15,6 +16,26 @@ typedef struct ac_registers_t {
     temp_t acr_ret0;
     temp_t acr_ret1;
 } ac_registers_t;
+
+typedef struct temp_array_t {
+    size_t length;
+    const temp_t* elems;
+} temp_array_t;
+
+struct ac_frame_var;
+
+typedef struct target {
+    size_t word_size;
+    size_t stack_alignment;
+    temp_array_t arg_registers;
+    ac_registers_t frame_registers;
+    const temp_array_t callee_saves;
+    const char** register_names;
+
+    assm_instr_t* (*load_temp)(struct ac_frame_var*, temp_t);
+    assm_instr_t* (*store_temp)(struct ac_frame_var*, temp_t);
+} target_t;
+
 
 typedef struct ac_frame {
 
@@ -25,7 +46,7 @@ typedef struct ac_frame {
     uint64_t *acf_args_ptr_bitset;
     int acf_next_arg_reg; // temp
 
-    ac_registers_t* acf_regs;
+    const target_t* acf_target;
 
     // The mapping from temp_t* to register names
     Table_T acf_temp_map;

@@ -53,7 +53,8 @@ const struct ac_builtin_type {
     { "void", 0, 0, false },
 };
 
-temp_t argument_regs[] = {
+
+static const temp_t x86_64_argument_regs[] = {
     {.temp_id = 7}, // rdi
     {.temp_id = 6}, // rsi
     {.temp_id = 2}, // rdx
@@ -64,34 +65,45 @@ temp_t argument_regs[] = {
 
 /* Used for creating the initial tempMap
  */
-const temp_t temp_map_temps[] = {
+const temp_t x86_64_temp_map_temps[] = {
     {.temp_id = 0}, {.temp_id = 1}, {.temp_id = 2}, {.temp_id = 3},
     {.temp_id = 4}, {.temp_id = 5}, {.temp_id = 6}, {.temp_id = 7},
     {.temp_id = 8}, {.temp_id = 9}, {.temp_id = 10}, {.temp_id = 11},
     {.temp_id = 12}, {.temp_id = 13}, {.temp_id = 14}, {.temp_id = 15},
 };
-const char* registers[] = {
+const char* x86_64_registers[] = {
     "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
     "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
 };
-ac_registers_t register_temps = {
-    .acr_sp = {.temp_id = 4, .temp_size = 8}, // rsp
-    .acr_fp = {.temp_id = 5, .temp_size = 8}, // rbp
-    .acr_ret0 = {.temp_id = 0}, // rax
-    .acr_ret1 = {.temp_id = 2}, // rdx
-};
 
-static temp_t callee_saves[] = X86_68_CALLEE_SAVES;
+static_assert(
+        NELEMS(x86_64_temp_map_temps) == NELEMS(x86_64_registers),
+        "x86_64_temp_map_temps length");
 
+static const temp_t x86_64_callee_saves[] = X86_68_CALLEE_SAVES;
 
-typedef struct target {
-    size_t word_size;
-    size_t stack_alignment;
-} target_t;
-
+extern assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp);
+extern assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp);
 const target_t target_x86_64 = {
     .word_size = 8,
     .stack_alignment = 16,
+    .arg_registers = {
+        .length = NELEMS(x86_64_argument_regs),
+        .elems = x86_64_argument_regs,
+    },
+    .frame_registers = {
+        .acr_sp = {.temp_id = 4, .temp_size = 8}, // rsp
+        .acr_fp = {.temp_id = 5, .temp_size = 8}, // rbp
+        .acr_ret0 = {.temp_id = 0}, // rax
+        .acr_ret1 = {.temp_id = 2}, // rdx
+    },
+    .callee_saves = {
+        .length = NELEMS(x86_64_callee_saves),
+        .elems = x86_64_callee_saves,
+    },
+    .register_names = x86_64_registers,
+    .load_temp = x86_64_load_temp,
+    .store_temp = x86_64_store_temp,
 };
 const size_t ac_word_size = 8;
 
@@ -102,10 +114,12 @@ static ac_frame_t* ac_frame_new(sl_sym_t func_name, Table_T temp_map)
 {
     ac_frame_t* f = xmalloc(sizeof *f);
     f->acf_name = func_name;
-    f->acf_next_arg_offset = 16;
+    f->acf_next_arg_offset =
+        // space for previous frame pointer and for return address
+        2 * target->word_size;
     f->acf_last_local_offset = 0;
     f->ac_frame_vars_end = &f->ac_frame_vars;
-    f->acf_regs = &register_temps;
+    f->acf_target = target;
     f->acf_temp_map = temp_map;
     return f;
 }
@@ -440,7 +454,7 @@ static void calculate_activation_record_decl_func(
         v->acf_size = target->word_size;
         v->acf_alignment = target->word_size;
         v->acf_var_id = -1; // no name
-        v->acf_reg = argument_regs[frame->acf_next_arg_reg++];
+        v->acf_reg = target->arg_registers.elems[frame->acf_next_arg_reg++];
         v->acf_reg.temp_size = target->word_size;
         v->acf_is_formal = 1; // ... not really though ...
         v->acf_ptr_map = xmalloc(
@@ -465,10 +479,10 @@ static void calculate_activation_record_decl_func(
             BitsetLen(num_words(size)) * sizeof *v->acf_ptr_map);
         ptr_map_for_type(program, type, v->acf_ptr_map, 0);
 
-        if (size <= 8 && frame->acf_next_arg_reg < NELEMS(argument_regs)) {
+        if (size <= 8 && frame->acf_next_arg_reg < target->arg_registers.length) {
             // passed in register
             v->acf_tag = ACF_ACCESS_REG;
-            v->acf_reg = argument_regs[frame->acf_next_arg_reg++];
+            v->acf_reg = target->arg_registers.elems[frame->acf_next_arg_reg++];
             v->acf_reg.temp_size = size;
         } else {
             // Add formal parameter
@@ -491,7 +505,9 @@ static void calculate_activation_record_decl_func(
     // Now, scan through the frame vars and calculate a bitset showing where
     // the pointers in the frame are
 
-    int frame_words = num_words(round_up_size(-frame->acf_last_local_offset, 16));
+    int frame_words =
+        num_words(round_up_size(-frame->acf_last_local_offset,
+                    target->stack_alignment));
     if (ac_debug) {
         fprintf(stderr, "frame_words = %d\n", frame_words);
     }
@@ -562,8 +578,10 @@ static unsigned hashtemp(const void* key)
 static Table_T x86_64_temp_map()
 {
     Table_T result = Table_new(0, cmptemp, hashtemp);
-    for (int i = 0; i < 16; i++) {
-        Table_put(result, &(temp_map_temps[i]), (void*)registers[i]);
+    for (int i = 0; i < NELEMS(x86_64_registers); i++) {
+        Table_put(result,
+                &(x86_64_temp_map_temps[i]),
+                (void*)x86_64_registers[i]);
     }
     return result;
 }
@@ -639,23 +657,25 @@ tree_stm_t* proc_entry_exit_1(
 
     // 2. Save callee saves
 
-    temp_t temps_for_callee_saves[NELEMS(callee_saves)];
-    for (int i = 0; i < NELEMS(callee_saves); i++) {
-        temps_for_callee_saves[i] = temp_newtemp(temp_state, ac_word_size);
+    const size_t num_callee_saves = target->callee_saves.length;
+    const size_t word_size = target->word_size;
+    temp_t temps_for_callee_saves[num_callee_saves];
+    for (int i = 0; i < num_callee_saves; i++) {
+        temps_for_callee_saves[i] = temp_newtemp(temp_state, word_size);
     }
 
     tree_stm_t* saves = NULL;
-    for (int i = 0; i < NELEMS(callee_saves); i++) {
-        var dst_access = tree_exp_temp(temps_for_callee_saves[i], ac_word_size);
-        var src_access = tree_exp_temp(callee_saves[i], ac_word_size);
+    for (int i = 0; i < num_callee_saves; i++) {
+        var dst_access = tree_exp_temp(temps_for_callee_saves[i], word_size);
+        var src_access = tree_exp_temp(target->callee_saves.elems[i], word_size);
         var move = tree_stm_move(dst_access, src_access);
         saves = (saves) ? tree_stm_seq(saves, move) : move;
     }
 
     tree_stm_t* restores = NULL;
-    for (int i = 0; i < NELEMS(callee_saves); i++) {
-        var dst_access = tree_exp_temp(callee_saves[i], ac_word_size);
-        var src_access = tree_exp_temp(temps_for_callee_saves[i], ac_word_size);
+    for (int i = 0; i < num_callee_saves; i++) {
+        var dst_access = tree_exp_temp(target->callee_saves.elems[i], word_size);
+        var src_access = tree_exp_temp(temps_for_callee_saves[i], word_size);
         var move = tree_stm_move(dst_access, src_access);
         restores = (restores) ? tree_stm_seq(restores, move) : move;
     }

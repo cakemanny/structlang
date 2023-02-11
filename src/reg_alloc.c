@@ -3,7 +3,6 @@
 #include <assert.h>
 #include "list.h"
 #include "mem.h"
-#include "x86_64.h"
 
 #define var __auto_type
 
@@ -480,7 +479,7 @@ spill_temp(
                     // after
                     var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     replace_temp(instr->ai_oper_dst, temp_to_spill, new_temp);
-                    var new_instr = x86_64_store_temp(new_frame_var, new_temp);
+                    var new_instr = frame->acf_target->store_temp(new_frame_var, new_temp);
 
                     // graft in
                     new_instr->ai_list = instr->ai_list;
@@ -491,7 +490,7 @@ spill_temp(
                     // before
                     var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     replace_temp(instr->ai_oper_src, temp_to_spill, new_temp);
-                    var new_instr = x86_64_load_temp(new_frame_var, new_temp);
+                    var new_instr = frame->acf_target->load_temp(new_frame_var, new_temp);
                     // graft in
                     new_instr->ai_list = instr;
                     *pinstr = new_instr;
@@ -505,7 +504,7 @@ spill_temp(
                     // after
                     var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     instr->ai_oper_dst->tmp_temp = new_temp;
-                    var new_instr = x86_64_store_temp(new_frame_var, new_temp);
+                    var new_instr = frame->acf_target->store_temp(new_frame_var, new_temp);
 
                     // graft in
                     new_instr->ai_list = instr->ai_list;
@@ -516,7 +515,7 @@ spill_temp(
                     // before
                     var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     instr->ai_move_src = new_temp;
-                    var new_instr = x86_64_load_temp(new_frame_var, new_temp);
+                    var new_instr = frame->acf_target->load_temp(new_frame_var, new_temp);
                     // graft in
                     new_instr->ai_list = instr;
                     *pinstr = new_instr;
@@ -549,10 +548,9 @@ ra_alloc(
         return result;
     }
 
-
-    extern const char* registers[]; // FIXME
     var color_result =
-        ra_color(igraph_and_table.igraph, flow, frame->acf_temp_map, registers);
+        ra_color(igraph_and_table.igraph, flow, frame->acf_temp_map,
+                frame->acf_target->register_names);
 
     // :: check for spilled nodes, and rewrite program if so ::
     if (color_result.racr_spills) {

@@ -60,19 +60,19 @@ temp_t caller_saves[] = {
 };
 
 
-const char* registers_8bit[] = {
+static const char* registers_8bit[] = {
     "%al", "%cl", "%dl", "%bl", "%spl", "%bpl", "%sil", "%dil",
     "%r8b", "%r9b", "%r10b", "%r11b", "%r12b", "%r13b", "%r14b", "%r15b"
 };
-const char* registers_16bit[] = {
+static const char* registers_16bit[] = {
     "%ax", "%cx", "%dx", "%bx", "%sp", "%bp", "%si", "%di",
     "%r8w", "%r9w", "%r10w", "%r11w", "%r12w", "%r13w", "%r14w", "%r15w"
 };
-const char* registers_32bit[] = {
+static const char* registers_32bit[] = {
     "%eax", "%ecx", "%edx", "%ebx", "%esp", "%ebp", "%esi", "%edi",
     "%r8d", "%r9d", "%r10d", "%r11d", "%r12d", "%r13d", "%r14d", "%r15d"
 };
-const char* registers_64bit[] = {
+static const char* registers_64bit[] = {
     "%rax", "%rcx", "%rdx", "%rbx", "%rsp", "%rbp", "%rsi", "%rdi",
     "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15"
 };
@@ -504,7 +504,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                                 munch_args(state, 0, args)),
                             NULL));
             }
-            temp_t result = state.frame->acf_regs->acr_ret0;
+            temp_t result = state.frame->acf_target->frame_registers.acr_ret0;
             result.temp_size = exp->te_size;
             assert(result.temp_size);
             return result;
