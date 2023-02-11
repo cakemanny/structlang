@@ -1,6 +1,7 @@
 // vim:sw=4:
 #include <stdlib.h> // exit
 #include <stdio.h>
+#include <string.h> // strcmp
 #include <stdbool.h>
 #include "colours.h"
 #include "ast.h"
@@ -36,6 +37,7 @@ options:\n\
   -C    Stop after canonicalising the tree IR\n\
   -i    Stop after instruction selection\n\
   -l    Stop after liveness analysis\n\
+  -o    Specify output filename\n\
 ", stderr);
     exit(exit_code);
 }
@@ -52,6 +54,7 @@ int main(int argc, char* argv[])
     bool warn_about_multiple_files = 0;
     bool stop_after_liveness_analysis = 0;
     char* inarg = NULL;
+    char* outarg = NULL;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] != '\0') {
             for (char* pc = &argv[i][1]; *pc; pc++) {
@@ -64,6 +67,18 @@ int main(int argc, char* argv[])
                     case 'C': stop_after_canonicalisation = 1; break;
                     case 'i': stop_after_instruction_selection = 1; break;
                     case 'l': stop_after_liveness_analysis = 1; break;
+                    case 'o':
+                              if (!(i + 1 < argc)) {
+                                  fprintf(stderr, "argument to '-o' is missing\n");
+                                  print_usage_and_exit(1);
+                              }
+                              if (*(pc + 1)) {
+                                  fprintf(stderr, "no short args may follow '-o'\n");
+                                  print_usage_and_exit(1);
+                              }
+                              i += 1;
+                              outarg = argv[i];
+                              break;
                     default: fprintf(stderr, "unknown option '%c'\n", *pc);
                              print_usage_and_exit(1);
                 }
@@ -82,6 +97,16 @@ int main(int argc, char* argv[])
                 term_colours.magenta, term_colours.clear, inarg);
     }
 
+    FILE* out = stdout;
+#define Close_out()     do { if (out != stdout) { fclose(out); } } while (0)
+    if (outarg != NULL && strcmp(outarg, "-") != 0) {
+        out = fopen(outarg, "w");
+        if (out == NULL) {
+            perror(outarg);
+            return 1;
+        }
+    }
+
     sl_decl_t* program = parse_file(inarg);
     if (!program) {
         return 1;
@@ -89,9 +114,10 @@ int main(int argc, char* argv[])
 
     if (parse_only) {
         for (sl_decl_t* decl = program; decl; decl = decl->dl_list) {
-            dl_print(stdout, decl);
-            fprintf(stdout, "\n");
+            dl_print(out, decl);
+            fprintf(out, "\n");
         }
+        Close_out();
         return 0;
     }
 
@@ -103,6 +129,7 @@ int main(int argc, char* argv[])
 
     if (stop_after_type_checking) {
         // Print typed tree?
+        Close_out();
         return 0;
     }
 
@@ -112,9 +139,10 @@ int main(int argc, char* argv[])
 
     if (stop_after_rewrites) {
         for (sl_decl_t* decl = program; decl; decl = decl->dl_list) {
-            dl_print(stdout, decl);
-            fprintf(stdout, "\n");
+            dl_print(out, decl);
+            fprintf(out, "\n");
         }
+        Close_out();
         return 0;
     }
 
@@ -126,6 +154,7 @@ int main(int argc, char* argv[])
     }
 
     if (stop_after_activation_calculation) {
+        Close_out();
         return 0;
     }
 
@@ -138,9 +167,10 @@ int main(int argc, char* argv[])
     }
     if (stop_after_translation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
-            fprintf(stdout, "# %s\n", frag->fr_frame->acf_name);
-            tree_printf(stdout, "%S\n", frag->fr_body);
+            fprintf(out, "# %s\n", frag->fr_frame->acf_name);
+            tree_printf(out, "%S\n", frag->fr_body);
         }
+        Close_out();
         return 0;
     }
 
@@ -151,22 +181,23 @@ int main(int argc, char* argv[])
     }
     if (stop_after_canonicalisation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
-            fprintf(stdout, "# %s\n", frag->fr_frame->acf_name);
+            fprintf(out, "# %s\n", frag->fr_frame->acf_name);
             for (var s = frag->fr_body; s; s = s->tst_list) {
-                tree_printf(stdout, "%S\n", s);
+                tree_printf(out, "%S\n", s);
             }
-            fprintf(stdout, "\n");
+            fprintf(out, "\n");
         }
+        Close_out();
         return 0;
     }
 
     for (var frag = fragments; frag; frag = frag->fr_list) {
         assm_instr_t* body_instrs = NULL;
-        fprintf(stdout, "# %s\n", frag->fr_frame->acf_name); // TODO: remove
+        fprintf(out, "# %s\n", frag->fr_frame->acf_name); // TODO: remove
         for (var s = frag->fr_body; s; s = s->tst_list) {
 
             if (stop_after_instruction_selection) {
-                tree_printf(stdout, "## %S\n", s);
+                tree_printf(out, "## %S\n", s);
             }
 
             assm_instr_t* instrs = x86_64_codegen(temp_state, frag->fr_frame, s);
@@ -174,38 +205,38 @@ int main(int argc, char* argv[])
                 for (var i = instrs; i; i = i->ai_list) {
                     char buf[128];
                     assm_format(buf, 128, i, frag->fr_frame->acf_temp_map);
-                    fprintf(stdout, "%s", buf);
+                    fprintf(out, "%s", buf);
                 }
             }
             body_instrs = assm_list_chain(body_instrs, instrs);
         }
         if (stop_after_instruction_selection) {
-            fprintf(stdout, "\n");
+            fprintf(out, "\n");
             continue;
         }
         body_instrs = proc_entry_exit_2(frag->fr_frame, body_instrs);
 
         var instrs_and_allocation =
-            ra_alloc(temp_state, body_instrs, frag->fr_frame,
+            ra_alloc(out, temp_state, body_instrs, frag->fr_frame,
                     stop_after_liveness_analysis);
         if (stop_after_liveness_analysis) {
-            break;
+            continue;
         }
 
         var final_fragment = proc_entry_exit_3(
                 frag->fr_frame, instrs_and_allocation.ra_instrs);
 
-        fputs(final_fragment.asf_prologue, stdout);
+        fputs(final_fragment.asf_prologue, out);
         for (var i = final_fragment.asf_instrs; i; i = i->ai_list) {
-            // FIXME: we need to provide a separate allocation for each
-            // instruction size
             char buf[128];
             assm_format(buf, 128, i, instrs_and_allocation.ra_allocation);
-            fprintf(stdout, "%s", buf);
+            fprintf(out, "%s", buf);
         }
-        fputs(final_fragment.asf_epilogue, stdout);
+        fputs(final_fragment.asf_epilogue, out);
     }
 
     // end of program... maybe
     temp_state_free(&temp_state);
+
+    Close_out();
 }

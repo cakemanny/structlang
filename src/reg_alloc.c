@@ -531,6 +531,7 @@ spill_temp(
 
 struct instr_list_and_allocation
 ra_alloc(
+        FILE* out,
         temp_state_t* temp_state,
         assm_instr_t* body_instrs,
         ac_frame_t* frame,
@@ -543,7 +544,7 @@ ra_alloc(
     var igraph_and_table =
         intererence_graph(flow);
     if (print_interference_and_return) {
-        igraph_show(stdout, igraph_and_table.igraph);
+        igraph_show(out, igraph_and_table.igraph);
         struct instr_list_and_allocation result = {};
         return result;
     }
@@ -561,7 +562,7 @@ ra_alloc(
             spill_temp(temp_state, frame, &body_instrs, x->tmp_temp);
         }
         // TODO: free structures
-        return ra_alloc(temp_state, body_instrs, frame, false);
+        return ra_alloc(out, temp_state, body_instrs, frame, false);
     }
 
     struct instr_list_and_allocation result = {

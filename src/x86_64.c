@@ -691,7 +691,7 @@ static void munch_stm(codegen_t state, tree_stm_t* stm)
             //                 ^---^
             //                  This can be dropped
             // Maybe in the future we can emit an error
-            if(stm->tst_exp->te_tag != TREE_EXP_CALL) {
+            if (stm->tst_exp->te_tag != TREE_EXP_CALL) {
                 #ifndef NDEBUG
                     tree_printf(stderr, "dropping dead code: %S\n", stm);
                 #endif

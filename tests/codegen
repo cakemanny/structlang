@@ -33,10 +33,16 @@ LD="zig cc"
 LDFLAGS="--target=x86_64-linux-gnu -Wno-unused-command-line-argument"
 LDLIBS=""
 
+tmp_d=$(mktemp -d) || exit 1
+echo "$tmp_d"
+trap "rm -rf ${tmp_d}" EXIT
+
+container_id=$(docker run --detach --rm --platform=linux/amd64 -v "$tmp_d:/app" -w /app debian:latest sh -c 'sleep 60')
+trap "docker stop -t 0 $container_id; rm -rf ${tmp_d}" EXIT
+
 expect () {
     code="$1"
     expected="$2"
-    tmp_d=$(mktemp -d) || exit 1
     stmp="${tmp_d}/test.s"
     atmp="${tmp_d}/a.out"
     if (echo "$code" | $SLC - > $stmp); then
@@ -44,8 +50,7 @@ expect () {
         $LD $LDFLAGS $stmp -o $atmp $LDLIBS
         # Run
         # We write to a file because docker seems to spit a carriage return out
-        docker run -it --rm --platform=linux/amd64 -v "$tmp_d:/app" -w /app \
-            debian:latest sh -c './a.out; echo $? > test.result'
+        docker exec -it $container_id sh -c './a.out; echo $? > test.result'
 
         result=$(cat ${tmp_d}/test.result)
         if [ "$result" = "$expected" ]; then
@@ -64,7 +69,6 @@ expect () {
         echo "${red}FAILED${rst} to compile '$code'"
         exitcode=$((1 + $exitcode))
     fi
-    rm -rf ${tmp_d}
 }
 
 # The tests
@@ -92,6 +96,19 @@ expect 'fn main() -> bool { 1 == 2 }' 0
 expect 'fn main() -> bool { 1 != 2 }' 1
 expect 'fn main() -> bool { true == true }' 1
 
+# Allocated data
+expect 'struct X { x: int }
+fn main() -> bool {
+    (new X{0}) == (new X{1})
+}' 0
+
+expect '
+struct X { x: int }
+fn main() -> bool {
+    *(new X{5}) == *(new X{5})
+}
+' 1
+
 # Calls
 expect 'fn f() -> int { 5 }
 fn main() -> int { f() }' '5'
@@ -101,5 +118,6 @@ fn main() -> int { f(5) }' '5'
 
 # Conditionals
 expect 'fn main() -> int { if 1 < 2 { 1 } else { 2 } }' '1'
+expect 'fn main() -> void { if 1 < 2 { return } }' '0'
 
 exit ${exitcode}
