@@ -3,6 +3,7 @@
 #include <assert.h>
 #include "list.h"
 #include "mem.h"
+#include "codegen.h"
 
 #define var __auto_type
 
@@ -469,6 +470,17 @@ spill_temp(
         temp_t temp_to_spill
         )
 {
+    if (debug) {
+        fprintf(stderr, "spilling temp: %d\n", temp_to_spill.temp_id);
+    }
+    /*
+     * To think about:
+     *   if temp_to_spill is already one of our function's local variables
+     *   then we could spill it without allocating more stack space...
+     */
+
+    var backend = frame->acf_target->tgt_backend;
+
     struct ac_frame_var* new_frame_var = ac_spill_temporary(frame);
     for (var pinstr = pbody_instrs; *pinstr; pinstr = &((*pinstr)->ai_list)) {
         var instr = *pinstr;
@@ -479,7 +491,7 @@ spill_temp(
                     // after
                     var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     replace_temp(instr->ai_oper_dst, temp_to_spill, new_temp);
-                    var new_instr = frame->acf_target->store_temp(new_frame_var, new_temp);
+                    var new_instr = backend->store_temp(new_frame_var, new_temp);
 
                     // graft in
                     new_instr->ai_list = instr->ai_list;
@@ -490,7 +502,7 @@ spill_temp(
                     // before
                     var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     replace_temp(instr->ai_oper_src, temp_to_spill, new_temp);
-                    var new_instr = frame->acf_target->load_temp(new_frame_var, new_temp);
+                    var new_instr = backend->load_temp(new_frame_var, new_temp);
                     // graft in
                     new_instr->ai_list = instr;
                     *pinstr = new_instr;
@@ -503,8 +515,8 @@ spill_temp(
                     // Want to store to our new stack location
                     // after
                     var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
-                    instr->ai_oper_dst->tmp_temp = new_temp;
-                    var new_instr = frame->acf_target->store_temp(new_frame_var, new_temp);
+                    instr->ai_move_dst = new_temp;
+                    var new_instr = backend->store_temp(new_frame_var, new_temp);
 
                     // graft in
                     new_instr->ai_list = instr->ai_list;
@@ -515,7 +527,7 @@ spill_temp(
                     // before
                     var new_temp = temp_newtemp(temp_state, temp_to_spill.temp_size);
                     instr->ai_move_src = new_temp;
-                    var new_instr = frame->acf_target->load_temp(new_frame_var, new_temp);
+                    var new_instr = backend->load_temp(new_frame_var, new_temp);
                     // graft in
                     new_instr->ai_list = instr;
                     *pinstr = new_instr;
@@ -555,9 +567,26 @@ ra_alloc(
     // :: check for spilled nodes, and rewrite program if so ::
     if (color_result.racr_spills) {
         if (debug) {fprintf(stderr, "spilling!\n");}
+        if (debug) {
+            fprintf(stderr, "# before rewrite:\n");
+            for (var i = body_instrs; i; i = i->ai_list) {
+                char buf[128];
+                assm_format(buf, 128, i, frame->acf_temp_map, frame->acf_target);
+                fprintf(out, "%s", buf);
+            }
+        }
 
         for (temp_list_t* x = color_result.racr_spills; x; x = x->tmp_list) {
             spill_temp(temp_state, frame, &body_instrs, x->tmp_temp);
+        }
+
+        if (debug) {
+            fprintf(stderr, "# rewritten:\n");
+            for (var i = body_instrs; i; i = i->ai_list) {
+                char buf[128];
+                assm_format(buf, 128, i, frame->acf_temp_map, frame->acf_target);
+                fprintf(out, "%s", buf);
+            }
         }
         // TODO: free structures
         return ra_alloc(out, temp_state, body_instrs, frame, false);

@@ -53,64 +53,12 @@ const struct ac_builtin_type {
     { "void", 0, 0, false },
 };
 
-
-static const temp_t x86_64_argument_regs[] = {
-    {.temp_id = 7}, // rdi
-    {.temp_id = 6}, // rsi
-    {.temp_id = 2}, // rdx
-    {.temp_id = 1}, // rcx
-    {.temp_id = 8}, // r8
-    {.temp_id = 9}, // r9
-};
-
-/* Used for creating the initial tempMap
- */
-const temp_t x86_64_temp_map_temps[] = {
-    {.temp_id = 0}, {.temp_id = 1}, {.temp_id = 2}, {.temp_id = 3},
-    {.temp_id = 4}, {.temp_id = 5}, {.temp_id = 6}, {.temp_id = 7},
-    {.temp_id = 8}, {.temp_id = 9}, {.temp_id = 10}, {.temp_id = 11},
-    {.temp_id = 12}, {.temp_id = 13}, {.temp_id = 14}, {.temp_id = 15},
-};
-const char* x86_64_registers[] = {
-    "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
-    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
-};
-
-static_assert(
-        NELEMS(x86_64_temp_map_temps) == NELEMS(x86_64_registers),
-        "x86_64_temp_map_temps length");
-
-static const temp_t x86_64_callee_saves[] = X86_68_CALLEE_SAVES;
-
-extern assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp);
-extern assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp);
-const target_t target_x86_64 = {
-    .word_size = 8,
-    .stack_alignment = 16,
-    .arg_registers = {
-        .length = NELEMS(x86_64_argument_regs),
-        .elems = x86_64_argument_regs,
-    },
-    .frame_registers = {
-        .acr_sp = {.temp_id = 4, .temp_size = 8}, // rsp
-        .acr_fp = {.temp_id = 5, .temp_size = 8}, // rbp
-        .acr_ret0 = {.temp_id = 0}, // rax
-        .acr_ret1 = {.temp_id = 2}, // rdx
-    },
-    .callee_saves = {
-        .length = NELEMS(x86_64_callee_saves),
-        .elems = x86_64_callee_saves,
-    },
-    .register_names = x86_64_registers,
-    .load_temp = x86_64_load_temp,
-    .store_temp = x86_64_store_temp,
-};
 const size_t ac_word_size = 8;
 
-// We might unmake this const in future?
-const target_t* const target = &target_x86_64;
+static const target_t* target = &target_x86_64;
 
-static ac_frame_t* ac_frame_new(sl_sym_t func_name, Table_T temp_map)
+static ac_frame_t* ac_frame_new(
+        sl_sym_t func_name, const target_t* target, Table_T temp_map)
 {
     ac_frame_t* f = xmalloc(sizeof *f);
     f->acf_name = func_name;
@@ -432,6 +380,7 @@ static void calculate_activation_record_decl_func(
     if (ac_debug) {
         fprintf(stderr, "calc activation for %s\n", decl->dl_name);
     }
+    var target = frame->acf_target;
 
     // space for return type
     sl_type_t* ret_type = decl->dl_type;
@@ -560,43 +509,25 @@ static void calculate_activation_record_decl_func(
     }
 }
 
-/*
- * These are used when we have Tables with temp_t's as keys
- */
-static int cmptemp(const void* x, const void* y)
-{
-    const temp_t* xx = x;
-    const temp_t* yy = y;
-    return xx->temp_id - yy->temp_id;
-}
-static unsigned hashtemp(const void* key)
-{
-    const temp_t* k = key;
-    return k->temp_id;
-}
-
-static Table_T x86_64_temp_map()
-{
-    Table_T result = Table_new(0, cmptemp, hashtemp);
-    for (int i = 0; i < NELEMS(x86_64_registers); i++) {
-        Table_put(result,
-                &(x86_64_temp_map_temps[i]),
-                (void*)x86_64_registers[i]);
-    }
-    return result;
-}
-
-ac_frame_t* calculate_activation_records(sl_decl_t* program)
+ac_frame_t* calculate_activation_records(enum target_type target_tag, sl_decl_t* program)
 {
     if (ac_debug) {
         fprintf(stderr, "calculating activation records\n");
     }
-    Table_T temp_map = x86_64_temp_map();
+
+    Table_T temp_map =
+        (target_tag == TARGET_X86_64) ? x86_64_temp_map()
+        : arm64_temp_map();
+
+    // !!
+    target =
+        (target_tag == TARGET_X86_64) ? &target_x86_64
+        : &target_arm64;
 
     ac_frame_t* frame_list = NULL;
     for (sl_decl_t* d = program; d; d = d->dl_list) {
         if (d->dl_tag == SL_DECL_FUNC) {
-            ac_frame_t* f = ac_frame_new(d->dl_name, temp_map);
+            ac_frame_t* f = ac_frame_new(d->dl_name, target, temp_map);
             calculate_activation_record_decl_func(program, f, d);
             frame_list = ac_frame_append_frame(frame_list, f);
         }
@@ -609,6 +540,7 @@ ac_frame_t* calculate_activation_records(sl_decl_t* program)
  */
 struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame)
 {
+    var target = frame->acf_target;
     size_t size = target->word_size;
     struct ac_frame_var* v = xmalloc(sizeof *v);
     v->acf_tag = ACF_ACCESS_FRAME;
@@ -656,7 +588,7 @@ tree_stm_t* proc_entry_exit_1(
     }
 
     // 2. Save callee saves
-
+    const target_t* target = frame->acf_target;
     const size_t num_callee_saves = target->callee_saves.length;
     const size_t word_size = target->word_size;
     temp_t temps_for_callee_saves[num_callee_saves];

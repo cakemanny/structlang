@@ -5,36 +5,12 @@
 #include "ast.h" // sl_type_t
 #include <stdint.h> // uint64_t
 #include <stdbool.h> // bool
+#include "target.h"
 #include "temp.h"
+#include "target.h"
 #include "tree.h"
 #include "interfaces/table.h"
 #include "assem.h"
-
-typedef struct ac_registers_t {
-    temp_t acr_sp;
-    temp_t acr_fp;
-    temp_t acr_ret0;
-    temp_t acr_ret1;
-} ac_registers_t;
-
-typedef struct temp_array_t {
-    size_t length;
-    const temp_t* elems;
-} temp_array_t;
-
-struct ac_frame_var;
-
-typedef struct target {
-    size_t word_size;
-    size_t stack_alignment;
-    temp_array_t arg_registers;
-    ac_registers_t frame_registers;
-    const temp_array_t callee_saves;
-    const char** register_names;
-
-    assm_instr_t* (*load_temp)(struct ac_frame_var*, temp_t);
-    assm_instr_t* (*store_temp)(struct ac_frame_var*, temp_t);
-} target_t;
 
 
 typedef struct ac_frame {
@@ -79,7 +55,7 @@ typedef struct ac_frame {
 
 void ac_frame_free(ac_frame_t** pframe);
 
-ac_frame_t* calculate_activation_records(sl_decl_t* program);
+ac_frame_t* calculate_activation_records(enum target_type, sl_decl_t* program);
 size_t size_of_type(const sl_decl_t* program, sl_type_t* type);
 size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);
 

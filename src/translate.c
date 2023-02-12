@@ -231,10 +231,10 @@ static tree_exp_t* translate_var_mem_ref_expr(ac_frame_t* frame, int var_id)
 
     tree_exp_t* result = tree_exp_mem(
         (frame_var->acf_offset == 0)
-        ? tree_exp_temp(frame->acf_target->frame_registers.acr_fp, ac_word_size) // rbp
+        ? tree_exp_temp(frame->acf_target->tgt_fp, ac_word_size) // rbp
         : tree_exp_binop(
             TREE_BINOP_PLUS,
-            tree_exp_temp(frame->acf_target->frame_registers.acr_fp, ac_word_size), // rbp
+            tree_exp_temp(frame->acf_target->tgt_fp, ac_word_size), // rbp
             tree_exp_const(frame_var->acf_offset, ac_word_size)
         ),
         frame_var->acf_size
@@ -517,7 +517,7 @@ static translate_exp_t* translate_expr_call(
 static tree_stm_t* assign_return(ac_frame_t* frame, tree_exp_t* arg)
 {
     if (arg->te_size <= ac_word_size) {
-        temp_t t = frame->acf_target->frame_registers.acr_ret0; // Take a COPY of acr_ret0
+        temp_t t = frame->acf_target->tgt_ret0; // Take a COPY of acr_ret0
         t.temp_size = arg->te_size;
         return tree_stm_move(
             tree_exp_temp(t, t.temp_size),

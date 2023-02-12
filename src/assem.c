@@ -39,21 +39,22 @@ assm_instr_t* assm_move(const char* assem, temp_t dst, temp_t src)
 const char* register_for_size(const char* regname, size_t size);
 
 // returns chars written not including null term
-static int format_temp(char* const out, const size_t size, temp_t t, Table_T allocation)
+static int format_temp(
+        char* const out, const size_t size, temp_t t, Table_T allocation,
+        const target_t* target)
 {
     assert(size > 0);
     char* o = out;
     const char* allocated_reg = Table_get(allocation, &t);
     if (allocated_reg != NULL) {
         char regname_buf[8] = {};
-        const char* sized_reg_name = register_for_size(allocated_reg, t.temp_size);
+        const char* sized_reg_name = target->register_for_size(allocated_reg, t.temp_size);
         strncpy(regname_buf, sized_reg_name, sizeof(regname_buf) - 1);
         int n = snprintf(o, size - (o - out), "%s", regname_buf);
         assert(n > 0); // rudimentary error check lol
         o += n;
     } else {
-        *o++ = 't';
-        int n = snprintf(o, size - (o - out), "%d", t.temp_id);
+        int n = snprintf(o, size - (o - out), "t%d.%d", t.temp_id, t.temp_size);
         assert(n > 0); // rudimentary error check lol
         o += n;
     }
@@ -64,7 +65,7 @@ static int format_temp(char* const out, const size_t size, temp_t t, Table_T all
 }
 
 void assm_format(char* const out, const size_t out_len, assm_instr_t* instr,
-        Table_T allocation)
+        Table_T allocation, const target_t* target)
 {
     switch (instr->ai_tag) {
         case ASSM_INSTR_OPER:
@@ -109,7 +110,7 @@ void assm_format(char* const out, const size_t out_len, assm_instr_t* instr,
                     temp_t t = temp_array[idx];
                     // at this point we would like to call our temp_formatting
                     // function
-                    o += format_temp(o, out_len - (o - out), t, allocation);
+                    o += format_temp(o, out_len - (o - out), t, allocation, target);
                 } else {
                     *o++ = c;
                 }
@@ -144,15 +145,15 @@ void assm_format(char* const out, const size_t out_len, assm_instr_t* instr,
             *o++ = '\t'; // indent
             o += snprintf(o, out_len - (o - out), "%s", parts[0]);
             if (parts[1][1] == 's') {
-                o += format_temp(o, out_len - (o - out), instr->ai_move_src, allocation);
+                o += format_temp(o, out_len - (o - out), instr->ai_move_src, allocation, target);
             } else {
-                o += format_temp(o, out_len - (o - out), instr->ai_move_dst, allocation);
+                o += format_temp(o, out_len - (o - out), instr->ai_move_dst, allocation, target);
             }
             o += snprintf(o, out_len - (o - out), "%s", parts[2]);
-            if (parts[3][3] == 's') {
-                o += format_temp(o, out_len - (o - out), instr->ai_move_src, allocation);
+            if (parts[3][1] == 's') {
+                o += format_temp(o, out_len - (o - out), instr->ai_move_src, allocation, target);
             } else {
-                o += format_temp(o, out_len - (o - out), instr->ai_move_dst, allocation);
+                o += format_temp(o, out_len - (o - out), instr->ai_move_dst, allocation, target);
             }
             o += snprintf(o, out_len - (o - out), "%s", parts[4]);
             *o++ = '\0';

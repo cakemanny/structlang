@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include "temp.h"
 #include "interfaces/table.h"
+#include "target.h"
 
 typedef struct assm_instr_t assm_instr_t;
 
@@ -44,7 +45,7 @@ assm_instr_t* assm_move(const char* assem, temp_t dst, temp_t src);
  * that the formatted instruction is written into.
  */
 void assm_format(char* const out, const size_t out_len, assm_instr_t* instr,
-        Table_T allocation);
+        Table_T allocation, const target_t* target);
 
 assm_instr_t* assm_list_reverse(assm_instr_t*);
 

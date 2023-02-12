@@ -11,6 +11,8 @@
 
 #define NELEMS(A) ((sizeof A) / sizeof A[0])
 
+
+
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
 
@@ -21,18 +23,18 @@
     } \
 } while (0)
 
-typedef struct codegen_t {
+typedef struct codegen_state_t {
     assm_instr_t** ilist;
     temp_state_t* temp_state;
     ac_frame_t* frame;
-} codegen_t;
+} codegen_state_t;
 
 // pre-declarations
-static temp_t munch_exp(codegen_t state, tree_exp_t* exp);
+static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp);
 
 static const int word_size = 8;
 
-temp_t special_regs[] = {
+static const temp_t special_regs[] = {
     {.temp_id = 0, .temp_size = word_size}, // rax  return value pt1
     {.temp_id = 2, .temp_size = word_size}, // rdx  return value pt2
     {.temp_id = 4, .temp_size = word_size}, // rsp  stack pointer
@@ -41,7 +43,7 @@ temp_t special_regs[] = {
 
 // is this what he meant by outgoing arguments?
 // not quite the same as activation.c
-temp_t argregs[] = {
+static const temp_t argregs[] = {
     {.temp_id = 7}, // rdi
     {.temp_id = 6}, // rsi
     {.temp_id = 2}, // rdx
@@ -50,11 +52,18 @@ temp_t argregs[] = {
     {.temp_id = 9}, // r9
 };
 
+// rbp is not included since it's a special reg (the frame pointer)
 // registers that won't be trashed by a called function
-temp_t callee_saves[] = X86_68_CALLEE_SAVES;
+static const temp_t callee_saves[] = {
+    {.temp_id = 3 , .temp_size = word_size}, /* rbx */
+    {.temp_id = 12, .temp_size = word_size}, /* r12 */
+    {.temp_id = 13, .temp_size = word_size}, /* r13 */
+    {.temp_id = 14, .temp_size = word_size}, /* r14 */
+    {.temp_id = 15, .temp_size = word_size}, /* r15 */
+};
 
 // things we trash
-temp_t caller_saves[] = {
+static const temp_t caller_saves[] = {
     {.temp_id = 10, .temp_size = word_size}, // r10  could be used for static chain pointer - if wanted
     {.temp_id = 11, .temp_size = word_size}, // r11
 };
@@ -90,12 +99,16 @@ static void init_calldefs()
 
     // the return value registers
     c = temp_list_cons(special_regs[0], c); // rax
-    // -- the next line is commented because we included it already in args
-    //c = temp_list_cons(special_regs[1], c); // rdx
+    // -- the next line should be commented if we include it already in args
+    c = temp_list_cons(special_regs[1], c); // rdx
 
+    // FIXME: I think this should be the case.
+    // The called function is allowed to trash these if it likes
     if (0) { // I think not
         // should all the argument registers be included also?
         for (int i = 0; i < NELEMS(argregs); i++) {
+            temp_t t = argregs[i];
+            t.temp_size = word_size;
             c = temp_list_cons(argregs[i], c);
         }
     }
@@ -116,7 +129,7 @@ static char* strdupchk(const char* s1)
     return s;
 }
 
-static void emit(codegen_t state, assm_instr_t* new_instr)
+static void emit(codegen_state_t state, assm_instr_t* new_instr)
 {
     new_instr->ai_list = *state.ilist;
     *state.ilist = new_instr;
@@ -139,7 +152,13 @@ static const char* suff_from_size(size_t size)
     assert(0 && "invalid size");
 }
 
-const char* register_for_size(const char* regname, size_t size)
+static const char* suff(tree_exp_t* exp)
+{
+    return suff_from_size(exp->te_size);
+}
+
+
+static const char* x86_64_register_for_size(const char* regname, size_t size)
 {
     assert(regname);
     assert(strlen(regname) >= 2 && strlen(regname) <= 3);
@@ -187,22 +206,16 @@ const char* register_for_size(const char* regname, size_t size)
     assert(!"unexpected register name");
 }
 
-static const char* suff(tree_exp_t* exp)
-{
-    return suff_from_size(exp->te_size);
-}
-
-
-assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp)
+static assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp)
 {
     char* s = NULL;
-    Asprintf(&s, "mov%s %d(`s0), `d0	# unspill\n", suff_from_size(v->acf_size),
-            v->acf_offset);
+    Asprintf(&s, "mov%s %d(`s0), `d0	# unspill\n",
+            suff_from_size(v->acf_size), v->acf_offset);
     var src_list = temp_list(special_regs[3]);
     return assm_oper(s, temp_list(temp), src_list, NULL);
 }
 
-assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp)
+static assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp)
 {
     char* s = NULL;
     Asprintf(&s, "mov%s `s1, %d(`s0)	# spill\n",
@@ -217,7 +230,7 @@ assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp)
             NULL /* jump=None */);
 }
 
-static temp_list_t* munch_args(codegen_t state, int arg_idx, tree_exp_t* exp)
+static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* exp)
 {
     if (exp == NULL) {
         // no more remaining arguments, return empty list
@@ -246,6 +259,7 @@ static temp_list_t* munch_args(codegen_t state, int arg_idx, tree_exp_t* exp)
 
         munch_exp(state, exp);
         // TODO: change munch to return a list of temps
+        assert(!"TODO: larger arguments");
 
         return temp_list_cons(
                 param_reg,
@@ -257,7 +271,7 @@ static temp_list_t* munch_args(codegen_t state, int arg_idx, tree_exp_t* exp)
     }
 }
 
-static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
+static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
 {
 #define Munch_exp(_exp) munch_exp(state, _exp)
     assert(exp->te_size <= 16);
@@ -404,6 +418,8 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                     var lhs = Munch_exp(exp->te_lhs);
                     emit(state, assm_move(s, rax, lhs));
 
+                    // There must be no munch between the following two
+                    // instructions
                     temp_t rdx = special_regs[1];
                     Asprintf(&s, "xorq `s0, `d0\n");
                     emit(state,
@@ -504,7 +520,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
                                 munch_args(state, 0, args)),
                             NULL));
             }
-            temp_t result = state.frame->acf_target->frame_registers.acr_ret0;
+            temp_t result = state.frame->acf_target->tgt_ret0;
             result.temp_size = exp->te_size;
             assert(result.temp_size);
             return result;
@@ -520,7 +536,7 @@ static temp_t munch_exp(codegen_t state, tree_exp_t* exp)
 // TODO: We might need to consider sign-extending and zero extending moves
 // that move from smaller to larger registers
 
-static void munch_stm(codegen_t state, tree_stm_t* stm)
+static void munch_stm(codegen_state_t state, tree_stm_t* stm)
 {
 #define Munch_stm(_stm) munch_stm(state, _stm)
 #define Munch_exp(_exp) munch_exp(state, _exp)
@@ -666,10 +682,7 @@ static void munch_stm(codegen_t state, tree_stm_t* stm)
                     char* s = NULL;
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(src));
                     emit(state,
-                         assm_oper(s,
-                                   temp_list(dst->te_temp),
-                                   temp_list(src_t),
-                                   NULL));
+                         assm_move(s, dst->te_temp, src_t));
                 }
             } else {
                 assert(0 && "move into neither memory or register");
@@ -818,7 +831,7 @@ assm_instr_t* x86_64_codegen(
         init_calldefs();
     }
     assm_instr_t* result = NULL;
-    codegen_t codegen_state = {
+    codegen_state_t codegen_state = {
         .ilist = &result,
         .temp_state = temp_state,
         .frame = frame,
@@ -829,14 +842,20 @@ assm_instr_t* x86_64_codegen(
 
 
 
-assm_instr_t* proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
+assm_instr_t* x86_64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
 {
     temp_list_t* src_list = NULL;
     for (int i = 0; i < NELEMS(callee_saves); i++) {
         src_list = temp_list_cons(callee_saves[i], src_list);
     }
-    src_list = temp_list_cons(special_regs[2], src_list);
-    src_list = temp_list_cons(special_regs[3], src_list);
+    src_list = temp_list_cons(special_regs[2], src_list); // sp =rsp
+    src_list = temp_list_cons(special_regs[3], src_list); // fp =rbp
+    temp_t ret0 = frame->acf_target->tgt_ret0;
+    ret0.temp_size = word_size;
+    src_list = temp_list_cons(ret0, src_list); // rax
+    temp_t ret1 = frame->acf_target->tgt_ret1;
+    ret1.temp_size = word_size;
+    src_list = temp_list_cons(ret1, src_list); // rdx
 
     sl_sym_t* empty_jump_list = xmalloc(sizeof *empty_jump_list);
 
@@ -890,7 +909,7 @@ f:                                      # @f
                                         # -- End function
 */
 
-assm_fragment_t proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
+assm_fragment_t x86_64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
 {
     const char* fn_label = frame->acf_name;
     char* prologue = NULL;
@@ -918,4 +937,80 @@ assm_fragment_t proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
         .asf_instrs = body,
         .asf_epilogue = epilogue,
     };
+}
+
+
+/*
+ * Here down is the implementation of the target types declared in target.h
+ */
+
+/* Used for creating the initial tempMap
+ */
+const temp_t x86_64_temp_map_temps[] = {
+    {.temp_id = 0}, {.temp_id = 1}, {.temp_id = 2}, {.temp_id = 3},
+    {.temp_id = 4}, {.temp_id = 5}, {.temp_id = 6}, {.temp_id = 7},
+    {.temp_id = 8}, {.temp_id = 9}, {.temp_id = 10}, {.temp_id = 11},
+    {.temp_id = 12}, {.temp_id = 13}, {.temp_id = 14}, {.temp_id = 15},
+};
+const char* x86_64_registers[] = {
+    "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+};
+
+static_assert(
+        NELEMS(x86_64_temp_map_temps) == NELEMS(x86_64_registers),
+        "x86_64_temp_map_temps length");
+
+static codegen_t x86_64_codegen_module = {
+    .codegen = x86_64_codegen,
+    .proc_entry_exit_2 = x86_64_proc_entry_exit_2,
+    .proc_entry_exit_3 = x86_64_proc_entry_exit_3,
+    .load_temp = x86_64_load_temp,
+    .store_temp = x86_64_store_temp,
+};
+
+const target_t target_x86_64 = {
+    .word_size = 8,
+    .stack_alignment = 16,
+    .arg_registers = {
+        .length = NELEMS(argregs),
+        .elems = argregs,
+    },
+    .tgt_sp = {.temp_id = 4, .temp_size = 8}, // rsp
+    .tgt_fp = {.temp_id = 5, .temp_size = 8}, // rbp
+    .tgt_ret0 = {.temp_id = 0}, // rax
+    .tgt_ret1 = {.temp_id = 2}, // rdx
+    .callee_saves = {
+        .length = NELEMS(callee_saves),
+        .elems = callee_saves,
+    },
+    .register_names = x86_64_registers,
+    .register_for_size = x86_64_register_for_size,
+    .tgt_backend = &x86_64_codegen_module,
+};
+
+/*
+ * These are used when we have Tables with temp_t's as keys
+ */
+static int cmptemp(const void* x, const void* y)
+{
+    const temp_t* xx = x;
+    const temp_t* yy = y;
+    return xx->temp_id - yy->temp_id;
+}
+static unsigned hashtemp(const void* key)
+{
+    const temp_t* k = key;
+    return k->temp_id;
+}
+
+Table_T x86_64_temp_map()
+{
+    Table_T result = Table_new(0, cmptemp, hashtemp);
+    for (int i = 0; i < NELEMS(x86_64_registers); i++) {
+        Table_put(result,
+                &(x86_64_temp_map_temps[i]),
+                (void*)x86_64_registers[i]);
+    }
+    return result;
 }

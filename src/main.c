@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h> // strcmp
 #include <stdbool.h>
+#include <assert.h>
 #include "colours.h"
 #include "ast.h"
 #include "semantics.h"
@@ -12,6 +13,7 @@
 #include "translate.h"
 #include "canonical.h"
 #include "x86_64.h"
+#include "arm64.h"
 #include "liveness.h"
 #include "reg_alloc.h"
 
@@ -146,7 +148,10 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    ac_frame_t* frames = calculate_activation_records(program);
+    var target_tag = TARGET_ARM64;
+    var target = target_arm64;
+
+    ac_frame_t* frames = calculate_activation_records(target_tag, program);
     if(!frames) {
         // TODO: consider a module with only struct definitions?
         fprintf(stderr, "internal error: failed to calculate frames\n");
@@ -200,11 +205,12 @@ int main(int argc, char* argv[])
                 tree_printf(out, "## %S\n", s);
             }
 
-            assm_instr_t* instrs = x86_64_codegen(temp_state, frag->fr_frame, s);
+            assm_instr_t* instrs =
+                target.tgt_backend->codegen(temp_state, frag->fr_frame, s);
             if (stop_after_instruction_selection) {
                 for (var i = instrs; i; i = i->ai_list) {
                     char buf[128];
-                    assm_format(buf, 128, i, frag->fr_frame->acf_temp_map);
+                    assm_format(buf, 128, i, frag->fr_frame->acf_temp_map, &target);
                     fprintf(out, "%s", buf);
                 }
             }
@@ -214,7 +220,8 @@ int main(int argc, char* argv[])
             fprintf(out, "\n");
             continue;
         }
-        body_instrs = proc_entry_exit_2(frag->fr_frame, body_instrs);
+        assert(body_instrs);
+        body_instrs = target.tgt_backend->proc_entry_exit_2(frag->fr_frame, body_instrs);
 
         var instrs_and_allocation =
             ra_alloc(out, temp_state, body_instrs, frag->fr_frame,
@@ -223,13 +230,13 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        var final_fragment = proc_entry_exit_3(
+        var final_fragment = target.tgt_backend->proc_entry_exit_3(
                 frag->fr_frame, instrs_and_allocation.ra_instrs);
 
         fputs(final_fragment.asf_prologue, out);
         for (var i = final_fragment.asf_instrs; i; i = i->ai_list) {
             char buf[128];
-            assm_format(buf, 128, i, instrs_and_allocation.ra_allocation);
+            assm_format(buf, 128, i, instrs_and_allocation.ra_allocation, &target);
             fprintf(out, "%s", buf);
         }
         fputs(final_fragment.asf_epilogue, out);
