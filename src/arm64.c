@@ -167,7 +167,7 @@ static assm_instr_t* arm64_load_temp(struct ac_frame_var* v, temp_t temp)
 static assm_instr_t* arm64_store_temp(struct ac_frame_var* v, temp_t temp)
 {
     char* s = NULL;
-    Asprintf(&s, "str%s `s0, [`s1, #%d]	; spill\n",
+    Asprintf(&s, "str%s	`s0, [`s1, #%d]	; spill\n",
             suff_from_size(v->acf_size), v->acf_offset);
     var src_list =
         temp_list_cons(temp,
@@ -241,7 +241,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 if (addr->te_rhs->te_tag == TREE_EXP_CONST) {
                     var r = temp_newtemp(state.temp_state, exp->te_size);
                     char* s = NULL;
-                    Asprintf(&s, "ldr    `d0, [`s0, #%d]\n",
+                    Asprintf(&s, "ldr	`d0, [`s0, #%d]\n",
                             addr->te_rhs->te_const);
                     var src_list = temp_list(Munch_exp(addr->te_lhs));
                     emit(state,
@@ -255,7 +255,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             // MEM(e1)
             var r = temp_newtemp(state.temp_state, exp->te_size);
             char* s = NULL;
-            Asprintf(&s, "ldr    `d0, [`s0]\n");
+            Asprintf(&s, "ldr	`d0, [`s0]\n");
             var src_list = temp_list(Munch_exp(addr));
             emit(state,
                  assm_oper(s, temp_list(r), src_list, NULL));
@@ -263,9 +263,23 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
         }
         case TREE_EXP_BINOP:
         {
-            // TODO: there are probably some nice specialisations for
-            // 16-bit immediates
+            // BINOP(+, e1, CONST)
+            if (exp->te_binop == TREE_BINOP_PLUS
+                    && exp->te_rhs->te_tag == TREE_EXP_CONST) {
+                if (can_be_immediate(exp->te_rhs->te_const)) {
+                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    char* s = NULL;
+                    Asprintf(&s, "add	`d0, `s0, #%d\n",
+                            exp->te_rhs->te_const);
+                    var src_list = temp_list(Munch_exp(exp->te_lhs));
+                    emit(state,
+                            assm_oper(s, temp_list(r), src_list, NULL));
+                    return r;
+                }
+                tree_printf(stderr, "$$$ %E\n", exp);
+            }
 
+            // BINOP(+, e1, e2)
             const char* op;
             switch (exp->te_binop) {
                 case TREE_BINOP_PLUS: op = "add"; break;
@@ -318,7 +332,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             var args = exp->te_args;
             if (func->te_tag == TREE_EXP_NAME) {
                 char* s = NULL;
-                Asprintf(&s, "bl _%s\n", func->te_name);
+                Asprintf(&s, "bl	_%s\n", func->te_name);
                 assert(calldefs);
                 emit(state, assm_oper(
                             s, calldefs, munch_args(state, 0, args), NULL));
@@ -382,7 +396,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                             assm_oper(s, NULL, src_list, NULL));
                         return;
                     }
-                    fprintf(stderr, "$$$ MOVE(MEM(BINOP(+, e1, e2)), e3)\n");
+                    tree_printf(stderr, "$$$ %S\n", stm);
                 }
 
                 char* s = NULL;
