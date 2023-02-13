@@ -155,6 +155,9 @@ fn main() -> int { f() }' '5'
 expect 'fn f(x: int) -> int { x }
 fn main() -> int { f(5) }' '5'
 
+expect 'fn f() -> int { let x: int = 25; let b: int = 50; 75 }
+fn main() -> int { let x: int = 5; let b: int = f(); x }' '5'
+
 # Conditionals
 expect 'fn main() -> int { if 1 < 2 { 1 } else { 2 } }' '1'
 #   I think this one is just random

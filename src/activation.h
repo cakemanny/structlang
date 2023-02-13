@@ -55,6 +55,13 @@ typedef struct ac_frame {
 
 void ac_frame_free(ac_frame_t** pframe);
 
+/*
+ * Returns the number of words used by the frame.
+ * This can be added to the stack pointer on function entry to allocate the
+ * right amount of space for the function.
+ */
+int ac_frame_words(ac_frame_t* frame);
+
 ac_frame_t* calculate_activation_records(enum target_type, sl_decl_t* program);
 size_t size_of_type(const sl_decl_t* program, sl_type_t* type);
 size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);

@@ -912,6 +912,7 @@ f:                                      # @f
 assm_fragment_t x86_64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
 {
     const char* fn_label = frame->acf_name;
+    int frame_size = ac_frame_words(frame)*word_size;
     char* prologue = NULL;
     Asprintf(&prologue, "\
 	.globl	%s\n\
@@ -921,16 +922,18 @@ assm_fragment_t x86_64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
 	.cfi_startproc\n\
 	pushq	%%rbp\n\
 	movq	%%rsp, %%rbp\n\
+	subq	$%d, %%rsp\n\
 ",
-            fn_label, fn_label, fn_label);
+            fn_label, fn_label, fn_label, frame_size);
 
     char* epilogue = NULL;
     Asprintf(&epilogue, "\
-# Epilogue\n\
+	addq	$%d, %%rsp\n\
 	popq	%%rbp\n\
 	retq\n\
 	.cfi_endproc\n\
-"          );
+",
+            frame_size);
     // TODO function size ?
     return (assm_fragment_t){
         .asf_prologue = prologue,

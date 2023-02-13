@@ -588,6 +588,7 @@ assm_fragment_t arm64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
 {
     // TODO: subtract and add required stack space?
     const char* fn_label = frame->acf_name;
+    int frame_size = ac_frame_words(frame)*word_size;
     char* prologue = NULL;
     Asprintf(&prologue, "\
 	.globl	_%s\n\
@@ -599,16 +600,18 @@ _%s:\n\
 	.cfi_def_cfa w29, 16\n\
 	.cfi_offset w30, -8\n\
 	.cfi_offset w29, -16\n\
+	sub	sp, sp, #%d\n\
 ",
-            fn_label, fn_label);
+            fn_label, fn_label, frame_size);
 
     char* epilogue = NULL;
     Asprintf(&epilogue, "\
-; Epilogue\n\
+	add	sp, sp, #%d\n\
 	ldp	x29, x30, [sp], #16\n\
 	ret\n\
 	.cfi_endproc\n\
-"          );
+",
+            frame_size);
 
     return (assm_fragment_t){
         .asf_prologue = prologue,

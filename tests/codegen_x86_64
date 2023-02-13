@@ -109,12 +109,34 @@ fn main() -> bool {
 }
 ' 1
 
+# Test loading of single adjacent bytes
+expect '
+struct X {
+    a: bool,
+    b: bool,
+    c: bool,
+    d: bool,
+}
+
+fn main() -> int {
+    let x: *X = new X { false, true, false, true };
+    if (x->a && x->c) {
+        5
+    } else {
+        10
+    }
+}
+' 10
+
 # Calls
 expect 'fn f() -> int { 5 }
 fn main() -> int { f() }' '5'
 
 expect 'fn f(x: int) -> int { x }
 fn main() -> int { f(5) }' '5'
+
+expect 'fn f() -> int { let x: int = 25; let b: int = 50; 75 }
+fn main() -> int { let x: int = 5; let b: int = f(); x }' '5'
 
 # Conditionals
 expect 'fn main() -> int { if 1 < 2 { 1 } else { 2 } }' '1'

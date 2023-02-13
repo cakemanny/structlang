@@ -373,6 +373,13 @@ static void calculate_activation_record_expr(
     assert(0 && " missing case");
 }
 
+int ac_frame_words(ac_frame_t* frame) {
+    var target = frame->acf_target;
+
+    return num_words(round_up_size(-frame->acf_last_local_offset,
+                target->stack_alignment));
+}
+
 static void calculate_activation_record_decl_func(
         sl_decl_t* program, ac_frame_t* frame, sl_decl_t* decl)
 {
@@ -454,9 +461,8 @@ static void calculate_activation_record_decl_func(
     // Now, scan through the frame vars and calculate a bitset showing where
     // the pointers in the frame are
 
-    int frame_words =
-        num_words(round_up_size(-frame->acf_last_local_offset,
-                    target->stack_alignment));
+    int frame_words = ac_frame_words(frame);
+
     if (ac_debug) {
         fprintf(stderr, "frame_words = %d\n", frame_words);
     }
