@@ -45,7 +45,7 @@ expect () {
     expected="$2"
     stmp="${tmp_d}/test.s"
     atmp="${tmp_d}/a.out"
-    if (echo "$code" | $SLC - > $stmp); then
+    if (echo "$code" | $SLC --target=x86_64 - > $stmp); then
         # Link
         $LD $LDFLAGS $stmp -o $atmp $LDLIBS
         # Run

@@ -31,6 +31,11 @@ static void print_usage_and_exit(int exit_code)
 if '-' is given as an input, then stdin is read.\n\
 \n\
 options:\n\
+  -o                Output filename\n\
+  --target=arm64    Produce arm64 assembly for macOS (default)\n\
+  --target=x86_64   Produce x86_64 GAS syntax assembly for Linux\n\
+\n\
+debug options:\n\
   -p    Parse only (print ast)\n\
   -t    Stop after type checking\n\
   -r    Stop after rewrites and print ast\n\
@@ -39,8 +44,7 @@ options:\n\
   -C    Stop after canonicalising the tree IR\n\
   -i    Stop after instruction selection\n\
   -l    Stop after liveness analysis\n\
-  -o    Specify output filename\n\
-", stderr);
+", (exit_code) ? stderr : stdout);
     exit(exit_code);
 }
 
@@ -57,8 +61,37 @@ int main(int argc, char* argv[])
     bool stop_after_liveness_analysis = 0;
     char* inarg = NULL;
     char* outarg = NULL;
+    var target_tag = TARGET_ARM64;
+    var target = &target_arm64;
+
+    bool optsdone = false;
     for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] != '\0') {
+        if (!optsdone && argv[i][0] == '-' && argv[i][1] != '\0') {
+            if (argv[i][1] == '-') {
+                if (argv[i][2] == '\0') {
+                    optsdone = true;
+                    continue;
+                }
+                // Long options
+                const char* target_opt = "--target=";
+                const size_t target_opt_len = strlen(target_opt);
+                if (strncmp(argv[i], "--target=", target_opt_len) == 0) {
+                    const char* target_value = argv[i] + target_opt_len;
+                    if (strcmp(target_value, "x86_64") == 0) {
+                        target_tag = TARGET_X86_64;
+                        target = &target_x86_64;
+                    } else if (strcmp(target_value, "arm64") == 0) {
+                    } else {
+                        fprintf(stderr, "unknown target: %s\n", target_value);
+                        exit(1);
+                    }
+                } else {
+                    fprintf(stderr, "unknown option: %s\n", argv[i]);
+                    exit(1);
+                }
+                continue;
+            }
+            // Short options
             for (char* pc = &argv[i][1]; *pc; pc++) {
                 switch (*pc) {
                     case 'p': parse_only = 1; break;
@@ -81,6 +114,7 @@ int main(int argc, char* argv[])
                               i += 1;
                               outarg = argv[i];
                               break;
+                    case 'h': print_usage_and_exit(0);
                     default: fprintf(stderr, "unknown option '%c'\n", *pc);
                              print_usage_and_exit(1);
                 }
@@ -148,9 +182,6 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    var target_tag = TARGET_ARM64;
-    var target = target_arm64;
-
     ac_frame_t* frames = calculate_activation_records(target_tag, program);
     if(!frames) {
         // TODO: consider a module with only struct definitions?
@@ -206,11 +237,11 @@ int main(int argc, char* argv[])
             }
 
             assm_instr_t* instrs =
-                target.tgt_backend->codegen(temp_state, frag->fr_frame, s);
+                target->tgt_backend->codegen(temp_state, frag->fr_frame, s);
             if (stop_after_instruction_selection) {
                 for (var i = instrs; i; i = i->ai_list) {
                     char buf[128];
-                    assm_format(buf, 128, i, frag->fr_frame->acf_temp_map, &target);
+                    assm_format(buf, 128, i, frag->fr_frame->acf_temp_map, target);
                     fprintf(out, "%s", buf);
                 }
             }
@@ -221,7 +252,7 @@ int main(int argc, char* argv[])
             continue;
         }
         assert(body_instrs);
-        body_instrs = target.tgt_backend->proc_entry_exit_2(frag->fr_frame, body_instrs);
+        body_instrs = target->tgt_backend->proc_entry_exit_2(frag->fr_frame, body_instrs);
 
         var instrs_and_allocation =
             ra_alloc(out, temp_state, body_instrs, frag->fr_frame,
@@ -230,13 +261,13 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        var final_fragment = target.tgt_backend->proc_entry_exit_3(
+        var final_fragment = target->tgt_backend->proc_entry_exit_3(
                 frag->fr_frame, instrs_and_allocation.ra_instrs);
 
         fputs(final_fragment.asf_prologue, out);
         for (var i = final_fragment.asf_instrs; i; i = i->ai_list) {
             char buf[128];
-            assm_format(buf, 128, i, instrs_and_allocation.ra_allocation, &target);
+            assm_format(buf, 128, i, instrs_and_allocation.ra_allocation, target);
             fprintf(out, "%s", buf);
         }
         fputs(final_fragment.asf_epilogue, out);
