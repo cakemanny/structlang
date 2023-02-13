@@ -115,8 +115,6 @@ expect 'fn main() -> bool { 1 == 2 }' 0
 expect 'fn main() -> bool { 1 != 2 }' 1
 expect 'fn main() -> bool { true == true }' 1
 
-# TODO: do some tests with bools in structs
-
 # Allocated data
 expect 'struct X { x: int }
 fn main() -> bool {
@@ -129,6 +127,26 @@ fn main() -> bool {
     *(new X{5}) == *(new X{5})
 }
 ' 1
+
+# Test loading of single adjacent bytes
+expect '
+struct X {
+    a: bool,
+    b: bool,
+    c: bool,
+    d: bool,
+}
+
+fn main() -> int {
+    let x: *X = new X { false, true, false, true };
+    if (x->a && x->c) {
+        5
+    } else {
+        10
+    }
+}
+' 10
+
 
 # Calls
 expect 'fn f() -> int { 5 }

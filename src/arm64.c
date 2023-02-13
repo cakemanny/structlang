@@ -241,8 +241,8 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 if (addr->te_rhs->te_tag == TREE_EXP_CONST) {
                     var r = temp_newtemp(state.temp_state, exp->te_size);
                     char* s = NULL;
-                    Asprintf(&s, "ldr	`d0, [`s0, #%d]\n",
-                            addr->te_rhs->te_const);
+                    Asprintf(&s, "ldr%s	`d0, [`s0, #%d]\n",
+                            suff(exp), addr->te_rhs->te_const);
                     var src_list = temp_list(Munch_exp(addr->te_lhs));
                     emit(state,
                         assm_oper(s, temp_list(r), src_list, NULL));
@@ -255,7 +255,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             // MEM(e1)
             var r = temp_newtemp(state.temp_state, exp->te_size);
             char* s = NULL;
-            Asprintf(&s, "ldr	`d0, [`s0]\n");
+            Asprintf(&s, "ldr%s	`d0, [`s0]\n", suff(exp));
             var src_list = temp_list(Munch_exp(addr));
             emit(state,
                  assm_oper(s, temp_list(r), src_list, NULL));
