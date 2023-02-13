@@ -105,8 +105,8 @@ expect 'fn main() -> int { 2 / 2 }' 1
 expect 'fn main() -> int { 4 / 2 }' 2
 
 # Logic
-# expect 'fn main() -> bool { true && true }' 1
-# expect 'fn main() -> bool { false || false }' 0
+expect 'fn main() -> bool { true && true }' 1
+expect 'fn main() -> bool { false || false }' 0
 expect 'fn main() -> bool { 1 < 2 }' 1
 expect 'fn main() -> bool { 1 <= 2 }' 1
 expect 'fn main() -> bool { 1 > 2 }' 0

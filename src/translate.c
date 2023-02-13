@@ -169,8 +169,9 @@ static tree_stm_t* always_false(sl_sym_t t, sl_sym_t f, void* cl)
 
 static tree_stm_t* jump_not_zero(sl_sym_t t, sl_sym_t f, void* cl)
 {
+    var rhs = (tree_exp_t*)cl;
     return tree_stm_cjump(
-            TREE_RELOP_NE, tree_exp_const(0, ac_word_size), (tree_exp_t*)cl,
+            TREE_RELOP_NE, tree_exp_const(0, rhs->te_size), rhs,
             t, f);
 }
 
