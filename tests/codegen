@@ -29,26 +29,48 @@ grn=$(tput setaf 2)
 rst=$(tput sgr0)
 exitcode=0
 
-LD="clang"
-LDFLAGS=""
-LDLIBS=""
+# Set defaults for the linker and its options
+: "${LD=clang}"
+: "${LDFLAGS=}"
+: "${LDLIBS=}"
 
-tmp_d=$(mktemp -d) || exit 1
-echo "$tmp_d"
-trap "rm -rf ${tmp_d}" EXIT
+if [ -n "$verbose" ]; then
+    : "${MAKE=make}"
+else
+    : "${MAKE=make -s}"
+fi
+
+if command -v md5sum 1>/dev/null; then
+    MD5=md5sum
+else
+    MD5=md5
+fi
+
+SLC_HASH=$(cat $SLC | $MD5 | awk '{ print $1 }')
 
 expect () {
     code="$1"
     expected="$2"
-    stmp="${tmp_d}/test.s"
-    atmp="${tmp_d}/a.out"
-    if (echo "$code" | $SLC - > $stmp); then
-        # Link
-        $LD $LDFLAGS $stmp -o $atmp $LDLIBS
-        # Run
-        (cd ${tmp_d} && sh -c './a.out; echo $? > test.result')
 
-        result=$(cat ${tmp_d}/test.result)
+    code_hash=$(echo "$code" | $MD5 | awk '{ print $1 }')
+    code_d=$BUILD_DIR/tests/${code_hash}
+    mkdir -p "${code_d}"
+    ctmp="${code_d}/test.sl"
+    test -f ${ctmp} || echo "$code" > ${ctmp}
+    stmp="${code_d}/test.s"
+    atmp="${code_d}/a.out"
+
+    # Tell make how to produce our assembly code
+    # structlangc .../test.sl -o .../test.s
+    if (printf '%s: %s %s\n\t%s $< -o $@\n' "$stmp" "$ctmp" "$SLC" "$SLC" | $MAKE -f -); then
+        # Link
+        # $LD $LDFLAGS $stmp -o $atmp $LDLIBS
+        printf '%s: %s\n\t%s %s $< -o $@ %s\n' "$atmp" "$stmp" "$LD" "$LDFLAGS" "$LDLIBS" | $MAKE -f -
+
+        # Run
+        (cd ${code_d} && sh -c './a.out; echo $? > test.result')
+
+        result=$(cat ${code_d}/test.result)
         if [ "$result" = "$expected" ]; then
             if [ -n "$verbose" ]; then
                 echo "${grn}pass${rst}: '$code'"
@@ -98,7 +120,7 @@ expect 'fn main() -> bool { true == true }' 1
 # Allocated data
 expect 'struct X { x: int }
 fn main() -> bool {
-    (new X{0}) == (new X{1})
+    (new X{1}) == (new X{1})
 }' 0
 
 expect '
