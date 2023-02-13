@@ -596,6 +596,9 @@ _%s:\n\
 	.cfi_startproc\n\
 	stp	x29, x30, [sp, #-16]!\n\
 	mov	fp, sp\n\
+	.cfi_def_cfa w29, 16\n\
+	.cfi_offset w30, -8\n\
+	.cfi_offset w29, -16\n\
 ",
             fn_label, fn_label);
 
