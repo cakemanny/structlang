@@ -4,19 +4,15 @@
 #include <string.h> // memset
 #include <assert.h> // assert
 #include "ast.h"
+#include "mem.h"
 #include "grammar.tab.h"
-
-#define check_mem(ptr) do { \
-        if ((ptr) == NULL) { perror("out of memory"); abort(); } \
-    } while (0)
 
 /* Line number from flex lexer */
 extern int yylineno;
 
 static sl_decl_t* dl_alloc(int tag)
 {
-    sl_decl_t* node = malloc(sizeof *node);
-    check_mem(node);
+    sl_decl_t* node = xmalloc(sizeof *node);
 
     node->dl_tag = tag;
     node->dl_line = yylineno;
@@ -71,8 +67,7 @@ sl_decl_t* dl_append(sl_decl_t* dln, sl_decl_t* to_append)
 
 static sl_type_t* ty_alloc(int tag)
 {
-    sl_type_t* node = calloc(1, sizeof *node);
-    check_mem(node);
+    sl_type_t* node = xmalloc(sizeof *node);
 
     node->ty_tag = tag;
     node->ty_size = -1;
@@ -103,8 +98,7 @@ sl_type_t* ty_type_func()
 
 static sl_expr_t* ex_alloc(int tag)
 {
-    sl_expr_t* node = malloc(sizeof *node);
-    check_mem(node);
+    sl_expr_t* node = xmalloc(sizeof *node);
 
     node->ex_tag = tag;
     node->ex_line = yylineno;

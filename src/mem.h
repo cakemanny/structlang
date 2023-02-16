@@ -1,5 +1,6 @@
 #ifndef __MEM_H__
 #define __MEM_H__
+// vim:ft=c:
 #include <stdlib.h> // calloc
 #include <stdio.h> // perror
 

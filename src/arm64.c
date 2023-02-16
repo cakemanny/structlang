@@ -586,7 +586,6 @@ assm_instr_t* arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
 
 assm_fragment_t arm64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
 {
-    // TODO: subtract and add required stack space?
     const char* fn_label = frame->acf_name;
     int frame_size = ac_frame_words(frame)*word_size;
     char* prologue = NULL;
