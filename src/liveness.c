@@ -391,22 +391,40 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
     // ok, now we need a node in the graph for each temp?
     // and a way of associating them
 
+    // 1. At any non-move instruction the defs from that instruction
+    // interfere with the live-outs at that instruction
+    // 2. At any move instruction a <- c , b in live-outs interferes with a
+    // if b != c.
     for (var n = nodes; n; n = n->nl_list) {
         var node = n->nl_node;
         temp_list_t* def_n = Table_get(flow->lvfg_def, node);
+        temp_list_t* use_n = Table_get(flow->lvfg_use, node);
         struct live_set* out_ns = Table_get(live_out_map, node);
 
         for (var d = def_n; d; d = d->tmp_list) {
             lv_node_t* d_node = ig_get_node_for_temp(igraph, &d->tmp_temp);
 
-            for (var t = out_ns->temp_list; t; t = t->tmp_list) {
-                lv_node_t* t_node = ig_get_node_for_temp(igraph, &t->tmp_temp);
+            if (!Table_get(flow->lvfg_ismove, node)) {
+                for (var t = out_ns->temp_list; t; t = t->tmp_list) {
+                    lv_node_t* t_node = ig_get_node_for_temp(igraph, &t->tmp_temp);
 
-                lv_mk_edge(d_node, t_node);
+                    lv_mk_edge(d_node, t_node);
+                }
+            } else {
+                var u = use_n;
+                assert(use_n->tmp_list == NULL); // use_n is a single element
+                                                 // list
+                lv_node_t* u_node = ig_get_node_for_temp(igraph, &u->tmp_temp);
+                igraph->lvig_moves = lv_node_pair_cons(
+                        lv_node_pair(d_node, u_node), igraph->lvig_moves);
 
-                if (Table_get(flow->lvfg_ismove, node)) {
-                    igraph->lvig_moves = lv_node_pair_cons(
-                            lv_node_pair(d_node, t_node), igraph->lvig_moves);
+                for (var t = out_ns->temp_list; t; t = t->tmp_list) {
+                    if (t->tmp_temp.temp_id == u->tmp_temp.temp_id) {
+                        continue;
+                    }
+                    lv_node_t* t_node = ig_get_node_for_temp(igraph, &t->tmp_temp);
+
+                    lv_mk_edge(d_node, t_node);
                 }
             }
         }
@@ -472,6 +490,23 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
             }
         }
         fprintf(out, "]\n");
+    }
+    fprintf(out, "# ----------------------------\n");
+    fprintf(out, "# ----       Moves        ----\n");
+    for (var mm = igraph->lvig_moves; mm; mm = mm->nl_list) {
+        var m = mm->nl_node;
+        {
+            var dst_node = m->np_node0;
+            temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, dst_node);
+            assert(temp_for_node);
+            fprintf(out, "# %d -> ", temp_for_node->temp_id);
+        }
+        {
+            var src_node = m->np_node1;
+            temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, src_node);
+            assert(temp_for_node);
+            fprintf(out, "%d\n", temp_for_node->temp_id);
+        }
     }
     fprintf(out, "# ----------------------------\n");
 }

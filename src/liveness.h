@@ -71,7 +71,7 @@ typedef struct lv_node_pair_t {
 
 typedef struct lv_node_pair_list_t {
     lv_node_pair_t* nl_node;
-    struct lv_node_list_t* nl_list;
+    struct lv_node_pair_list_t* nl_list;
 } lv_node_pair_list_t;
 
 lv_node_pair_t* lv_node_pair(lv_node_t* m, lv_node_t* n);
