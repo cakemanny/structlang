@@ -70,6 +70,18 @@ pub extern "C" fn lv_succ(n: *mut Node) -> *const NodeList {
 }
 
 #[no_mangle]
+pub extern "C" fn lv_node_list_free(mut n: *mut NodeList) {
+    unsafe {
+        let raw_null = null::<NodeList>() as *mut NodeList;
+        while n != raw_null {
+            let boxed = Box::from_raw(n);
+            drop(Box::from_raw(boxed.nl_node));
+            n = boxed.nl_list as *mut NodeList;
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn lv_pred(n: *mut Node) -> *const NodeList {
     let mut result = null();
 

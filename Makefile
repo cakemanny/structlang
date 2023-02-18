@@ -33,7 +33,10 @@ CPPFLAGS ?= $(INC_FLAGS) -MMD -MP
 CFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer
 LDFLAGS = -L$(BUILD_DIR) -lgraph
 
-ifndef NDEBUG
+ifdef PROFILE
+  CFLAGS += -O2 -fprofile-instr-generate
+  LDFLAGS += -fprofile-instr-generate
+else ifndef NDEBUG
   ifneq "$(OS)" "Windows_NT"
     CFLAGS += -fsanitize=address
     LDFLAGS += -fsanitize=address

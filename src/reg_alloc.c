@@ -1,6 +1,7 @@
 #include "reg_alloc.h"
 #include "liveness.h"
 #include <assert.h>
+#include <string.h>
 #include "list.h"
 #include "mem.h"
 #include "codegen.h"
@@ -853,9 +854,16 @@ struct ra_color_result {
 
             lv_node_list_t* adj = lv_adj(node);
             for (var s = adj; s; s = s->nl_list) {
-                add_edge_helper(&info, node, s->nl_node);
+                var nn = nodes;
+                for (; nn; nn = nn->nl_list) {
+                    if (lv_eq(s->nl_node, nn->nl_node)) {
+                        break;
+                    }
+                }
+                assert(nn);
+                add_edge_helper(&info, node, nn->nl_node);
             }
-            // FIXME: free (via rust) adj;
+            lv_node_list_free(adj);
         }
     }
 
@@ -1001,6 +1009,7 @@ struct ra_color_result {
 
     free(info.degree); info.degree = NULL;
     free(info.color); info.color = NULL;
+    lv_node_list_free(nodes);
 
     return result;
 }

@@ -8,11 +8,7 @@
 
 #define var __auto_type
 
-#ifdef NDEBUG
 static const bool debug = 0;
-#else
-static const bool debug = 1;
-#endif
 
 static temp_list_t* temp_list_sort(temp_list_t* tl);
 
@@ -345,8 +341,10 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
                 struct live_set* in_ss = Table_get(live_in_map, s->nl_node);
                 assert(in_ss);
                 var in_s = in_ss->temp_list;
+                // FIXME: This is shit hot and allocating
                 out_n = temp_list_union(out_n, in_s);
             }
+            lv_node_list_free(succ);
 
             // store results back into live_in_map and live_out_map
             out_ns = xmalloc(sizeof *out_ns);

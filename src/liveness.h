@@ -29,6 +29,7 @@ extern lv_node_list_t* lv_nodes(lv_graph_t*);
 extern lv_node_list_t* lv_succ(lv_node_t*);
 extern lv_node_list_t* lv_pred(lv_node_t*);
 extern lv_node_list_t* lv_adj(lv_node_t*);
+extern void lv_node_list_free(lv_node_list_t*);
 extern bool lv_eq(const lv_node_t*, const lv_node_t*);
 extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
 
