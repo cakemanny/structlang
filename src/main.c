@@ -134,7 +134,6 @@ int main(int argc, char* argv[])
     }
 
     FILE* out = stdout;
-#define Close_out()     do { if (out != stdout) { fclose(out); } } while (0)
     if (outarg != NULL && strcmp(outarg, "-") != 0) {
         out = fopen(outarg, "w");
         if (out == NULL) {
@@ -153,7 +152,6 @@ int main(int argc, char* argv[])
             dl_print(out, decl);
             fprintf(out, "\n");
         }
-        Close_out();
         return 0;
     }
 
@@ -165,7 +163,6 @@ int main(int argc, char* argv[])
 
     if (stop_after_type_checking) {
         // Print typed tree?
-        Close_out();
         return 0;
     }
 
@@ -178,7 +175,6 @@ int main(int argc, char* argv[])
             dl_print(out, decl);
             fprintf(out, "\n");
         }
-        Close_out();
         return 0;
     }
 
@@ -190,7 +186,6 @@ int main(int argc, char* argv[])
     }
 
     if (stop_after_activation_calculation) {
-        Close_out();
         return 0;
     }
 
@@ -206,7 +201,6 @@ int main(int argc, char* argv[])
             fprintf(out, "# %s\n", frag->fr_frame->acf_name);
             tree_printf(out, "%S\n", frag->fr_body);
         }
-        Close_out();
         return 0;
     }
 
@@ -223,7 +217,6 @@ int main(int argc, char* argv[])
             }
             fprintf(out, "\n");
         }
-        Close_out();
         return 0;
     }
 
@@ -252,7 +245,8 @@ int main(int argc, char* argv[])
             continue;
         }
         assert(body_instrs);
-        body_instrs = target->tgt_backend->proc_entry_exit_2(frag->fr_frame, body_instrs);
+        body_instrs = target->tgt_backend->proc_entry_exit_2(
+                frag->fr_frame, body_instrs);
 
         var instrs_and_allocation =
             ra_alloc(out, temp_state, body_instrs, frag->fr_frame,
@@ -271,10 +265,10 @@ int main(int argc, char* argv[])
             fprintf(out, "%s", buf);
         }
         fputs(final_fragment.asf_epilogue, out);
+
+        assm_free_list(&body_instrs);
     }
 
     // end of program... maybe
     temp_state_free(&temp_state);
-
-    Close_out();
 }

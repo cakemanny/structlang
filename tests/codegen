@@ -65,7 +65,11 @@ expect () {
     if (printf '%s: %s %s\n\t%s $< -o $@\n' "$stmp" "$ctmp" "$SLC" "$SLC" | $MAKE -f -); then
         # Link
         # $LD $LDFLAGS $stmp -o $atmp $LDLIBS
-        printf '%s: %s\n\t%s %s $< -o $@ %s\n' "$atmp" "$stmp" "$LD" "$LDFLAGS" "$LDLIBS" | $MAKE -f -
+        if ! (printf '%s: %s\n\t%s %s $< -o $@ %s\n' "$atmp" "$stmp" "$LD" "$LDFLAGS" "$LDLIBS" | $MAKE -f -); then
+            echo "${red}FAILED${rst} to compile '$code'"
+            exitcode=$((1 + $exitcode))
+            return
+        fi
 
         # Run
         (cd ${code_d} && sh -c './a.out; echo $? > test.result')

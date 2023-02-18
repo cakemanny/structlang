@@ -276,6 +276,13 @@ lv_node_pair_list_t* lv_node_pair_cons(
     return list_cons(hd, tl);
 }
 
+bool lv_node_pair_eq(const lv_node_pair_t* lhs, const lv_node_pair_t* rhs)
+{
+    return lv_eq(lhs->np_node0, rhs->np_node0) &&
+        lv_eq(lhs->np_node1, rhs->np_node1);
+}
+
+
 static lv_node_t* ig_get_node_for_temp(lv_igraph_t* igraph, temp_t* ptemp)
 {
     lv_node_t* ig_node = Table_get(igraph->lvig_tnode, ptemp);
@@ -493,13 +500,13 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
     }
     fprintf(out, "# ----------------------------\n");
     fprintf(out, "# ----       Moves        ----\n");
-    for (var mm = igraph->lvig_moves; mm; mm = mm->nl_list) {
-        var m = mm->nl_node;
+    for (var mm = igraph->lvig_moves; mm; mm = mm->npl_list) {
+        var m = mm->npl_node;
         {
             var dst_node = m->np_node0;
             temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, dst_node);
             assert(temp_for_node);
-            fprintf(out, "# %d -> ", temp_for_node->temp_id);
+            fprintf(out, "# %d <- ", temp_for_node->temp_id);
         }
         {
             var src_node = m->np_node1;

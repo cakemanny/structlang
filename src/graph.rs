@@ -117,6 +117,19 @@ pub extern "C" fn lv_adj(n: *mut Node) -> *const NodeList {
 }
 
 #[no_mangle]
+pub extern "C" fn lv_is_adj(n: *const Node, m: *const Node) -> bool {
+    let node_n = unsafe { &*n };
+    let node_m = unsafe { &*m };
+    let graph = unsafe { &*node_n.graph };
+    for idx in graph.nodes[node_n.idx].pred.iter().chain(graph.nodes[node_n.idx].succ.iter()) {
+        if *idx == node_m.idx {
+            return true;
+        }
+    }
+    return false;
+}
+
+#[no_mangle]
 pub extern "C" fn lv_eq(a: *const Node, b: *const Node) -> bool {
     let nodea = unsafe { &*a };
     let nodeb = unsafe { &*b };

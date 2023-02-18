@@ -13,6 +13,8 @@
 #define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
 
 static const bool debug = 0;
+static const bool enable_coalescing = true;
+
 
 /*
  * Holds all of our worklists and state, etc for the graph colouring
@@ -22,18 +24,30 @@ typedef struct reg_alloc_info_t {
 
     const int K; // The number of registers on the machine
 
-    lv_node_list_t* precolored;
-    lv_node_list_t* initial;
-    lv_node_list_t* simplify_worklist;
-    lv_node_list_t* spill_worklist;
+    // Node worklists, sets, and stacks
+    lv_node_list_t* precolored; // machine registers, preassigned a colour.
+    lv_node_list_t* initial; // temps, not coloured and not yet processed
+    lv_node_list_t* simplify_worklist; // low-degree non-move-related nodes
+    lv_node_list_t* freeze_worklist; // low degree move-related nodes
+    lv_node_list_t* spill_worklist; // high degree nodes
     lv_node_list_t* spilled_nodes;
-
+    lv_node_list_t* coalesced_nodes; // registers that been coalesced. a set
     lv_node_list_t* colored_nodes;
     lv_node_list_t* select_stack;
+
+    // Move sets
+    lv_node_pair_list_t* coalesced_moves;
+    lv_node_pair_list_t* constrained_moves;
+    lv_node_pair_list_t* frozen_moves;
+    lv_node_pair_list_t* worklist_moves;
+    lv_node_pair_list_t* active_moves;
 
     int* degree; // an array containing the degree of each node.
     int* color; // colours assigned to the node with ID idx;
     lv_node_list_t** adj_list; // a list of non-precoloured adjacents
+    // an array mapping each node to the list of moves it is associated with
+    lv_node_pair_list_t** move_list;
+    Table_T alias; // lv_node_t* -> lv_node_t*
 
     lv_flowgraph_t* flowgraph;
     lv_igraph_t* interference;
@@ -69,6 +83,16 @@ static void print_ok_colors(reg_alloc_info_t* info, uint64_t* ok_colors)
     fprintf(stderr, "]\n");
 }
 
+/*static*/ void
+print_node_list(reg_alloc_info_t* info, lv_node_list_t* node_list)
+{
+    fprintf(stderr, "[");
+    for (var w = node_list; w; w = w->nl_list) {
+        temp_t* t = temp_for_node(info, w->nl_node);
+        fprintf(stderr, " %d.%d,", t->temp_id, t->temp_size);
+    }
+    fprintf(stderr, "]\n");
+}
 
 /*
  * node_list_remove removes the list cell from the worklist, for the
@@ -90,6 +114,13 @@ node_list_remove(lv_node_list_t** pworklist, const lv_node_t* node)
         }
     }
     assert(!"not found");
+}
+
+static void
+node_list_prepend(lv_node_list_t** pworklist, lv_node_list_t* cell)
+{
+    cell->nl_list = *pworklist;
+    *pworklist = cell;
 }
 
 static bool
@@ -114,6 +145,48 @@ node_list_free(lv_node_list_t** pnode_list)
     }
 }
 
+static void
+node_pair_list_free(lv_node_pair_list_t** pnode_pair_list)
+{
+    while (*pnode_pair_list) {
+        var to_free = *pnode_pair_list;
+        *pnode_pair_list = (*pnode_pair_list)->npl_list;
+        free(to_free);
+    }
+}
+
+static bool
+node_pair_list_contains(const lv_node_pair_list_t* haystack, const lv_node_pair_t* node_pair)
+{
+    for (var h = haystack; h; h = h->npl_list) {
+        if (lv_node_pair_eq(h->npl_node, node_pair)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * similar to node_list_remove but for pair list
+ */
+static lv_node_pair_list_t*
+node_pair_list_remove(lv_node_pair_list_t** pworklist, const lv_node_pair_t* pair)
+{
+    var p = pworklist;
+    for (; *p; p = &((*p)->npl_list)) {
+        if (lv_node_pair_eq((*p)->npl_node, pair)) {
+
+            var found = *p;
+            // unchain the cell we found
+            *p = found->npl_list;
+            // for sanity, ensure our cell is detached
+            found->npl_list = NULL;
+            return found;
+        }
+    }
+    assert(!"not found");
+}
+
 /*
  * These two are used when we have Tables with temp_t's as keys
  */
@@ -127,6 +200,21 @@ static unsigned hashtemp(const void* key)
 {
     const temp_t* k = key;
     return k->temp_id;
+}
+/*
+ * For Tables using nodes as keys
+ */
+static int cmpnode(const void* x, const void* y)
+{
+    if (lv_eq(x, y)) {
+        return 0;
+    }
+    return 1;
+}
+static unsigned hashnode(const void* key)
+{
+    const lv_node_t* k = key;
+    return k->lvn_idx;
 }
 
 static bool
@@ -146,25 +234,203 @@ temp_list_contains(const temp_list_t* haystack, temp_t temp)
     return false;
 }
 
+static int
+get_degree(reg_alloc_info_t* info, lv_node_t* n)
+{
+    return info->degree[n->lvn_idx];
+}
+
+static lv_node_t*
+get_alias(reg_alloc_info_t* info, lv_node_t* n)
+{
+    if (node_list_contains(info->coalesced_nodes, n)) {
+        var alias = Table_get(info->alias, n);
+        assert(alias);
+        return get_alias(info, alias);
+    }
+    return n;
+}
+
+static void
+print_coalesced_nodes(reg_alloc_info_t* info)
+{
+
+    fprintf(stderr, "coalesced_nodes = [");
+    for (var w = info->coalesced_nodes; w; w = w->nl_list) {
+        temp_t* t = temp_for_node(info, w->nl_node);
+        var alias_node = get_alias(info, w->nl_node);
+        temp_t* alias = temp_for_node(info, alias_node);
+        fprintf(stderr, " %d.%d -> %d.%d,",
+                t->temp_id, t->temp_size,
+                alias->temp_id, alias->temp_size);
+    }
+    fprintf(stderr, "]\n");
+}
+
+typedef struct node_move_it {
+    reg_alloc_info_t* info;
+    lv_node_pair_list_t* next;
+} node_move_it_t;
+
+static void
+node_move_it_init(node_move_it_t* it, reg_alloc_info_t* info, lv_node_t* node)
+{
+    it->info = info;
+    it->next = info->move_list[node->lvn_idx];
+}
+
+static lv_node_pair_t*
+node_move_it_next(node_move_it_t* it)
+{
+    for (;it->next; ) {
+        var nln = it->next;
+        it->next = it->next->npl_list; /* prepare for next iteration in advance */
+
+        var m = nln->npl_node;
+        if (node_pair_list_contains(it->info->active_moves, m)
+                || node_pair_list_contains(it->info->worklist_moves, m)) {
+            return m;
+        }
+    }
+    return NULL;
+}
+
+
+static lv_node_pair_list_t*
+node_moves(reg_alloc_info_t* info, lv_node_t* node)
+{
+    // moveList[n] ∩ (activeMoves ∪ worklistMoves)
+    assert(!"TODO");
+}
+
+/*
+ * Checks whether there is an unprocessed move involving node
+ */
+static bool
+is_move_related(reg_alloc_info_t* info, lv_node_t* node)
+{
+    // TODO: it might be quicker to simply iterate through the
+    // active and worklist and see if node is the src or dst
+
+    node_move_it_t it = {};
+    node_move_it_init(&it, info, node);
+    var m = node_move_it_next(&it);
+    return m != NULL;
+
+    // This is implementation from the book, but it does not think about
+    // memory.
+    return node_moves(info, node) != NULL;
+}
+
+/*
+ * An iterator for iterating through the adjacent set of a node
+ */
+typedef struct adj_it {
+    reg_alloc_info_t* info;
+    lv_node_list_t* next;
+} adj_it_t;
+
+static void
+adj_it_init(adj_it_t* it, reg_alloc_info_t* info, lv_node_t* node)
+{
+    it->info = info;
+    it->next = info->adj_list[node->lvn_idx];
+}
+
+static lv_node_t*
+adj_it_next(adj_it_t* it)
+{
+    for (;it->next; ) {
+        var nln = it->next;
+        it->next = it->next->nl_list; /* prepare for next iteration in advance */
+
+        var m = nln->nl_node;
+        if (!node_list_contains(it->info->select_stack, m)
+                && !node_list_contains(it->info->coalesced_nodes, m)) {
+            return m;
+        }
+    }
+    return NULL;
+}
+
+
+/*
+ * This moves moves related to node from active_moves to worklist_moves
+ * (The implementation in the book obscures the fuck out of this)
+ */
+static void
+enable_moves_node(reg_alloc_info_t* info, lv_node_t* node)
+{
+    // forall m ∈ NodeMoves(n)
+    //   if m ∈ activeMoves then
+    //     move m from activeMoves to worklistMoves
+
+    /*
+     * step through the active_moves and move nodes to worklist_moves
+     * if they relate to our node
+     */
+    lv_node_t* alias = get_alias(info, node);
+    lv_node_pair_list_t** p = &info->active_moves;
+    for (; *p; ) {
+        lv_node_pair_t* np = (*p)->npl_node;
+        if (lv_eq(np->np_node0, alias) || lv_eq(np->np_node1, alias)) {
+
+            var found = *p;
+            // unchain from active_moves cell
+            *p = found->npl_list;
+
+            // stick onto the front of worklist_moves
+            found->npl_list = info->worklist_moves;
+            info->worklist_moves = found;
+
+            // in this case we have already changed what *p is to be the
+            // next item in active_moves, so we don't execute what
+            // would usually be the iteration statement of the for loop.
+            // (i.e. what you see in the else).
+        } else {
+            // adjust p to point to the next cell in the active_moves list
+            p = &((*p)->npl_list);
+        }
+    }
+}
+
+/*
+ * Enables moves for node m and nodes adjacent to m
+ */
+static void
+enable_moves_adj(reg_alloc_info_t* info, lv_node_t* m)
+{
+    enable_moves_node(info, m);
+    adj_it_t it = {};
+    adj_it_init(&it, info, m);
+    for (var n = adj_it_next(&it); n; n = adj_it_next(&it)) {
+        enable_moves_node(info, n);
+    }
+}
+
 /*
  *
  */
 static void
-decrement_degree(
-        reg_alloc_info_t* info,
-        lv_node_t* m)
+decrement_degree(reg_alloc_info_t* info, lv_node_t* m)
 {
     int d = info->degree[m->lvn_idx];
+    if (d == 0) {
+        return; // precolored nodes are an example that would hit this path
+    }
     info->degree[m->lvn_idx] = d - 1;
     if (d == info->K) {
-        // If we were to implement coalescing, then there would be
-        // something about enabling moves, and possibly adding to the
-        // freeze worklist.
+        // When the degree decrements from K to K - 1 moves associated
+        // with its neighbours may be enabled.
 
-        // instead we move it from the spill worklist to the simplify worklist
-        var m_cell = node_list_remove(&(info->spill_worklist), m);
-        m_cell->nl_list = info->simplify_worklist;
-        info->simplify_worklist = m_cell;
+        enable_moves_adj(info, m);
+
+        var m_cell = node_list_remove(&info->spill_worklist, m);
+        if (is_move_related(info, m_cell->nl_node)) {
+            node_list_prepend(&info->freeze_worklist, m_cell);
+        } else {
+            node_list_prepend(&info->simplify_worklist, m_cell);
+        }
     }
 }
 
@@ -174,30 +440,258 @@ decrement_degree(
  * in the adjacent set of n
  */
 static void
-simplify(
-        reg_alloc_info_t* info) {
+simplify(reg_alloc_info_t* info) {
     // Remove node from simplifyWorklist
     // We take the first cell of the list and cons
     // it onto the selectStack instead of actually pulling out the node
     assert(info->simplify_worklist != NULL);
 
+    // remove from simplify_worklist
     var n_cell = info->simplify_worklist;
     info->simplify_worklist = info->simplify_worklist->nl_list;
 
     // push onto the select_stack
-    n_cell->nl_list = info->select_stack;
-    info->select_stack = n_cell;
-
+    node_list_prepend(&info->select_stack, n_cell);
 
     var node = n_cell->nl_node;
 
-    for (var s = info->adj_list[node->lvn_idx]; s; s = s->nl_list) {
-        var m = s->nl_node;
-        if (!node_list_contains(info->select_stack, m)) {
-            decrement_degree(info, m);
+    adj_it_t it = {};
+    adj_it_init(&it, info, node);
+    for (var m = adj_it_next(&it); m; m = adj_it_next(&it)) {
+        decrement_degree(info, m);
+    }
+}
+
+
+// ok to coalesce ?
+static bool
+ok(reg_alloc_info_t* info, lv_node_t* t, lv_node_t* r)
+{
+    return info->degree[t->lvn_idx] < info->K
+        || node_list_contains(info->precolored, t)
+        || lv_is_adj(t, r);
+}
+
+static bool
+all_adjacent_ok(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
+{
+    adj_it_t it = {};
+    adj_it_init(&it, info, v);
+    for (var t = adj_it_next(&it); t; t = adj_it_next(&it)) {
+        if (!ok(info, t, u)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+/*
+ * Works out whether in the union of all the adjacent nodes of u and v
+ * there are less that K nodes with degree ≥ K
+ */
+static bool
+conservative_adj(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
+{
+    Table_T seen = Table_new(0, cmpnode, hashnode);
+    int k = 0;
+
+    adj_it_t it = {};
+    adj_it_init(&it, info, u);
+    for (var n = adj_it_next(&it); n; n = adj_it_next(&it)) {
+        Table_put(seen, n, n);
+        if (info->degree[n->lvn_idx] >= info->K) {
+            k += 1;
+        }
+    }
+
+    adj_it_init(&it, info, v);
+    for (var n = adj_it_next(&it); n; n = adj_it_next(&it)) {
+        if (!Table_get(seen, n)) {
+            if (info->degree[n->lvn_idx] >= info->K) {
+                k += 1;
+            }
+        }
+    }
+
+    Table_free(&seen);
+    return k;
+}
+
+
+static void
+add_work_list(reg_alloc_info_t* info, lv_node_t* u) {
+    if (!node_list_contains(info->precolored, u)
+            && !is_move_related(info, u)
+            && info->degree[u->lvn_idx] < info->K)
+    {
+        var u_cell = node_list_remove(&info->freeze_worklist, u);
+        node_list_prepend(&info->simplify_worklist, u_cell);
+    }
+}
+
+/*
+ * increments the degree of u and adds v to it's adj_list
+ */
+static void
+add_edge_helper(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
+{
+    assert(!node_list_contains(info->precolored, u));
+    // degree is the number of adjacent but not precolored nodes
+    info->degree[u->lvn_idx] += 1;
+
+    info->adj_list[u->lvn_idx] =
+        list_cons(v, info->adj_list[u->lvn_idx]);
+}
+
+static void
+add_edge(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
+{
+    if (!lv_is_adj(u, v) && !lv_eq(u, v)) {
+        lv_mk_edge(u, v);
+        if (!node_list_contains(info->precolored, u)) {
+            add_edge_helper(info, u, v);
+        }
+        if (!node_list_contains(info->precolored, v)) {
+            add_edge_helper(info, v, u);
         }
     }
 }
+
+static void
+combine(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
+{
+    lv_node_list_t* v_cell;
+    if (node_list_contains(info->freeze_worklist, v)) {
+        v_cell = node_list_remove(&info->freeze_worklist, v);
+    } else {
+        v_cell = node_list_remove(&info->spill_worklist, v);
+    }
+
+    node_list_prepend(&info->coalesced_nodes, v_cell);
+
+    Table_put(info->alias, v, u);
+
+    // The text in the move has some errata:
+    // https://www.cs.princeton.edu/~appel/modern/ml/errata99.html p248
+
+    // Combine v's move_list into u's
+    for (var m = info->move_list[v->lvn_idx]; m; m = m->npl_list) {
+        info->move_list[u->lvn_idx] =
+            list_cons(m->npl_node,
+                    info->move_list[u->lvn_idx]);
+    }
+    enable_moves_node(info, v);
+
+
+    adj_it_t it = {};
+    adj_it_init(&it, info, v);
+    for (var t = adj_it_next(&it); t; t = adj_it_next(&it)) {
+        add_edge(info, t, u);
+        decrement_degree(info, t);
+    }
+
+    if (info->degree[u->lvn_idx] >= info->K
+            && node_list_contains(info->freeze_worklist, u)) {
+        var u_cell = node_list_remove(&info->freeze_worklist, u);
+        node_list_prepend(&info->spill_worklist, u_cell);
+    }
+}
+
+/*
+ * coalesce processes the worklist of moves attempting to
+ * work out if the temporaries involved can be coalesced (assigned the
+ * same register)
+ */
+static void
+coalesce(reg_alloc_info_t* info) {
+    assert(info->worklist_moves != NULL);
+    var m_cell = info->worklist_moves;
+
+    lv_node_t* x = get_alias(info, m_cell->npl_node->np_node0);
+    lv_node_t* y = get_alias(info, m_cell->npl_node->np_node1);
+
+    lv_node_t *u, *v;
+    if (node_list_contains(info->precolored, y)) {
+        u = y; v = x;
+    } else {
+        u = x; v = y;
+    }
+
+    // remove from worklist_moves
+    info->worklist_moves = info->worklist_moves->npl_list;
+
+    if (lv_eq(u, v)) {
+        // add to coalesced_moves
+        m_cell->npl_list = info->coalesced_moves;
+        info->coalesced_moves = m_cell;
+        add_work_list(info, u);
+    } else if (node_list_contains(info->precolored, v) || lv_is_adj(u, v)) {
+        m_cell->npl_list = info->constrained_moves;
+        info->constrained_moves = m_cell;
+        add_work_list(info, u);
+        add_work_list(info, v);
+    } else {
+        bool is_u_precolored = node_list_contains(info->precolored, u);
+        if ((is_u_precolored && all_adjacent_ok(info, u, v))
+                || (!is_u_precolored && conservative_adj(info, u, v))) {
+
+            // add to coalesced_moves
+            m_cell->npl_list = info->coalesced_moves;
+            info->coalesced_moves = m_cell;
+            combine(info, u, v);
+            add_work_list(info, u);
+        } else {
+            // add to active_moves
+            m_cell->npl_list = info->active_moves;
+            info->active_moves = m_cell;
+        }
+    }
+}
+
+
+static void
+freeze_moves(reg_alloc_info_t* info, lv_node_t* u) {
+    node_move_it_t it = {};
+    node_move_it_init(&it, info, u);
+    for (var m = node_move_it_next(&it); m; m = node_move_it_next(&it)) {
+        lv_node_t* x = get_alias(info, m->np_node0);
+        lv_node_t* y = get_alias(info, m->np_node1);
+
+        lv_node_t* v;
+        if (lv_eq(get_alias(info, y), get_alias(info, u))) {
+            v = get_alias(info, x);
+        } else {
+            v = get_alias(info, y);
+        }
+
+        var m_cell = node_pair_list_remove(&info->active_moves, m);
+        m_cell->npl_list = info->frozen_moves;
+        info->frozen_moves = m_cell;
+
+        if (!is_move_related(info, v) && get_degree(info, v) < info->K) {
+
+            if (node_list_contains(info->freeze_worklist, v)) {
+                var v_cell = node_list_remove(&info->freeze_worklist, v);
+                node_list_prepend(&info->simplify_worklist, v_cell);
+            }
+
+        }
+    }
+}
+
+
+/*
+ * I have no idea what this is about, but it's in the book.
+ */
+static void
+freeze(reg_alloc_info_t* info) {
+    var u = info->freeze_worklist->nl_node;
+    var u_cell = node_list_remove(&info->freeze_worklist, u);
+    node_list_prepend(&info->simplify_worklist, u_cell);
+    freeze_moves(info, u);
+}
+
 
 /*
  * We use a spill cost that is the number of uses and defs in the flow
@@ -208,6 +702,9 @@ spill_cost(
         reg_alloc_info_t* info,
         lv_node_t* node) {
 
+    return 1;
+    // FIXME!!!! This is using interference graph nodes to index into the
+    // flowgraph
     var flow = info->flowgraph;
     temp_list_t* use_n = Table_get(flow->lvfg_use, node);
     temp_list_t* def_n = Table_get(flow->lvfg_def, node);
@@ -222,6 +719,7 @@ select_spill(
     // 1. select m from spill_worklist
     // 2. remove m from spill_worklist
     // 3. push m onto simplify_worklist
+    // 4. freeze moves
 
     // Find the node with the least spill cost
     var m = info->spill_worklist->nl_node;
@@ -234,15 +732,15 @@ select_spill(
         }
     }
 
-    var m_cell = node_list_remove(&(info->spill_worklist), m);
-    m_cell->nl_list = info->simplify_worklist;
-    info->simplify_worklist = m_cell;
+    var m_cell = node_list_remove(&info->spill_worklist, m);
+    node_list_prepend(&info->simplify_worklist, m_cell);
+
+    freeze_moves(info, m);
 }
 
 
 static void
-assign_colors(
-        reg_alloc_info_t* info) {
+assign_colors(reg_alloc_info_t* info) {
 
     while (info->select_stack != NULL) {
         // pop n from select_stack
@@ -264,10 +762,11 @@ assign_colors(
         // Remove colors which are already used by adjacent nodes.
         lv_node_list_t* adj = info->adj_list[node->lvn_idx];
         if (debug) { print_adj_list(info, adj); }
-        for (var w = adj; w; w = w->nl_list) {
-            if (node_list_contains(info->colored_nodes, w->nl_node)
-                    || node_list_contains(info->precolored, w->nl_node)) {
-                var w_color = info->color[w->nl_node->lvn_idx];
+        for (var wn = adj; wn; wn = wn->nl_list) {
+            var w_alias = get_alias(info, wn->nl_node);
+            if (node_list_contains(info->colored_nodes, w_alias)
+                    || node_list_contains(info->precolored, w_alias)) {
+                var w_color = info->color[w_alias->lvn_idx];
                 // remove from ok_colors
                 ClearBit(ok_colors, w_color);
             }
@@ -277,12 +776,10 @@ assign_colors(
         // If we have no remaining colours, spill.
         if (__builtin_popcountll(_ok_colors) == 0) {
             if (debug) { fprintf(stderr, "spill\n"); }
-            n_cell->nl_list = info->spilled_nodes;
-            info->spilled_nodes = n_cell;
+            node_list_prepend(&info->spilled_nodes, n_cell);
         } else {
             // add n to coloured nodes
-            n_cell->nl_list = info->colored_nodes;
-            info->colored_nodes = n_cell;
+            node_list_prepend(&info->colored_nodes, n_cell);
 
             // store the new first available colour for n
             int new_color = __builtin_ctzll(_ok_colors);
@@ -290,8 +787,27 @@ assign_colors(
             info->color[node->lvn_idx] = new_color;
         }
     }
+
+    for (var n = info->coalesced_nodes; n; n = n->nl_list) {
+        var node = n->nl_node;
+        var alias = get_alias(info, node);
+        info->color[node->lvn_idx] = info->color[alias->lvn_idx];
+    }
 }
 
+
+static void
+debug_print_degrees(reg_alloc_info_t* info, int count_nodes)
+{
+    fprintf(stderr, "len(precolored) = %d\n", list_length(info->precolored));
+    fprintf(stderr, "len(initial) = %d\n", list_length(info->initial));
+
+    fprintf(stderr, "degree = [");
+    for (int i = 0; i < count_nodes; i++) {
+        fprintf(stderr, "%d,", info->degree[i]);
+    }
+    fprintf(stderr, "]\n");
+}
 
 static
 struct ra_color_result {
@@ -302,7 +818,8 @@ struct ra_color_result {
     lv_flowgraph_t* flowgraph,
     Table_T initial_allocation, // temp_t* -> register (char*)
     /* registers is just a list of all machine registers */
-    const char* registers[]) // maybe this could be an array?
+    const char* registers[],
+    assm_instr_t* body_instrs)
 {
     // Prepare
     reg_alloc_info_t info = {
@@ -318,6 +835,9 @@ struct ra_color_result {
     // This is correct, since we are allocating an array of pointers
     // NOLINTNEXTLINE(bugprone-sizeof-expression)
     info.adj_list = xmalloc(count_nodes * sizeof *info.adj_list);
+    // NOLINTNEXTLINE(bugprone-sizeof-expression)
+    info.move_list = xmalloc(count_nodes * sizeof *info.move_list);
+    info.alias = Table_new(0, cmpnode, hashnode);
 
     for (var n = nodes; n; n = n->nl_list) {
         var node = n->nl_node;
@@ -333,25 +853,32 @@ struct ra_color_result {
 
             lv_node_list_t* adj = lv_adj(node);
             for (var s = adj; s; s = s->nl_list) {
-                // degree is the number of adjacent but not precolored nodes
-                info.degree[node->lvn_idx] += 1;
-
-                info.adj_list[node->lvn_idx] =
-                    list_cons(s->nl_node, info.adj_list[node->lvn_idx]);
+                add_edge_helper(&info, node, s->nl_node);
             }
             // FIXME: free (via rust) adj;
         }
     }
-    if (debug) {
-        fprintf(stderr, "len(precolored) = %d\n", list_length(info.precolored));
-        fprintf(stderr, "len(initial) = %d\n", list_length(info.initial));
 
-        fprintf(stderr, "degree = [");
-        for (int i = 0; i < count_nodes; i++) {
-            fprintf(stderr, "%d,", info.degree[i]);
-        }
-        fprintf(stderr, "]\n");
+    /*
+     * Construct the move_list
+     */
+    for (var m = interference->lvig_moves; m; m = m->npl_list) {
+        // The move is added to the move list for both the target and dest
+        var node_pair = m->npl_node;
+        info.move_list[node_pair->np_node0->lvn_idx] =
+            list_cons(node_pair,
+                    info.move_list[node_pair->np_node0->lvn_idx]);
+        info.move_list[node_pair->np_node1->lvn_idx] =
+            list_cons(node_pair,
+                    info.move_list[node_pair->np_node1->lvn_idx]);
     }
+
+    // It's a bit cheeky but we can use lvig_moves for our move worklist
+    if (enable_coalescing) {
+        info.worklist_moves = interference->lvig_moves;
+    }
+
+    if (debug) { debug_print_degrees(&info, count_nodes); }
 
     /*
      * :: MakeWorklist ::
@@ -363,6 +890,11 @@ struct ra_color_result {
             info.initial = n->nl_list;
             n->nl_list = info.spill_worklist;
             info.spill_worklist = n;
+        } else if (enable_coalescing && is_move_related(&info, node)) {
+            // add to freeze_worklist
+            info.initial = n->nl_list;
+            n->nl_list = info.freeze_worklist;
+            info.freeze_worklist = n;
         } else {
             // add to simplify_worklist
             info.initial = n->nl_list;
@@ -374,13 +906,20 @@ struct ra_color_result {
     /*
      * The loop before "AssignColors", from "Main"
      */
-    while (info.simplify_worklist || info.spill_worklist) {
+    while (info.simplify_worklist || info.worklist_moves
+            || info.freeze_worklist || info.spill_worklist) {
         if (info.simplify_worklist) {
             simplify(&info);
+        } else if (info.worklist_moves) {
+            coalesce(&info);
+        } else if (info.freeze_worklist) {
+            freeze(&info);
         } else {
             select_spill(&info);
         }
     }
+
+    if (debug) { print_coalesced_nodes(&info); }
 
     assign_colors(&info);
 
@@ -418,14 +957,24 @@ struct ra_color_result {
                 // cast away const
                 (void*)register_name);
     }
-
-    if (debug) {
-        fprintf(stderr, "degree = [");
-        for (int i = 0; i < count_nodes; i++) {
-            fprintf(stderr, "%d,", info.degree[i]);
+    for (var n = info.coalesced_nodes; n; n = n->nl_list) {
+        var node = n->nl_node;
+        var alias = get_alias(&info, node);
+        if (node_list_contains(info.spilled_nodes, alias)) {
+            continue;
         }
-        fprintf(stderr, "]\n");
+
+        var color_idx = info.color[node->lvn_idx];
+        var register_name = registers[color_idx];
+
+        Table_put(
+                result.racr_allocation,
+                temp_for_node(&info, node),
+                // cast away const
+                (void*)register_name);
     }
+
+    if (debug) { debug_print_degrees(&info, count_nodes); }
 
     // :: clean up ::
 
@@ -444,6 +993,11 @@ struct ra_color_result {
         node_list_free(&(info.adj_list[i]));
     }
     free(info.adj_list); info.adj_list = NULL;
+    for (int i = 0; i < count_nodes; i++) {
+        node_pair_list_free(&(info.move_list[i]));
+    }
+    free(info.move_list); info.move_list = NULL;
+    Table_free(&info.alias);
 
     free(info.degree); info.degree = NULL;
     free(info.color); info.color = NULL;
@@ -535,9 +1089,42 @@ spill_temp(
                 break;
         }
     }
-
 }
 
+
+/*
+ * Finds moves between the same registers and removes them
+ */
+static void
+remove_dead_moves(
+        Table_T allocation, /* temp_t* -> register (char*) */
+        assm_instr_t** pbody_instrs)
+{
+    for (var pinstr = pbody_instrs; *pinstr; ) {
+        var instr = *pinstr;
+        if (instr->ai_tag == ASSM_INSTR_MOVE) {
+            var dst = instr->ai_move_dst;
+            var src = instr->ai_move_src;
+            if (dst.temp_size == src.temp_size) {
+                const char* dst_reg = Table_get(allocation, &dst);
+                assert(dst_reg);
+                const char* src_reg = Table_get(allocation, &src);
+                assert(src_reg);
+                if (dst_reg == src_reg) {
+
+                    // Remove from body_instrs
+                    *pinstr = instr->ai_list;
+
+                    instr->ai_list = NULL;
+                    assm_free(&instr);
+                    continue;
+                }
+            }
+        }
+
+        pinstr = &((*pinstr)->ai_list);
+    }
+}
 
 
 struct instr_list_and_allocation
@@ -562,7 +1149,7 @@ ra_alloc(
 
     var color_result =
         ra_color(igraph_and_table.igraph, flow, frame->acf_temp_map,
-                frame->acf_target->register_names);
+                frame->acf_target->register_names, body_instrs);
 
     // :: check for spilled nodes, and rewrite program if so ::
     if (color_result.racr_spills) {
@@ -591,6 +1178,8 @@ ra_alloc(
         // TODO: free structures
         return ra_alloc(out, temp_state, body_instrs, frame, false);
     }
+
+    remove_dead_moves(color_result.racr_allocation, &body_instrs);
 
     struct instr_list_and_allocation result = {
         .ra_instrs = body_instrs,

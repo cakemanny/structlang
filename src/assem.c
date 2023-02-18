@@ -5,8 +5,9 @@
 
 #define var __auto_type
 
+
 assm_instr_t* assm_oper(
-        const char* assem, temp_list_t* dst, temp_list_t* src, sl_sym_t* jump)
+        char* assem, temp_list_t* dst, temp_list_t* src, sl_sym_t* jump)
 {
     assm_instr_t* instr = xmalloc(sizeof *instr);
     instr->ai_tag = ASSM_INSTR_OPER;
@@ -17,7 +18,7 @@ assm_instr_t* assm_oper(
     return instr;
 }
 
-assm_instr_t* assm_label(const char* assem, sl_sym_t label)
+assm_instr_t* assm_label(char* assem, sl_sym_t label)
 {
     assm_instr_t* instr = xmalloc(sizeof *instr);
     instr->ai_tag = ASSM_INSTR_LABEL;
@@ -26,7 +27,7 @@ assm_instr_t* assm_label(const char* assem, sl_sym_t label)
     return instr;
 }
 
-assm_instr_t* assm_move(const char* assem, temp_t dst, temp_t src)
+assm_instr_t* assm_move(char* assem, temp_t dst, temp_t src)
 {
     assm_instr_t* instr = xmalloc(sizeof *instr);
     instr->ai_tag = ASSM_INSTR_MOVE;
@@ -34,6 +35,38 @@ assm_instr_t* assm_move(const char* assem, temp_t dst, temp_t src)
     instr->ai_move_dst = dst;
     instr->ai_move_src = src;
     return instr;
+}
+
+void assm_free(assm_instr_t** pinstr)
+{
+    assm_instr_t* instr = *pinstr;
+    free(instr->ai_assem);
+    switch (instr->ai_tag) {
+        case ASSM_INSTR_OPER:
+            // FIXME: it turns out these can
+            // be shared e.g. calldefs
+            if (0) {
+                temp_list_free(&instr->ai_oper_src);
+                temp_list_free(&instr->ai_oper_dst);
+            }
+            break;
+        case ASSM_INSTR_LABEL:
+            break;
+        case ASSM_INSTR_MOVE:
+            break;
+    }
+
+    free(*pinstr);
+    *pinstr = NULL;
+}
+
+void assm_free_list(assm_instr_t** pinstr)
+{
+    while (*pinstr) {
+        var to_free = *pinstr;
+        *pinstr = to_free->ai_list;
+        assm_free(&to_free);
+    }
 }
 
 const char* register_for_size(const char* regname, size_t size);

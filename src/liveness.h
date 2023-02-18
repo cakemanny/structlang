@@ -6,6 +6,8 @@
 #include "assem.h" // assm_instr_t
 #include "interfaces/table.h"
 
+// TODO: define wrapper types around these graphs to improve type safety.
+
 /*
  * Graph
  */
@@ -28,6 +30,7 @@ extern lv_node_list_t* lv_succ(lv_node_t*);
 extern lv_node_list_t* lv_pred(lv_node_t*);
 extern lv_node_list_t* lv_adj(lv_node_t*);
 extern bool lv_eq(const lv_node_t*, const lv_node_t*);
+extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
 
 // I'm putting extern here for functions implemented in Rust
 extern lv_graph_t* lv_new_graph();
@@ -70,13 +73,14 @@ typedef struct lv_node_pair_t {
 } lv_node_pair_t;
 
 typedef struct lv_node_pair_list_t {
-    lv_node_pair_t* nl_node;
-    struct lv_node_pair_list_t* nl_list;
+    lv_node_pair_t* npl_node;
+    struct lv_node_pair_list_t* npl_list;
 } lv_node_pair_list_t;
 
 lv_node_pair_t* lv_node_pair(lv_node_t* m, lv_node_t* n);
 lv_node_pair_list_t* lv_node_pair_cons(
         lv_node_pair_t* hd, lv_node_pair_list_t* tl);
+bool lv_node_pair_eq(const lv_node_pair_t* lhs, const lv_node_pair_t* rhs);
 
 // an interference graph
 typedef struct lv_igraph_t lv_igraph_t;
@@ -92,11 +96,20 @@ struct lv_igraph_t {
      * lvig_gtemp is a map from lv_node_t* -> temp_t*
      */
     Table_T lvig_gtemp;
+    /*
+     * lvig_moves is a list of node pairs ((d0, s0), (d1, s2), ...)
+     * for each move in the program, with dₙ, sₙ being interference graph
+     * nodes for the temporaries involved in the move.
+     */
     lv_node_pair_list_t* lvig_moves;
 };
 
 struct igraph_and_table {
-    lv_igraph_t* igraph;
+    lv_igraph_t* igraph; // The interference graph
+    /*
+     * live_outs is the mapping from flow graph nodes to the temporaries
+     * that are Live Out at that node
+     */
     Table_T live_outs; // lv_node_t* -> temp_list_t*
 } intererence_graph(lv_flowgraph_t*);
 
