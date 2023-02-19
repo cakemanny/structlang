@@ -703,14 +703,29 @@ spill_cost(
         reg_alloc_info_t* info,
         lv_node_t* node) {
 
-    return 1;
-    // FIXME!!!! This is using interference graph nodes to index into the
-    // flowgraph
-    var flow = info->flowgraph;
-    temp_list_t* use_n = Table_get(flow->lvfg_use, node);
-    temp_list_t* def_n = Table_get(flow->lvfg_def, node);
+    temp_t t = *temp_for_node(info, node);
+    int cost = 0;
 
-    return list_length(use_n) + list_length(def_n);
+    var flow = info->flowgraph;
+    var nodes = lv_nodes(flow->lvfg_control);
+    for (var n = nodes; n; n = n->nl_list) {
+        temp_list_t* use_n = Table_get(flow->lvfg_use, n->nl_node);
+        for (var u = use_n; u; u = u->tmp_list) {
+            if (u->tmp_temp.temp_id == t.temp_id) {
+                cost += 1;
+                break;
+            }
+        }
+        temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
+        for (var d = def_n;d; d = d->tmp_list) {
+            if (d->tmp_temp.temp_id == t.temp_id) {
+                cost += 1;
+                break;
+            }
+        }
+    }
+    lv_node_list_free(nodes);
+    return cost;
 }
 
 
