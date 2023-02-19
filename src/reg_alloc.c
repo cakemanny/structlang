@@ -1001,9 +1001,9 @@ struct ra_color_result {
 
     // :: clean up ::
 
-    // This does not clean up the actual nodes themselves...
-    // Those came from Rust, so we need to write something that gives them
-    // back.
+    // TODO: move all the moves from the various worklists back to the
+    // lvig_moves list
+
     node_list_free(&info.spilled_nodes);
     node_list_free(&info.colored_nodes);
     node_list_free(&info.precolored);
@@ -1164,7 +1164,7 @@ ra_alloc(
     lv_flowgraph_t* flow = flow_and_nodes.flowgraph;
 
     var igraph_and_table =
-        intererence_graph(flow);
+        intererence_graph(flow, flow_and_nodes.node_list);
     if (print_interference_and_return) {
         igraph_show(out, igraph_and_table.igraph);
         struct instr_list_and_allocation result = {};
@@ -1199,7 +1199,8 @@ ra_alloc(
                 fprintf(out, "%s", buf);
             }
         }
-        // TODO: free structures
+
+        lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
         return ra_alloc(out, temp_state, body_instrs, frame, false);
     }
 
@@ -1210,9 +1211,7 @@ ra_alloc(
         .ra_allocation = color_result.racr_allocation
     };
 
-    lv_free_graph(flow->lvfg_control); flow->lvfg_control = NULL;
-    // todo: free nodes from flow_and_nodes
-    Table_free(&igraph_and_table.live_outs);
+    lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
 
     return result;
 }

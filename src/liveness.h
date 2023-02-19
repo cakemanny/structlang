@@ -37,6 +37,8 @@ extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
 extern lv_graph_t* lv_new_graph();
 extern void lv_free_graph(lv_graph_t*);
 extern lv_node_t* lv_new_node(lv_graph_t* graph);
+/* for when freeing a node that came from lv_new_node */
+extern void lv_free_node(lv_node_t*);
 extern void lv_mk_edge(lv_node_t* from, lv_node_t* to);
 extern void lv_rm_edge(lv_node_t* from, lv_node_t* to);
 
@@ -52,8 +54,8 @@ typedef struct lv_flowgraph_t lv_flowgraph_t;
 
 struct lv_flowgraph_t {
     lv_graph_t* lvfg_control;
-    Table_T lvfg_def; // node -> temp_list_t
-    Table_T lvfg_use; // node -> temp_list_t
+    Table_T lvfg_def; // node -> temp_list_t  does not own keys
+    Table_T lvfg_use; // node -> temp_list_t  does not own keys
     Table_T lvfg_ismove; // node -> bool
 };
 
@@ -112,7 +114,12 @@ struct igraph_and_table {
      * that are Live Out at that node
      */
     Table_T live_outs; // lv_node_t* -> temp_list_t*
-} intererence_graph(lv_flowgraph_t*);
+};
+
+struct igraph_and_table intererence_graph(lv_flowgraph_t*, lv_node_list_t* node_list);
+
+void lv_free_interference_and_flow_graph(
+        struct igraph_and_table*, struct flowgraph_and_node_list*);
 
 #include <stdio.h>
 /*

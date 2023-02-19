@@ -319,7 +319,8 @@ static lv_node_t* ig_get_node_for_temp(lv_igraph_t* igraph, temp_t* ptemp)
     return ig_node;
 }
 
-struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
+struct igraph_and_table intererence_graph(
+        lv_flowgraph_t* flow, lv_node_list_t* nodes)
 {
     // compute live out
     struct live_set {
@@ -331,7 +332,6 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
     Table_T live_out_map //  node -> struct live_set
         = Table_new(0, cmpnode, hashnode);
 
-    var nodes = lv_nodes(flow->lvfg_control);
     for (var n = nodes; n; n = n->nl_list) {
         Table_put(live_in_map, n->nl_node, xmalloc(sizeof(struct live_set)));
         Table_put(live_out_map, n->nl_node, xmalloc(sizeof(struct live_set)));
@@ -475,13 +475,47 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
     Table_map(live_out_map, vfree, NULL);
     Table_free(&live_out_map);
 
-    // TODO: free `nodes`
+    // Put the nodes back in order before we are caught!
+    nodes = list_reverse(nodes);
 
     struct igraph_and_table result = {
         .igraph = igraph,
         .live_outs = live_outs,
     };
     return result;
+}
+
+void
+lv_free_interference_and_flow_graph(
+        struct igraph_and_table* igraph_and_live_outs,
+        struct flowgraph_and_node_list* flow_and_nodes)
+{
+    // Free interference graph
+    // TODO: work out how to track which values in the live_outs to free
+    Table_free(&igraph_and_live_outs->live_outs);
+    Table_free(&igraph_and_live_outs->igraph->lvig_tnode);
+    Table_free(&igraph_and_live_outs->igraph->lvig_gtemp);
+    // TODO: lvig_moves;
+
+    // Free flow graph
+    lv_free_graph(flow_and_nodes->flowgraph->lvfg_control);
+    flow_and_nodes->flowgraph->lvfg_control = NULL;
+
+    Table_free(&flow_and_nodes->flowgraph->lvfg_def);
+    Table_free(&flow_and_nodes->flowgraph->lvfg_use);
+    Table_free(&flow_and_nodes->flowgraph->lvfg_ismove);
+
+    // free nodes from flow_and_nodes
+    for (lv_node_list_t *n = flow_and_nodes->node_list, *next=NULL; n; n = next) {
+        // read the field in advance of freeing the memory
+        next = n->nl_list;
+
+        lv_free_node(n->nl_node); n->nl_node = NULL;
+        n->nl_list = NULL;
+        free(n);
+    }
+    flow_and_nodes->node_list = NULL;
+
 }
 
 // Yeah... so... the return value must be used immediately, or copied by the

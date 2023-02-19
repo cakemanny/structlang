@@ -176,6 +176,12 @@ pub extern "C" fn lv_new_node(g: *mut Graph) -> *mut Node  {
 }
 
 #[no_mangle]
+pub extern "C" fn lv_free_node(n: *mut Node) {
+    // See lv_free_graph if you don't understand this line
+    unsafe { Box::from_raw(n) };
+}
+
+#[no_mangle]
 pub extern "C" fn lv_mk_edge(pfrom: *mut Node, pto: *mut Node) {
     let from = unsafe { &*pfrom };
     let to = unsafe { &*pto };
