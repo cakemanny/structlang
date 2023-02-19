@@ -38,6 +38,9 @@ static const temp_t special_regs[] = {
     {.temp_id = 29, .temp_size = word_size}, // fp
     {.temp_id = 30, .temp_size = word_size}, // link register - also caller saved
     {.temp_id = 31, .temp_size = word_size}, // sp - not general purpose
+    // On Apple x18 is reserved
+    // https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms
+    {.temp_id = 18, .temp_size = word_size}
 };
 
 static const temp_t arm64_argument_regs[] = {
@@ -70,7 +73,8 @@ static const temp_t arm64_caller_saves[] = {
     {.temp_id = 15, .temp_size = 8},
     {.temp_id = 16, .temp_size = 8},
     {.temp_id = 17, .temp_size = 8},
-    {.temp_id = 18, .temp_size = 8},
+    // On Apple x18 is reserved
+    // {.temp_id = 18, .temp_size = 8},
 };
 
 /*
@@ -554,6 +558,8 @@ assm_instr_t* arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
     }
     src_list = temp_list_cons(special_regs[0], src_list); // fp
     src_list = temp_list_cons(special_regs[2], src_list); // sp
+    src_list = temp_list_cons(special_regs[3], src_list); // x18 - apple
+                                                          // reserved
 
     temp_t ret0 = frame->acf_target->tgt_ret0;
     ret0.temp_size = word_size;

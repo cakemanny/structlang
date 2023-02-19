@@ -559,6 +559,8 @@ struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame)
         v->acf_offset--;
     v->acf_is_formal = 0;
     // TODO: think about the ptr_map stuff ...
+
+    frame->acf_last_local_offset = v->acf_offset;
     ac_frame_append_var(frame, v);
     return v;
 }
