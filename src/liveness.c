@@ -125,6 +125,11 @@ struct flowgraph_and_node_list instrs2graph(const assm_instr_t* instrs)
     return result;
 }
 
+/*
+ * if x < y result is negative
+ * if x == y result is 0
+ * if x > y result is positive
+ */
 static int cmptemp(const void* x, const void* y)
 {
     const temp_t* xx = x;
@@ -165,52 +170,76 @@ static temp_list_t* temp_list_sort(temp_list_t* tl)
     return result;
 }
 
+#define temp_cmp(a, b) ((a).temp_id - (b).temp_id)
+
 static void check_sorted(const temp_list_t* tl)
 {
     for (var t = tl; t && t->tmp_list; t = t->tmp_list) {
-        assert(cmptemp(&t->tmp_temp, &t->tmp_list->tmp_temp) < 0);
+        assert(temp_cmp(t->tmp_temp, t->tmp_list->tmp_temp) < 0);
     }
 }
 
-static temp_list_t* temp_list_union(const temp_list_t* a, const temp_list_t* b)
+void print_temp_list(const temp_list_t* a)
+{
+    fprintf(stderr, "[");
+    for (; a; a = a->tmp_list)
+    {
+        if (a->tmp_list) {
+            fprintf(stderr, "%d, ", a->tmp_temp.temp_id);
+        } else {
+            fprintf(stderr, "%d", a->tmp_temp.temp_id);
+        }
+    }
+    fprintf(stderr, "]\n");
+}
+
+
+/*
+ * Add all elements in b into a
+ * Any added elements are copied in to newly allocated memory, so a owns all
+ * memory in its list.
+ */
+static void temp_list_union_l(temp_list_t** pa, const temp_list_t* b)
 {
     if (debug) {
-        check_sorted(a);
+        check_sorted(*pa);
         check_sorted(b);
     }
 
-    temp_list_t* result = NULL;
-
-    while (a || b) {
-        if (a && b) {
-            var cmp = cmptemp(&a->tmp_temp, &b->tmp_temp);
-            if (cmp < 0) {
-                result = temp_list_cons(a->tmp_temp, result);
-                a = a->tmp_list;
-            } else if (cmp > 0) {
-                result = temp_list_cons(b->tmp_temp, result);
-                b = b->tmp_list;
-            } else {
-                result = temp_list_cons(a->tmp_temp, result);
-                a = a->tmp_list;
-                b = b->tmp_list;
-            }
-        } else if (a) {
-            if (!result || cmptemp(&a->tmp_temp, &result->tmp_temp) != 0) {
-                result = temp_list_cons(a->tmp_temp, result);
-            }
-            a = a->tmp_list;
+#define a (*pa)
+#define ADVANCE_A() pa = &a->tmp_list;
+#define ADVANCE_B() b = b->tmp_list;
+    while (a && b) {
+        var cmp = temp_cmp(a->tmp_temp, b->tmp_temp);
+        if (cmp < 0) {
+            ADVANCE_A();
+        } else if (cmp == 0) {
+            ADVANCE_A();
+            ADVANCE_B();
         } else {
-            assert(b);
-            if (!result || cmptemp(&b->tmp_temp, &result->tmp_temp) != 0) {
-                result = temp_list_cons(b->tmp_temp, result);
-            }
-            b = b->tmp_list;
+            var cell = temp_list(b->tmp_temp);
+            // insert at the current point of a
+            cell->tmp_list = a;
+            *pa = cell;
+            ADVANCE_A();
+            ADVANCE_B();
         }
     }
-
-    return list_reverse(result);
+    while (b) {
+        // pa points to the final tmp_list
+        // allocate and insert remaining elements
+        var cell = temp_list(b->tmp_temp);
+        // insert at the current point of a
+        cell->tmp_list = a;
+        *pa = cell;
+        ADVANCE_A();
+        ADVANCE_B();
+    }
+#undef a
+#undef ADVANCE_A
+#undef ADVANCE_B
 }
+#define temp_list_union_r(a, pb) temp_list_union_l(pb, a)
 
 static temp_list_t* temp_list_minus(const temp_list_t* a, const temp_list_t* b)
 {
@@ -224,11 +253,11 @@ static temp_list_t* temp_list_minus(const temp_list_t* a, const temp_list_t* b)
     for (; a; a = a->tmp_list) {
 
         // advance b so that it is greater or equal to a-head
-        while(b && cmptemp(&b->tmp_temp, &a->tmp_temp) < 0) {
+        while(b && temp_cmp(b->tmp_temp, a->tmp_temp) < 0) {
             b = b->tmp_list;
         }
 
-        if (b && cmptemp(&a->tmp_temp, &b->tmp_temp) == 0) {
+        if (b && temp_cmp(a->tmp_temp, b->tmp_temp) == 0) {
             // skip both
         } else {
             result = temp_list_cons(a->tmp_temp, result);
@@ -243,7 +272,7 @@ static bool temp_list_eq(const temp_list_t* a, const temp_list_t* b)
         if (!(a && b)) {
             return false;
         }
-        if (cmptemp(&a->tmp_temp, &b->tmp_temp) != 0) {
+        if (temp_cmp(a->tmp_temp, b->tmp_temp) != 0) {
             return false;
         }
         a = a->tmp_list;
@@ -331,8 +360,8 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
             temp_list_t* def_n = Table_get(flow->lvfg_def, node);
 
             var out_minus_def = temp_list_minus(out_ns->temp_list, def_n);
-            var in_n = temp_list_union(use_n, out_minus_def);
-            // TODO: free `out_minus_def` list structure
+            temp_list_t* in_n = out_minus_def;
+            temp_list_union_r(use_n, &in_n);
 
             // out[n] = union {in[s] for s in succ[n]}
             temp_list_t* out_n = NULL;
@@ -341,8 +370,7 @@ struct igraph_and_table intererence_graph(lv_flowgraph_t* flow)
                 struct live_set* in_ss = Table_get(live_in_map, s->nl_node);
                 assert(in_ss);
                 var in_s = in_ss->temp_list;
-                // FIXME: This is shit hot and allocating
-                out_n = temp_list_union(out_n, in_s);
+                temp_list_union_l(&out_n, in_s);
             }
             lv_node_list_free(succ);
 
@@ -514,4 +542,6 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
         }
     }
     fprintf(out, "# ----------------------------\n");
+
+    lv_node_list_free(nodes);
 }

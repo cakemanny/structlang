@@ -34,8 +34,8 @@ CFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer
 LDFLAGS = -L$(BUILD_DIR) -lgraph
 
 ifdef PROFILE
-  CFLAGS += -O2 -fprofile-instr-generate
-  LDFLAGS += -fprofile-instr-generate
+  CFLAGS += -O1 -fprofile-instr-generate -fcoverage-mapping
+  LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
 else ifndef NDEBUG
   ifneq "$(OS)" "Windows_NT"
     CFLAGS += -fsanitize=address
