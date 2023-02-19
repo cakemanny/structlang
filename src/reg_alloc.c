@@ -13,6 +13,8 @@
 #define SetBit(x, i) (x)[(i)>>6] |= (1ULL<<((i)&63))
 #define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
 
+// Useful note for self when debugging:
+// __builtin_debugtrap()
 static const bool debug = 0;
 static const bool enable_coalescing = true;
 
@@ -717,7 +719,7 @@ spill_cost(
             }
         }
         temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
-        for (var d = def_n;d; d = d->tmp_list) {
+        for (var d = def_n; d; d = d->tmp_list) {
             if (d->tmp_temp.temp_id == t.temp_id) {
                 cost += 1;
                 break;

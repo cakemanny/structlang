@@ -35,6 +35,7 @@ extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
 
 // I'm putting extern here for functions implemented in Rust
 extern lv_graph_t* lv_new_graph();
+extern size_t lv_graph_length(lv_graph_t*);
 extern void lv_free_graph(lv_graph_t*);
 extern lv_node_t* lv_new_node(lv_graph_t* graph);
 /* for when freeing a node that came from lv_new_node */

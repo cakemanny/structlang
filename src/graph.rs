@@ -159,6 +159,12 @@ pub extern "C" fn lv_new_graph() -> *mut Graph {
 }
 
 #[no_mangle]
+pub extern "C" fn lv_graph_length(g: *const Graph) -> usize {
+    let graph = unsafe { &*g };
+    graph.nodes.len()
+}
+
+#[no_mangle]
 pub extern "C" fn lv_free_graph(g: *mut Graph) {
     // As per the docs for Box::into_raw, converting the raw back into a Box
     // and then letting it go out of scope will run its destructor.

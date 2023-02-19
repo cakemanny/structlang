@@ -1,6 +1,13 @@
 #!/bin/bash
 
-SLC=$(dirname "$0")/../build/debug/structlangc
+: "${NDEBUG=}"
+
+profile=debug
+if [ -n "${NDEBUG}" ]; then
+    profile=release
+fi
+
+SLC=$(dirname "$0")/../build/${profile}/structlangc
 red=$(tput setaf 1)
 grn=$(tput setaf 2)
 clr=$(tput sgr0)
