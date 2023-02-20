@@ -25,6 +25,8 @@ typedef struct lv_node_list_t {
     struct lv_node_list_t* nl_list;
 } lv_node_list_t;
 
+
+
 extern lv_node_list_t* lv_nodes(lv_graph_t*);
 extern lv_node_list_t* lv_succ(lv_node_t*);
 extern lv_node_list_t* lv_pred(lv_node_t*);
@@ -32,6 +34,13 @@ extern lv_node_list_t* lv_adj(lv_node_t*);
 extern void lv_node_list_free(lv_node_list_t*);
 extern bool lv_eq(const lv_node_t*, const lv_node_t*);
 extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
+
+typedef struct node_vec {
+    size_t *nv_elems;
+    size_t nv_len;
+    size_t nv_capacity;
+} node_vec_t;
+extern node_vec_t lv_succ_vec(lv_node_t*);
 
 // I'm putting extern here for functions implemented in Rust
 extern lv_graph_t* lv_new_graph();

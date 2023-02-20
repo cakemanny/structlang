@@ -34,6 +34,17 @@ impl NodeRep {
     }
 }
 
+
+// We return the list of nodes as a vector in performance critical places
+// nv = node vec
+#[repr(C)]
+pub struct CNodeVec {
+    nv_elems: *mut Node_,
+    nv_len: usize,
+    nv_capacity: usize,
+}
+
+
 #[no_mangle]
 pub extern "C" fn lv_nodes(g: *mut Graph) -> *const NodeList {
     let mut result = null();
@@ -50,6 +61,28 @@ pub extern "C" fn lv_nodes(g: *mut Graph) -> *const NodeList {
     }
     return result;
 }
+
+#[no_mangle]
+pub extern "C" fn lv_succ_vec(n: *const Node) -> CNodeVec {
+    let node = unsafe { &*n };
+    let graph = unsafe { &mut *node.graph };
+    let v = &mut graph.nodes[node.idx].succ;
+    let result = CNodeVec {
+        nv_elems: v.as_mut_ptr(),
+        nv_len: v.len(),
+        nv_capacity: v.capacity(),
+    };
+    // std::mem::forget(v);
+    return result;
+}
+// we don't use this
+#[no_mangle]
+pub extern "C" fn lv_vec_free(cvec: CNodeVec) {
+    // Take back ownership of the parts and let it go out of scope to
+    // run the destructor
+    unsafe { Vec::<Node_>::from_raw_parts(cvec.nv_elems, cvec.nv_len, cvec.nv_capacity) };
+}
+
 
 #[no_mangle]
 pub extern "C" fn lv_succ(n: *mut Node) -> *const NodeList {

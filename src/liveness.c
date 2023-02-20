@@ -442,17 +442,18 @@ struct igraph_and_table interference_graph(
 
             // out[n] = union {in[s] for s in succ[n]}
             node_set2_clear(out_n);
-            // TODO: get rid of this call into Rust
-            lv_node_list_t* succ = lv_succ(node);
-            for (var s = succ; s; s = s->nl_list) {
-                node_set2_t in_s = Table_NST_get(live_in_map, s->nl_node);
+            node_vec_t succ = lv_succ_vec(node);
+            for (int i = 0; i < succ.nv_len; i++) {
+                lv_node_t node = {
+                    .lvn_graph=igraph->lvig_graph,
+                    .lvn_idx=succ.nv_elems[i],
+                };
+                node_set2_t in_s = Table_NST_get(live_in_map, &node);
                 node_set2_union(out_n, out_n, in_s);
             }
-            lv_node_list_free(succ);
 
             // store results back into live_in_map and live_out_map
             Table_NST_put(live_out_map, node, out_n);
-
             Table_NST_put(live_in_map, node, in_n);
         }
 
