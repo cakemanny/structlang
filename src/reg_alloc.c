@@ -1166,7 +1166,7 @@ ra_alloc(
     lv_flowgraph_t* flow = flow_and_nodes.flowgraph;
 
     var igraph_and_table =
-        intererence_graph(flow, flow_and_nodes.node_list);
+        interference_graph(flow, flow_and_nodes.node_list);
     if (print_interference_and_return) {
         igraph_show(out, igraph_and_table.igraph);
         struct instr_list_and_allocation result = {};

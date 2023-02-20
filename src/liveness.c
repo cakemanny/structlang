@@ -8,22 +8,145 @@
 
 #define var __auto_type
 
-static const bool debug = 0;
-
 static temp_list_t* temp_list_sort(temp_list_t* tl);
 
-// a free function that can be mapped over tables
-static void vfree(const void* key, void** value, void* cl)
+/*
+ * In order to have a fast, allocation free liveness analysis,
+ * we implement use and def sets as an array of bit sets.
+ * That is we have a contiguous array of 64-bit words.
+ *
+ * Suppose there are 72 temporaries used within an example function.
+ * This will require two 64-bit words to represent each set.
+ * FIXME: we should talk about the number of control flow graph nodes.
+ * So we would allocate 72 * 2 (= 144) 64-bit words to store a map
+ * of sets for the interference graph.
+ */
+
+#define BitsetLen(len) (((len) + 63) / 64)
+#define IsBitSet(x, i) (( (x)[(i)>>6] & (1ULL<<((i)&63)) ) != 0ULL)
+#define SetBit(x, i) (x)[(i)>>6] |= (1ULL<<((i)&63))
+#define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
+#define BitsetBytes(len) (sizeof(uint64_t) * BitsetLen(len))
+
+/*
+ * This is a single set from our table. It points somewhere into the table.
+ * It passed by value to avoid double indirection.
+ */
+typedef struct node_set2 {
+    size_t len;
+    uint64_t* bits;
+} node_set2_t;
+
+typedef struct node_set_table {
+    size_t count;  /* The number of sets in our table */
+    size_t len;  /* The number of nodes in the graph.
+                    The max number of elements in our set */
+    uint64_t* bits;
+} node_set_table_t;
+
+static node_set_table_t
+node_set_table_new(size_t count, size_t max_elems)
 {
-    free(*value);
-    // our table doesn't allow null values
-    // *value = NULL;
+    assert(count >= 1);
+    assert(max_elems >= 1);
+
+    node_set_table_t table = {
+        .count = count,
+        .len = max_elems,
+    };
+    table.bits = xmalloc(count * BitsetLen(max_elems) * sizeof *table.bits);
+    return table;
 }
-static void freeif(void*const ptr)
+static void node_set_table_free(node_set_table_t* table)
 {
-    if (ptr)
-        free(ptr);
+    assert(table);
+    assert(table->bits);
+    free(table->bits);
+    table->bits = NULL;
 }
+static node_set2_t node_set_table_get(node_set_table_t table, int idx)
+{
+    node_set2_t result = {
+        .len = table.len,
+        .bits = table.bits + BitsetLen(table.len) * idx,
+    };
+    return result;
+}
+
+static node_set2_t Table_NST_get(node_set_table_t table, lv_node_t* node)
+{
+    return node_set_table_get(table, node->lvn_idx);
+}
+
+/* overwrites the set for node with the value of to_copy */
+static void Table_NST_put(node_set_table_t table, lv_node_t* node, node_set2_t to_copy)
+{
+    assert(table.len == to_copy.len);
+    node_set2_t dst = Table_NST_get(table, node);
+    memcpy(dst.bits, to_copy.bits, BitsetBytes(table.len));
+}
+
+static void node_set2_clear(node_set2_t dst)
+{
+    memset(dst.bits, 0, BitsetBytes(dst.len));
+}
+
+static void
+node_set2_union(node_set2_t dst, const node_set2_t src1, const node_set2_t src2)
+{
+    for (int i = BitsetLen(dst.len); --i >= 0; ) {
+        dst.bits[i] = src1.bits[i] | src2.bits[i];
+    }
+}
+
+static void
+node_set2_minus(node_set2_t dst, const node_set2_t src1, const node_set2_t src2)
+{
+    for (int i = BitsetLen(dst.len); --i >= 0; ) {
+        dst.bits[i] = src1.bits[i] & ~src2.bits[i];
+    }
+}
+
+static int node_set2_count(const node_set2_t s)
+{
+    int total = 0;
+    for (int i = BitsetLen(s.len); --i >= 0; ) {
+        total += __builtin_popcountll(s.bits[i]);
+    }
+    return total;
+}
+
+static bool node_set2_eq(const node_set2_t s, const node_set2_t t)
+{
+	assert(s.len == t.len);
+	for (int i = BitsetLen(s.len); --i >= 0; ) {
+        if (s.bits[i] != t.bits[i])
+            return false;
+    }
+	return true;
+}
+
+static void node_set2_add(node_set2_t s, const lv_node_t* node)
+{
+    SetBit(s.bits, node->lvn_idx);
+}
+
+/*static*/ bool node_set2_member(node_set2_t s, const lv_node_t* node)
+{
+    return IsBitSet(s.bits, node->lvn_idx);
+}
+
+static int node_set2_first_idx(node_set2_t s)
+{
+    for (int i = 0, n = BitsetLen(s.len); i < n; i++) {
+        if (s.bits[i] != 0) {
+            return __builtin_ctzll(s.bits[i]) + (64 * i);
+        }
+    }
+    assert(!"set is empty");
+}
+
+
 
 static int cmpnode(const void* x, const void* y)
 {
@@ -52,7 +175,6 @@ struct flowgraph_and_node_list instrs2graph(const assm_instr_t* instrs)
      */
     Table_T label_to_node = Table_new(0, NULL, NULL);
 
-    // TODO: actually return this?
     lv_node_list_t* nodes = NULL;
 
     const assm_instr_t* prev = NULL;
@@ -172,13 +294,6 @@ static temp_list_t* temp_list_sort(temp_list_t* tl)
 
 #define temp_cmp(a, b) ((a).temp_id - (b).temp_id)
 
-static void check_sorted(const temp_list_t* tl)
-{
-    for (var t = tl; t && t->tmp_list; t = t->tmp_list) {
-        assert(temp_cmp(t->tmp_temp, t->tmp_list->tmp_temp) < 0);
-    }
-}
-
 void print_temp_list(const temp_list_t* a)
 {
     fprintf(stderr, "[");
@@ -193,93 +308,6 @@ void print_temp_list(const temp_list_t* a)
     fprintf(stderr, "]\n");
 }
 
-
-/*
- * Add all elements in b into a
- * Any added elements are copied in to newly allocated memory, so a owns all
- * memory in its list.
- */
-/*XXX*/ void temp_list_union_l(temp_list_t** pa, const temp_list_t* b)
-{
-    if (debug) {
-        check_sorted(*pa);
-        check_sorted(b);
-    }
-
-#define a (*pa)
-#define ADVANCE_A() pa = &a->tmp_list;
-#define ADVANCE_B() b = b->tmp_list;
-    while (a && b) {
-        var cmp = temp_cmp(a->tmp_temp, b->tmp_temp);
-        if (cmp < 0) {
-            ADVANCE_A();
-        } else if (cmp == 0) {
-            ADVANCE_A();
-            ADVANCE_B();
-        } else {
-            var cell = temp_list(b->tmp_temp);
-            // insert at the current point of a
-            cell->tmp_list = a;
-            *pa = cell;
-            ADVANCE_A();
-            ADVANCE_B();
-        }
-    }
-    while (b) {
-        // pa points to the final tmp_list
-        // allocate and insert remaining elements
-        var cell = temp_list(b->tmp_temp);
-        // insert at the current point of a
-        cell->tmp_list = a;
-        *pa = cell;
-        ADVANCE_A();
-        ADVANCE_B();
-    }
-#undef a
-#undef ADVANCE_A
-#undef ADVANCE_B
-}
-#define temp_list_union_r(a, pb) temp_list_union_l(pb, a)
-
-/*XXX*/ temp_list_t* temp_list_minus(const temp_list_t* a, const temp_list_t* b)
-{
-    if (debug) {
-        check_sorted(a);
-        check_sorted(b);
-    }
-
-    temp_list_t* result = NULL;
-
-    for (; a; a = a->tmp_list) {
-
-        // advance b so that it is greater or equal to a-head
-        while(b && temp_cmp(b->tmp_temp, a->tmp_temp) < 0) {
-            b = b->tmp_list;
-        }
-
-        if (b && temp_cmp(a->tmp_temp, b->tmp_temp) == 0) {
-            // skip both
-        } else {
-            result = temp_list_cons(a->tmp_temp, result);
-        }
-    }
-    return list_reverse(result);
-}
-
-/*XXX*/ bool temp_list_eq(const temp_list_t* a, const temp_list_t* b)
-{
-    while (a || b) {
-        if (!(a && b)) {
-            return false;
-        }
-        if (temp_cmp(a->tmp_temp, b->tmp_temp) != 0) {
-            return false;
-        }
-        a = a->tmp_list;
-        b = b->tmp_list;
-    }
-    return true;
-}
 
 // prove that we can use the list.h routines on it
 static_assert(sizeof(lv_node_pair_t) == sizeof(struct list_t),
@@ -319,129 +347,6 @@ static lv_node_t* ig_get_node_for_temp(lv_igraph_t* igraph, temp_t* ptemp)
     return ig_node;
 }
 
-#define BitsetLen(len) (((len) + 63) / 64)
-#define IsBitSet(x, i) (( (x)[(i)>>6] & (1ULL<<((i)&63)) ) != 0ULL)
-#define SetBit(x, i) (x)[(i)>>6] |= (1ULL<<((i)&63))
-#define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
-
-typedef struct node_set {
-    size_t len;
-    uint64_t bits[0]; /* variable length */
-} node_set_t;
-
-#define T node_set_t*
-static T
-node_set_new(size_t max_size)
-{
-    T result = xmalloc(
-            sizeof *result + BitsetLen(max_size) * sizeof result->bits[0]);
-    result->len = max_size;
-    return result;
-}
-
-#define nbytes(len) BitsetLen(len) * sizeof(uint64_t)
-
-#define setop(sequal, snull, tnull, op) \
-	if (s == t) { assert(s); return sequal; } \
-	else if (s == NULL) { assert(t); return snull; } \
-	else if (t == NULL) return tnull; \
-	else { \
-		assert(s->len == t->len); \
-		T set = node_set_new(s->len); \
-		for (int i = BitsetLen(s->len); --i >= 0; ) { \
-			set->bits[i] = s->bits[i] op t->bits[i]; \
-        } \
-		return set; }
-
-static T copy(const T t) {
-	assert(t);
-	T set = node_set_new(t->len);
-	if (t->len > 0) {
-        memcpy(set->bits, t->bits, nbytes(t->len));
-    }
-	return set;
-}
-
-static T node_set_union(const T s, const T t) {
-	setop(copy(t), copy(t), copy(s), |)
-}
-
-static T node_set_minus(const T s, const T t)
-{
-    setop(node_set_new(s->len),
-            node_set_new(s->len), copy(s), & ~);
-}
-static int node_set_count(const T s)
-{
-    int total = 0;
-    for (int i = BitsetLen(s->len); --i >= 0; ) {
-        total += __builtin_popcountll(s->bits[i]);
-    }
-    return total;
-}
-static bool node_set_eq(const T s, const T t)
-{
-	assert(s && t);
-	assert(s->len == t->len);
-	for (int i = BitsetLen(s->len); --i >= 0; ) {
-        if (s->bits[i] != t->bits[i])
-            return false;
-    }
-	return true;
-}
-static void node_set_add(T s, const lv_node_t* node)
-{
-    SetBit(s->bits, node->lvn_idx);
-}
-/*XXX*/ void node_set_member(T s, const lv_node_t* node)
-{
-    IsBitSet(s->bits, node->lvn_idx);
-}
-
-static int node_set_first_idx(T s)
-{
-    for (int i = 0; i < BitsetLen(s->len); i++) {
-        if (s->bits[i] != 0) {
-            return __builtin_ctzll(s->bits[i]) + (64 * i);
-        }
-    }
-    assert(!"set it empty");
-}
-
-#undef T
-
-/* we define a wrapper struct for table: lv_node_t* -> node_set_t* */
-#define K const lv_node_t*
-#define V node_set_t*
-#define T Table_NL
-typedef struct Table_node_liveset { Table_T t; } T;
-
-T Table_NL_new()
-{
-    T t = {Table_new(0, cmpnode, hashnode)};
-    return t;
-}
-void Table_NL_free(T* table)
-{
-    Table_map(table->t, vfree, NULL);
-    Table_free(&table->t);
-}
-V Table_NL_put(T table, K key, V value)
-{
-    return Table_put(table.t, key, value);
-}
-V Table_NL_get(T table, K key)
-{
-    return Table_get(table.t, key);
-}
-V Table_NL_remove(T table, K key)
-{
-    return Table_remove(table.t, key);
-}
-
-#undef T
-#undef V
-#undef K
 
 static lv_node_t* ig_get_node_by_idx(lv_igraph_t* igraph, int i)
 {
@@ -450,7 +355,7 @@ static lv_node_t* ig_get_node_by_idx(lv_igraph_t* igraph, int i)
     return ig_get_node_for_temp(igraph, ptemp);
 }
 
-struct igraph_and_table intererence_graph(
+struct igraph_and_table interference_graph(
         lv_flowgraph_t* flow, lv_node_list_t* nodes)
 {
     // First ensure that there is an interference graph node for
@@ -461,6 +366,9 @@ struct igraph_and_table intererence_graph(
     igraph->lvig_gtemp = Table_new(0, cmpnode, hashnode);
     igraph->lvig_moves = NULL;
 
+    /*
+     * Add nodes to the interference graph for each temporary
+     */
     for (var n = nodes; n; n = n->nl_list) {
         temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
         for (var d = def_n; d; d = d->tmp_list) {
@@ -472,43 +380,47 @@ struct igraph_and_table intererence_graph(
         }
     }
 
-    size_t graph_length = lv_graph_length(igraph->lvig_graph);
 
     // TODO: order nodes by depth-first search
-    // this will work ok for a bit
+    // A simple initial strategy is to rever order the control graph nodes.
+    // By my testing, this halfs the number of iterations required.
     nodes = list_reverse(nodes);
 
     // compute live out
     // live out
-    Table_NL live_in_map = Table_NL_new();
-    Table_NL live_out_map = Table_NL_new();
-    Table_NL def_map = Table_NL_new();
-    Table_NL use_map = Table_NL_new();
+    size_t igraph_length = lv_graph_length(igraph->lvig_graph);
+    size_t flowgraph_length = lv_graph_length(flow->lvfg_control);
+
+    node_set_table_t live_in_map = node_set_table_new(flowgraph_length, igraph_length);
+    node_set_table_t live_out_map = node_set_table_new(flowgraph_length, igraph_length);
+    node_set_table_t def_map = node_set_table_new(flowgraph_length, igraph_length);
+    node_set_table_t use_map = node_set_table_new(flowgraph_length, igraph_length);
 
     for (var n = nodes; n; n = n->nl_list) {
-        Table_NL_put(live_in_map, n->nl_node, node_set_new(graph_length));
-        Table_NL_put(live_out_map, n->nl_node, node_set_new(graph_length));
-
-        var def_ns = node_set_new(graph_length);
-        Table_NL_put(def_map, n->nl_node, def_ns);
-        var use_ns = node_set_new(graph_length);
-        Table_NL_put(use_map, n->nl_node, use_ns);
+        var def_ns = Table_NST_get(def_map, n->nl_node);
+        var use_ns = Table_NST_get(use_map, n->nl_node);
 
         temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
         for (var d = def_n; d; d = d->tmp_list) {
             var d_node = ig_get_node_for_temp(igraph, &d->tmp_temp);
-            node_set_add(def_ns, d_node);
+            node_set2_add(def_ns, d_node);
         }
         temp_list_t* use_n = Table_get(flow->lvfg_use, n->nl_node);
         for (var u = use_n; u; u = u->tmp_list) {
             var u_node = ig_get_node_for_temp(igraph, &u->tmp_temp);
-            node_set_add(use_ns, u_node);
+            node_set2_add(use_ns, u_node);
         }
     }
 
 
-    Table_NL live_in_map_ = Table_NL_new();
-    Table_NL live_out_map_ = Table_NL_new();
+    node_set_table_t live_in_map_ = node_set_table_new(flowgraph_length, igraph_length);
+    node_set_table_t live_out_map_ = node_set_table_new(flowgraph_length, igraph_length);
+
+    // space allocated for sets that we use within our loop.
+    node_set_table_t loop_statics = node_set_table_new(3, igraph_length);
+    node_set2_t out_n = node_set_table_get(loop_statics, 0);
+    node_set2_t in_n = node_set_table_get(loop_statics, 1);
+    node_set2_t out_minus_def = node_set_table_get(loop_statics, 2);
 
     // calculate live-in and live-out sets iteratively
     for (;;) {
@@ -517,49 +429,47 @@ struct igraph_and_table intererence_graph(
             // copy the previous iteration
             // TODO: collect and free the old sets / reuse them a/b style
             // in'[n] = in[n]; out'[n] = out[n]
-            freeif(Table_NL_put(live_in_map_, node, Table_NL_get(live_in_map, node)));
-            node_set_t* out_ns = Table_NL_get(live_out_map, node);
-            freeif(Table_NL_put(live_out_map_, node, out_ns));
+            Table_NST_put(live_in_map_, node, Table_NST_get(live_in_map, node));
+            node_set2_t out_ns = Table_NST_get(live_out_map, node);
+            Table_NST_put(live_out_map_, node, out_ns);
 
             // in[n] = use[n] union (out[n] setminus def[n])
-            node_set_t* use_n = Table_NL_get(use_map, node);
-            node_set_t* def_n = Table_NL_get(def_map, node);
+            node_set2_t use_n = Table_NST_get(use_map, node);
+            node_set2_t def_n = Table_NST_get(def_map, node);
 
-            var out_minus_def = node_set_minus(out_ns, def_n);
-            node_set_t* in_n = node_set_union(use_n, out_minus_def);
+            node_set2_minus(out_minus_def, out_ns, def_n);
+            node_set2_union(in_n, use_n, out_minus_def);
 
             // out[n] = union {in[s] for s in succ[n]}
-            node_set_t* out_n = node_set_new(graph_length);
+            node_set2_clear(out_n);
+            // TODO: get rid of this call into Rust
             lv_node_list_t* succ = lv_succ(node);
             for (var s = succ; s; s = s->nl_list) {
-                node_set_t* in_s = Table_NL_get(live_in_map, s->nl_node);
-                assert(in_s);
-                var prev_out_n = out_n;
-                out_n = node_set_union(prev_out_n, in_s);
-                free(prev_out_n);
+                node_set2_t in_s = Table_NST_get(live_in_map, s->nl_node);
+                node_set2_union(out_n, out_n, in_s);
             }
             lv_node_list_free(succ);
 
             // store results back into live_in_map and live_out_map
-            Table_NL_put(live_out_map, node, out_n);
+            Table_NST_put(live_out_map, node, out_n);
 
-            Table_NL_put(live_in_map, node, in_n);
+            Table_NST_put(live_in_map, node, in_n);
         }
 
         bool match = true;
         for (var n = nodes; n; n = n->nl_list) {
             var node = n->nl_node;
 
-            node_set_t* in_ns_ = Table_NL_get(live_in_map_, node);
-            node_set_t* in_ns = Table_NL_get(live_in_map, node);
-            if (!node_set_eq(in_ns_, in_ns)) {
+            node_set2_t in_ns_ = Table_NST_get(live_in_map_, node);
+            node_set2_t in_ns = Table_NST_get(live_in_map, node);
+            if (!node_set2_eq(in_ns_, in_ns)) {
                 match = false;
                 break;
             }
 
-            node_set_t* out_ns_ = Table_NL_get(live_out_map_, node);
-            node_set_t* out_ns = Table_NL_get(live_out_map, node);
-            if (!node_set_eq(out_ns_, out_ns)) {
+            node_set2_t out_ns_ = Table_NST_get(live_out_map_, node);
+            node_set2_t out_ns = Table_NST_get(live_out_map, node);
+            if (!node_set2_eq(out_ns_, out_ns)) {
                 match = false;
                 break;
             }
@@ -569,9 +479,10 @@ struct igraph_and_table intererence_graph(
     }
 
     // we are done with live_in_map and the diff maps
-    Table_NL_free(&live_in_map_);
-    Table_NL_free(&live_out_map_);
-    Table_NL_free(&live_in_map);
+    node_set_table_free(&loop_statics);
+    node_set_table_free(&live_in_map_);
+    node_set_table_free(&live_out_map_);
+    node_set_table_free(&live_in_map);
 
     // Now we have the live-out sets, we can compute the interference graph
 
@@ -584,31 +495,31 @@ struct igraph_and_table intererence_graph(
     // if b != c.
     for (var n = nodes; n; n = n->nl_list) {
         var node = n->nl_node;
-        node_set_t* def_n = Table_NL_get(def_map, node);
-        node_set_t* use_n = Table_NL_get(use_map, node);
-        node_set_t* out_ns = Table_NL_get(live_out_map, node);
+        node_set2_t def_n = Table_NST_get(def_map, node);
+        node_set2_t use_n = Table_NST_get(use_map, node);
+        node_set2_t out_ns = Table_NST_get(live_out_map, node);
 
-        for (int i = 0; i < def_n->len; i++) {
-            if (IsBitSet(def_n->bits, i)) {
+        for (int i = 0; i < def_n.len; i++) {
+            if (IsBitSet(def_n.bits, i)) {
                 lv_node_t* d_node = ig_get_node_by_idx(igraph, i);
 
                 if (!Table_get(flow->lvfg_ismove, node)) {
-                    for (int j = 0; j < out_ns->len; j++) {
-                        if (IsBitSet(out_ns->bits, j)) {
+                    for (int j = 0; j < out_ns.len; j++) {
+                        if (IsBitSet(out_ns.bits, j)) {
                             lv_node_t* t_node = ig_get_node_by_idx(igraph, j);
                             lv_mk_edge(d_node, t_node);
                         }
                     }
                 } else {
-                    assert(node_set_count(use_n) == 1);
-                    var u_idx = node_set_first_idx(use_n);
+                    assert(node_set2_count(use_n) == 1);
+                    var u_idx = node_set2_first_idx(use_n);
 
                     lv_node_t* u_node = ig_get_node_by_idx(igraph, u_idx);
                     igraph->lvig_moves = lv_node_pair_cons(
                             lv_node_pair(d_node, u_node), igraph->lvig_moves);
 
-                    for (int j = 0; j < out_ns->len; j++) {
-                        if (IsBitSet(out_ns->bits, j)) {
+                    for (int j = 0; j < out_ns.len; j++) {
+                        if (IsBitSet(out_ns.bits, j)) {
                             lv_node_t* t_node = ig_get_node_by_idx(igraph, j);
                             // self moves don't interfere
                             if (lv_eq(t_node, u_node)) {
@@ -621,16 +532,20 @@ struct igraph_and_table intererence_graph(
             }
         }
     }
+    // we are done with the def and use maps (until we convert our
+    // control flow graph structure)
+    node_set_table_free(&def_map);
+    node_set_table_free(&use_map);
 
     Table_T live_outs = Table_new(0, cmpnode, hashnode);
 
     // convert the live outs into a map just to temp_list
     for (var n = nodes; n; n = n->nl_list) {
-        node_set_t* out_ns = Table_NL_remove(live_out_map, n->nl_node);
-        if (node_set_count(out_ns) > 0) {
+        node_set2_t out_ns = Table_NST_get(live_out_map, n->nl_node);
+        if (node_set2_count(out_ns) > 0) {
             temp_list_t* out_temps = NULL;
-            for (int j = 0; j < out_ns->len; j++) {
-                if (IsBitSet(out_ns->bits, j)) {
+            for (int j = 0; j < out_ns.len; j++) {
+                if (IsBitSet(out_ns.bits, j)) {
                     lv_node_t fake_node = {.lvn_graph=igraph->lvig_graph, .lvn_idx=j};
                     temp_t* ptemp = Table_get(igraph->lvig_gtemp, &fake_node);
                     out_temps = temp_list_cons(*ptemp, out_temps);
@@ -639,7 +554,7 @@ struct igraph_and_table intererence_graph(
             Table_put(live_outs, n->nl_node, out_temps);
         }
     }
-    Table_NL_free(&live_out_map);
+    node_set_table_free(&live_out_map);
 
     // Put the nodes back in order before we are caught!
     nodes = list_reverse(nodes);
