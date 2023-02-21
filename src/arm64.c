@@ -33,6 +33,7 @@ typedef struct codegen_state_t {
 static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp);
 
 static const int word_size = 8;
+static const int stack_alignment = 16;
 
 static const temp_t special_regs[] = {
     {.temp_id = 29, .temp_size = word_size}, // fp
@@ -42,6 +43,8 @@ static const temp_t special_regs[] = {
     // https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms
     {.temp_id = 18, .temp_size = word_size}
 };
+#define FP (special_regs[0])
+#define SP (special_regs[2])
 
 static const temp_t arm64_argument_regs[] = {
     {.temp_id = 0}, {.temp_id = 1}, {.temp_id = 2}, {.temp_id = 3},
@@ -164,7 +167,7 @@ static assm_instr_t* arm64_load_temp(struct ac_frame_var* v, temp_t temp)
     char* s = NULL;
     Asprintf(&s, "ldr%s	`d0, [`s0, #%d]	; unspill\n",
             suff_from_size(v->acf_size), v->acf_offset);
-    var src_list = temp_list(special_regs[0]); // fp
+    var src_list = temp_list(FP);
     return assm_oper(s, temp_list(temp), src_list, NULL);
 }
 
@@ -175,7 +178,7 @@ static assm_instr_t* arm64_store_temp(struct ac_frame_var* v, temp_t temp)
             suff_from_size(v->acf_size), v->acf_offset);
     var src_list =
         temp_list_cons(temp,
-                temp_list(special_regs[0])); // fp
+                temp_list(FP));
     return assm_oper(
             s,
             NULL, /* dst list */
@@ -184,10 +187,61 @@ static assm_instr_t* arm64_store_temp(struct ac_frame_var* v, temp_t temp)
 }
 
 
+/*
+ * Immediates in instructions can be shifted 16-bit values.
+ * We say whether they meet the minimum requirements in the sense that
+ * it fit, unshifted, in 16 bits.
+ * I think to work out if if could be a shifted 16 bits, we would
+ * look at the number of trailing zeros and then if they could be removed
+ * by shifting and if that would then be 16 bits.... but let's hold off for now
+ */
 static bool can_be_immediate(int constant_value) __attribute__((const));
 static bool can_be_immediate(int constant_value)
 {
     return (constant_value < (1<<15) && constant_value >= -(1<<15));
+}
+
+/*
+ * Used mostly for working out the total size required when considering
+ * the alignment requirements of adjacent stored data.
+ */
+static int round_up_size(int size, int multiple) __attribute__((const));
+static int round_up_size(int size, int multiple)
+{
+    return ((size + multiple - 1) / multiple) * multiple;
+}
+
+static temp_list_t* munch_stack_args(codegen_state_t state, tree_exp_t* exp)
+{
+    // This will be wrong / broken!
+
+    for (var e = exp; e; e = e->te_list) {
+        assert(e->te_size <= word_size && "TODO: larger stack args");
+    }
+
+    size_t total_size = 0;
+    for (var e = exp; e; e = e->te_list) {
+        var src = munch_exp(state, e);
+        char* s = NULL;
+        Asprintf(&s, "str%s  `s0, [`s1, #%zu]\n",
+                suff(e), total_size);
+        var src_list =
+            temp_list_cons(src,
+                    temp_list(SP));
+        emit(state, assm_oper(s, NULL, src_list, NULL));
+
+
+        size_t field_alignment =
+            /* use size as alignment for types smaller than 8 bytes */
+            e->te_size;
+        total_size = round_up_size(total_size, field_alignment);
+        total_size += e->te_size;
+    }
+    total_size = round_up_size(total_size, stack_alignment);
+
+    reserve_outgoing_arg_space(state.frame, total_size);
+
+    return NULL;
 }
 
 static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* exp)
@@ -197,37 +251,46 @@ static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* e
         return NULL;
     }
 
-    assert(arg_idx < NELEMS(arm64_argument_regs));
-    var param_reg = arm64_argument_regs[arg_idx];
+    if (arg_idx < NELEMS(arm64_argument_regs)) {
+        var param_reg = arm64_argument_regs[arg_idx];
 
-    if (exp->te_size <= 8) {
-        param_reg.temp_size = exp->te_size;
-        var src = munch_exp(state, exp);
-        char* s = NULL;
-        Asprintf(&s, "mov	`d0, `s0\n");
-        emit(state, assm_move(s, param_reg, src));
+        if (exp->te_size <= 8) {
+            // TODO: it might be better to munch remaining args before
+            // this one so that there are more free registers when moving the
+            // later args into the stack - if need be...
+            param_reg.temp_size = exp->te_size;
+            var src = munch_exp(state, exp);
+            char* s = NULL;
+            Asprintf(&s, "mov    `d0, `s0\n");
+            emit(state, assm_move(s, param_reg, src));
 
-        return temp_list_cons(
-                param_reg,
-                munch_args(state, arg_idx + 1, exp->te_list)
-                );
-    } else if (exp->te_size <= 16) {
-        param_reg.temp_size = word_size;
-        assert(arg_idx + 1 < NELEMS(arm64_argument_regs));
-        var param_reg2 = arm64_argument_regs[arg_idx + 1];
-        param_reg2.temp_size = exp->te_size - word_size;
+            return temp_list_cons(
+                    param_reg,
+                    munch_args(state, arg_idx + 1, exp->te_list)
+                    );
+        } else if (exp->te_size <= 16) {
+            param_reg.temp_size = word_size;
+            assert(arg_idx + 1 < NELEMS(arm64_argument_regs));
+            var param_reg2 = arm64_argument_regs[arg_idx + 1];
+            param_reg2.temp_size = exp->te_size - word_size;
 
-        munch_exp(state, exp);
-        // TODO: change munch to return a list of temps
-        assert(!"TODO: larger arguments");
+            munch_exp(state, exp);
+            // TODO: change munch to return a list of temps
+            assert(!"TODO: larger arguments");
 
-        return temp_list_cons(
-                param_reg,
-                temp_list_cons(
-                    param_reg2,
-                    munch_args(state, arg_idx + 2, exp->te_list)));
+            return temp_list_cons(
+                    param_reg,
+                    temp_list_cons(
+                        param_reg2,
+                        munch_args(state, arg_idx + 2, exp->te_list)));
+        } else {
+            assert(!"go away large arguments");
+        }
     } else {
-        assert(0 && "go away large arguments");
+        /*
+         * Remaining Arguments must be passed on the stack
+         */
+        return munch_stack_args(state, exp);
     }
 }
 
@@ -556,8 +619,8 @@ assm_instr_t* arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
     for (int i = 0; i < NELEMS(arm64_callee_saves); i++) {
         src_list = temp_list_cons(arm64_callee_saves[i], src_list);
     }
-    src_list = temp_list_cons(special_regs[0], src_list); // fp
-    src_list = temp_list_cons(special_regs[2], src_list); // sp
+    src_list = temp_list_cons(FP, src_list);
+    src_list = temp_list_cons(SP, src_list);
     src_list = temp_list_cons(special_regs[3], src_list); // x18 - apple
                                                           // reserved
 
@@ -635,7 +698,7 @@ const char* arm64_registers[] = {
     "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
     "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
     "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
-    "x24", "x25", "x26", "x27", "x28", "fp", "x30" //, "sp",
+    "x24", "x25", "x26", "x27", "x28", "fp", "x30" , "sp",
 };
 const temp_t arm64_temp_map_temps[] = {
     {.temp_id = 0}, {.temp_id = 1}, {.temp_id = 2}, {.temp_id = 3},
@@ -645,7 +708,7 @@ const temp_t arm64_temp_map_temps[] = {
     {.temp_id = 16}, {.temp_id = 17}, {.temp_id = 18}, {.temp_id = 19},
     {.temp_id = 20}, {.temp_id = 21}, {.temp_id = 22}, {.temp_id = 23},
     {.temp_id = 24}, {.temp_id = 25}, {.temp_id = 26}, {.temp_id = 27},
-    {.temp_id = 28}, {.temp_id = 29}, {.temp_id = 30} //, {.temp_id = 31}
+    {.temp_id = 28}, {.temp_id = 29}, {.temp_id = 30}, {.temp_id = 31}
 };
 
 static codegen_t arm64_codegen_module = {

@@ -306,7 +306,7 @@ static void calculate_activation_record_expr(
             v->acf_offset = frame->acf_last_local_offset - size;
             while ((v->acf_offset % v->acf_alignment) != 0)
                 v->acf_offset--;
-            v->acf_is_formal = 0;
+            v->acf_is_formal = false;
             v->acf_ptr_map = xmalloc(
                     BitsetLen(num_words(size)) * sizeof *v->acf_ptr_map);
             ptr_map_for_type(program, expr->ex_type_ann, v->acf_ptr_map, 0);
@@ -376,7 +376,8 @@ static void calculate_activation_record_expr(
 int ac_frame_words(ac_frame_t* frame) {
     var target = frame->acf_target;
 
-    return num_words(round_up_size(-frame->acf_last_local_offset,
+    return num_words(round_up_size(
+                -frame->acf_last_local_offset + frame->acf_outgoing_arg_bytes,
                 target->stack_alignment));
 }
 
@@ -412,7 +413,7 @@ static void calculate_activation_record_decl_func(
         v->acf_var_id = -1; // no name
         v->acf_reg = target->arg_registers.elems[frame->acf_next_arg_reg++];
         v->acf_reg.temp_size = target->word_size;
-        v->acf_is_formal = 1; // ... not really though ...
+        v->acf_is_formal = true; // ... not really though ...
         v->acf_ptr_map = xmalloc(
             BitsetLen(num_words(ret_type_size)) * sizeof *v->acf_ptr_map);
         ptr_map_for_type(program, ret_type, v->acf_ptr_map, 0);
@@ -430,7 +431,7 @@ static void calculate_activation_record_decl_func(
         v->acf_size = size;
         v->acf_alignment = alignment_of_type(program, type);
         v->acf_var_id = p->dl_var_id;
-        v->acf_is_formal = 1;
+        v->acf_is_formal = true;
         v->acf_ptr_map = xmalloc(
             BitsetLen(num_words(size)) * sizeof *v->acf_ptr_map);
         ptr_map_for_type(program, type, v->acf_ptr_map, 0);
@@ -557,12 +558,28 @@ struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame)
     v->acf_offset = frame->acf_last_local_offset - size;
     while ((v->acf_offset % v->acf_alignment) != 0)
         v->acf_offset--;
-    v->acf_is_formal = 0;
+    v->acf_is_formal = false;
     // TODO: think about the ptr_map stuff ...
 
     frame->acf_last_local_offset = v->acf_offset;
     ac_frame_append_var(frame, v);
     return v;
+}
+
+/*
+ * Ensures that at least required_bytes have been added to the
+ * activation record for function call arguments that are sent on
+ * the stack. i.e. words 9 and above (caveats not considered).
+ */
+void reserve_outgoing_arg_space(ac_frame_t* frame, size_t required_bytes)
+{
+    // TODO: maybe this function should calculate the space and alignment
+    // etc?
+    assert(required_bytes == round_up_size(required_bytes, target->stack_alignment));
+
+    if (frame->acf_outgoing_arg_bytes < required_bytes) {
+        frame->acf_outgoing_arg_bytes = required_bytes;
+    }
 }
 
 tree_stm_t* proc_entry_exit_1(

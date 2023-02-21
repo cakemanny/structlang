@@ -55,6 +55,9 @@ temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail)
     return list;
 }
 
+/*
+ * This looks like it leaks the cells of the lead list
+ */
 temp_list_t* temp_list_concat(temp_list_t* lead, temp_list_t* tail)
 {
     if (lead == NULL) {

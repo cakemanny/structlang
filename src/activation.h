@@ -16,11 +16,12 @@
 typedef struct ac_frame {
 
     sl_sym_t acf_name; // function name
-    int acf_last_local_offset; // temp
-    int acf_next_arg_offset; // temp
+    int acf_last_local_offset;
+    int acf_next_arg_offset;
     uint64_t *acf_locals_ptr_bitset;
     uint64_t *acf_args_ptr_bitset;
     int acf_next_arg_reg; // temp
+    size_t acf_outgoing_arg_bytes;
 
     const target_t* acf_target;
 
@@ -71,6 +72,13 @@ extern const size_t ac_word_size;
 extern bool ac_debug;
 
 struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame);
+
+/*
+ * Ensures that at least required_bytes have been added to the
+ * activation record for function call arguments that are sent on
+ * the stack. i.e. words 9 and above (caveats not considered).
+ */
+void reserve_outgoing_arg_space(ac_frame_t* frame, size_t required_bytes);
 
 /*
  * adds instructions to the beginning of the function that move arguments
