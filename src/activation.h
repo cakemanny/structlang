@@ -22,6 +22,7 @@ typedef struct ac_frame {
     uint64_t *acf_args_ptr_bitset;
     int acf_next_arg_reg; // temp
     size_t acf_outgoing_arg_bytes;
+    tree_stm_t* acf_arg_moves;
 
     const target_t* acf_target;
 
@@ -63,7 +64,8 @@ void ac_frame_free(ac_frame_t** pframe);
  */
 int ac_frame_words(ac_frame_t* frame);
 
-ac_frame_t* calculate_activation_records(enum target_type, sl_decl_t* program);
+ac_frame_t* calculate_activation_records(
+        enum target_type, temp_state_t*, sl_decl_t* program);
 size_t size_of_type(const sl_decl_t* program, sl_type_t* type);
 size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);
 

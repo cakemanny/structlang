@@ -1,17 +1,22 @@
 #!/bin/sh
 
-args=`getopt v $*`
+args=`getopt vx $*`
 if [ $? -ne 0 ]; then
-    echo "usage: $0 [-v]"
+    echo "usage: $0 [-vx]"
     exit 2
 fi
 set -- $args
 
 verbose=
+xfail=
 while :; do
     case "$1" in
         -v)
             verbose=1
+            shift
+            ;;
+        -x)
+            xfail=1
             shift
             ;;
         --)
@@ -46,7 +51,13 @@ else
     MD5=md5
 fi
 
-SLC_HASH=$(cat $SLC | $MD5 | awk '{ print $1 }')
+fail() {
+    exitcode=$((1 + exitcode))
+    # check exit
+    if [ -n "$xfail" ] && [ "$exitcode" -gt 0 ]; then
+        exit "$exitcode"
+    fi
+}
 
 expect () {
     code="$1"
@@ -62,34 +73,35 @@ expect () {
 
     # Tell make how to produce our assembly code
     # structlangc .../test.sl -o .../test.s
-    if (printf '%s: %s %s\n\t%s $< -o $@\n' "$stmp" "$ctmp" "$SLC" "$SLC" | $MAKE -f -); then
-        # Link
-        # $LD $LDFLAGS $stmp -o $atmp $LDLIBS
-        if ! (printf '%s: %s\n\t%s %s $< -o $@ %s\n' "$atmp" "$stmp" "$LD" "$LDFLAGS" "$LDLIBS" | $MAKE -f -); then
-            echo "${red}FAILED${rst} to compile '$code'"
-            exitcode=$((1 + $exitcode))
-            return
-        fi
-
-        # Run
-        (cd ${code_d} && sh -c './a.out; echo $? > test.result')
-
-        result=$(cat ${code_d}/test.result)
-        if [ "$result" = "$expected" ]; then
-            if [ -n "$verbose" ]; then
-                echo "${grn}pass${rst}: '$code'"
-            else
-                echo "${grn}pass${rst}: $(echo "$code" | tr $'\n' $' ')"
-            fi
-        else
-            echo "${red}FAIL:${rst} '$code'"
-            echo "  expected: '$expected'"
-            echo "  actual:   '$result'"
-            exitcode=$((1 + $exitcode))
-        fi
-    else
+    if ! (printf '%s: %s %s\n\t%s $< -o $@\n' "$stmp" "$ctmp" "$SLC" "$SLC" | $MAKE -f -); then
         echo "${red}FAILED${rst} to compile '$code'"
-        exitcode=$((1 + $exitcode))
+        fail
+        return
+    fi
+
+    # Link
+    # $LD $LDFLAGS $stmp -o $atmp $LDLIBS
+    if ! (printf '%s: %s\n\t%s %s $< -o $@ %s\n' "$atmp" "$stmp" "$LD" "$LDFLAGS" "$LDLIBS" | $MAKE -f -); then
+        echo "${red}FAILED${rst} to assmble and link '$code'"
+        fail
+        return
+    fi
+
+    # Run
+    (cd ${code_d} && sh -c './a.out; echo $? > test.result')
+
+    result=$(cat ${code_d}/test.result)
+    if ! [ "$result" = "$expected" ]; then
+        echo "${red}FAIL:${rst} '$code'"
+        echo "  expected: '$expected'"
+        echo "  actual:   '$result'"
+        fail
+        return
+    fi
+    if [ -n "$verbose" ]; then
+        echo "${grn}pass${rst}: '$code'"
+    else
+        echo "${grn}pass${rst}: $(echo "$code" | tr $'\n' $' ')"
     fi
 }
 
@@ -184,5 +196,107 @@ expect 'fn main() -> int { if 1 < 2 { 1 } else { 2 } }' '1'
 #   I think this one is just random
 #   TODO: rewrite main to always return int
 expect 'fn main() -> void { if 1 < 2 { return } }' 1
+
+expect 'fn main() -> int { if 1 < 2 { 1 } else { 2 } }' '1'
+
+
+# Complex interactions
+
+expect '
+struct X { a: bool, b: bool, c: bool, d: bool, }
+
+fn f(x: X) -> int {
+    if (x.a && x.c) {
+        5
+    } else {
+        10
+    }
+}
+
+fn main() -> int {
+    let x: *X = new X { false, true, false, true };
+    f(*x)
+}
+' 10
+
+expect '
+struct X { a: bool, b: bool, c: bool, d: bool, }
+fn f(x: X) -> int { if (x.a) { 5 } else { 10 } }
+fn main() -> int {
+    let x: *X = new X { false, true, true, true };
+    f(*x)
+}
+' 10
+
+expect '
+struct X { a: bool, b: bool, c: bool, d: bool, }
+fn f(x: X) -> int { if (x.b) { 5 } else { 10 } }
+fn main() -> int {
+    let x: *X = new X { true, false, true, true };
+    f(*x)
+}
+' 10
+
+expect '
+struct X { a: bool, b: bool, c: bool, d: bool, }
+fn f(x: X) -> int { if (x.c) { 5 } else { 10 } }
+fn main() -> int {
+    let x: *X = new X { true, true, false, true };
+    f(*x)
+}
+' 10
+
+expect '
+struct X { a: bool, b: bool, c: bool, d: bool, }
+fn f(x: X) -> int { if (x.d) { 5 } else { 10 } }
+fn main() -> int {
+    let x: *X = new X { true, true, true, false };
+    f(*x)
+}
+' 10
+
+expect '
+struct X { a: bool, b: bool, c: bool, d: bool, }
+
+fn f(x: X) -> int {
+    if (x.a || x.c) {
+        5
+    } else {
+        10
+    }
+}
+
+fn main() -> int {
+    let x: *X = new X { false, true, false, true };
+    f(*x)
+}
+' 10
+
+
+expect '
+fn g() -> int { return 5 }
+fn h() -> int { return 10 }
+fn f(x: bool) -> int { if x { g() } else { h() } }
+fn main() -> int { f(false) }
+' 10
+expect '
+fn g() -> int { return 5 }
+fn h() -> int { return 10 }
+fn f(x: bool) -> int { if x { g() } else { h() } }
+fn main() -> int { f(true) }
+' 5
+
+# I think there is an argument clobbering problem
+expect '
+fn g(x: int) -> int { return x }
+fn h() -> int { return 10 }
+fn f(x: int) -> int {
+    if x == 3 {
+        if g(5) == 5 && x == 3 { g(5) }
+        else { g(15) } }
+    else { h() }
+}
+fn main() -> int { f(3) }
+' 5
 
 exit ${exitcode}

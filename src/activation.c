@@ -381,8 +381,32 @@ int ac_frame_words(ac_frame_t* frame) {
                 target->stack_alignment));
 }
 
+/*
+ * function arguments are moved from the machine register into a temporary
+ * so that the register is free to perform any duties it needs to (e.g. being
+ * an argument to an function called by this function.).
+ */
+static temp_t assign_temporary_for_reg(
+        temp_state_t* temp_state, ac_frame_t* frame, temp_t reg, size_t size)
+{
+    temp_t param_reg = reg;
+    param_reg.temp_size = size;
+    temp_t temp = temp_newtemp(temp_state, size);
+    var move = tree_stm_move(
+            tree_exp_temp(temp, size), // <- dest
+            tree_exp_temp(param_reg, size)); // <- src
+
+    if (frame->acf_arg_moves == NULL) {
+        frame->acf_arg_moves = move;
+    } else {
+        frame->acf_arg_moves = tree_stm_seq(frame->acf_arg_moves, move);
+    }
+    return temp;
+}
+
 static void calculate_activation_record_decl_func(
-        sl_decl_t* program, ac_frame_t* frame, sl_decl_t* decl)
+        temp_state_t* temp_state, sl_decl_t* program, ac_frame_t* frame,
+        sl_decl_t* decl)
 {
     assert(decl->dl_tag == SL_DECL_FUNC);
     if (ac_debug) {
@@ -439,8 +463,9 @@ static void calculate_activation_record_decl_func(
         if (size <= 8 && frame->acf_next_arg_reg < target->arg_registers.length) {
             // passed in register
             v->acf_tag = ACF_ACCESS_REG;
-            v->acf_reg = target->arg_registers.elems[frame->acf_next_arg_reg++];
-            v->acf_reg.temp_size = size;
+            v->acf_reg = assign_temporary_for_reg(temp_state, frame,
+                    target->arg_registers.elems[frame->acf_next_arg_reg++],
+                    size);
         } else {
             // Add formal parameter
             v->acf_tag = ACF_ACCESS_FRAME;
@@ -516,7 +541,8 @@ static void calculate_activation_record_decl_func(
     }
 }
 
-ac_frame_t* calculate_activation_records(enum target_type target_tag, sl_decl_t* program)
+ac_frame_t* calculate_activation_records(
+        enum target_type target_tag, temp_state_t* temp_state, sl_decl_t* program)
 {
     if (ac_debug) {
         fprintf(stderr, "calculating activation records\n");
@@ -535,7 +561,7 @@ ac_frame_t* calculate_activation_records(enum target_type target_tag, sl_decl_t*
     for (sl_decl_t* d = program; d; d = d->dl_list) {
         if (d->dl_tag == SL_DECL_FUNC) {
             ac_frame_t* f = ac_frame_new(d->dl_name, target, temp_map);
-            calculate_activation_record_decl_func(program, f, d);
+            calculate_activation_record_decl_func(temp_state, program, f, d);
             frame_list = ac_frame_append_frame(frame_list, f);
         }
     }
@@ -596,20 +622,9 @@ tree_stm_t* proc_entry_exit_1(
 
     // 1. Move register args to temps
 
-    tree_stm_t* arg_moves = NULL;
-    for (var v = frame->ac_frame_vars; v; v = v->acf_list) {
-        if (v->acf_is_formal && v->acf_tag == ACF_ACCESS_REG) {
-            temp_t param_reg = v->acf_reg;
-            v->acf_reg = temp_newtemp(temp_state, v->acf_size);
-            var move = tree_stm_move(
-                    tree_exp_temp(v->acf_reg, v->acf_size), // <- dest
-                    tree_exp_temp(param_reg, v->acf_size)); // <- src
-
-            arg_moves = (arg_moves) ? tree_stm_seq(arg_moves, move) : move;
-        }
-    }
-    if (arg_moves) {
-        body = tree_stm_seq(arg_moves, body);
+    if (frame->acf_arg_moves) {
+        body = tree_stm_seq(frame->acf_arg_moves, body);
+        frame->acf_arg_moves = NULL; // frame no longer owns this stuff
     }
 
     // 2. Save callee saves

@@ -677,22 +677,53 @@ static translate_exp_t* translate_expr_member(
     var base_ref_ex = translate_expr(info, frame, expr->ex_composite);
     tree_exp_t* base_ref = translate_un_ex(info->temp_state, base_ref_ex);
 
-    // I don't actually know if this will always be the case, but it seems like
-    // it might be
-    assert(base_ref->te_tag == TREE_EXP_MEM);
-    tree_exp_t* base_addr = base_ref->te_mem_addr;
+    // The common case. The struct is in memory e.g. the stack or the heap
+    if (base_ref->te_tag == TREE_EXP_MEM) {
+        tree_exp_t* base_addr = base_ref->te_mem_addr;
 
-    tree_exp_t* result = tree_exp_mem(
-        (offset == 0)
-        ? base_addr
-        : tree_exp_binop(
-            TREE_BINOP_PLUS,
-            base_addr,
-            tree_exp_const(offset, ac_word_size)
-        ),
-        member_size
-    );
+        tree_exp_t* result = tree_exp_mem(
+                (offset == 0)
+                ? base_addr
+                : tree_exp_binop(
+                    TREE_BINOP_PLUS,
+                    base_addr,
+                    tree_exp_const(offset, ac_word_size)
+                    ),
+                member_size
+                );
 
+        return translate_ex(result);
+    }
+
+    // The uncommon case: The struct fits in a register
+    assert(base_ref->te_tag == TREE_EXP_TEMP);
+
+    // Examples:
+    //  struct X { a: int, b: int }
+    //  struct X { a: int, b: bool, c: bool, d: bool, e: bool }
+    //  ...
+
+    // We have to build a mask and a shift.
+    // Thing is... there are some nice bit manipulation instructions
+    // definitely on arm. Maybe we can add some detection in the layer
+    // below...
+
+    int shift = offset;
+    assert(shift >= 0);
+#define bytes2bits(size) (size << 3)
+    uint64_t mask = (1 << bytes2bits(member_size)) - 1;
+#undef bytes2bits
+
+    // FIXME only first two bytes are working
+    tree_exp_t* result = tree_exp_binop(
+            TREE_BINOP_AND,
+            tree_exp_binop(
+                TREE_BINOP_RSHIFT,
+                base_ref,
+                tree_exp_const(shift, base_ref->te_size)
+                ),
+            tree_exp_const(mask, base_ref->te_size)
+            );
     return translate_ex(result);
 }
 
