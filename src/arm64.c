@@ -317,6 +317,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 }
                 // we could emit something if some of the other cases come
                 // up
+                tree_printf(stderr, "$$$ %E\n", exp);
             }
 
             // MEM(e1)
@@ -476,20 +477,6 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                         assm_oper(s,
                             NULL, src_list, NULL));
             } else if (dst->te_tag == TREE_EXP_TEMP) {
-                // I think if we implement coalescing, we could remove these
-                if (src->te_tag == TREE_EXP_CONST) {
-                    if (dst->te_temp.temp_size == 0) {
-                        debug_print_drop(stm);
-                        break;
-                    }
-                    if (can_be_immediate(src->te_const)) {
-                        char* s = NULL;
-                        Asprintf(&s, "mov	`d0, #%d\n", src->te_const);
-                        emit(state, assm_oper(s, temp_list(dst->te_temp), NULL, NULL));
-                        return;
-                    }
-                }
-
                 // temp is already handled here, and call is
                 // not possible to optimize
 
@@ -538,6 +525,35 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
         }
         case TREE_STM_CJUMP:
         {
+            // CJUMP(op, 0, e2, Ltrue, Lfalse)
+            if (stm->tst_cjump_lhs->te_tag == TREE_EXP_CONST
+                    && stm->tst_cjump_lhs->te_const == 0) {
+                if (stm->tst_cjump_op == TREE_RELOP_EQ
+                        || stm->tst_cjump_op == TREE_RELOP_NE) {
+                    var src_list =
+                        temp_list(Munch_exp(stm->tst_cjump_rhs));
+
+                    sl_sym_t* jump = xmalloc(3 * sizeof *jump);
+                    jump[0] = stm->tst_cjump_true;
+                    jump[1] = stm->tst_cjump_false;
+
+                    char* s = NULL;
+                    if (stm->tst_cjump_op == TREE_RELOP_EQ) {
+                        Asprintf(&s, "cbz    `s0, %s\n", stm->tst_cjump_true);
+                    } else {
+                        assert(stm->tst_cjump_op == TREE_RELOP_NE);
+                        Asprintf(&s, "cbnz    `s0, %s\n", stm->tst_cjump_true);
+                    }
+                    emit(state, assm_oper(s, NULL, src_list, jump));
+                    return;
+                }
+            }
+            // CJUMP(op, e1, 0, Ltrue, Lfalse)
+            if (stm->tst_cjump_rhs->te_tag == TREE_EXP_CONST
+                    && stm->tst_cjump_rhs->te_const == 0) {
+                tree_printf(stderr, "$$$ %S\n", stm);
+            }
+
             // CJUMP(op, e1, e2, Ltrue, Lfalse)
             {
                 char* s = NULL;
