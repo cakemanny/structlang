@@ -708,13 +708,12 @@ static translate_exp_t* translate_expr_member(
     // definitely on arm. Maybe we can add some detection in the layer
     // below...
 
-    int shift = offset;
-    assert(shift >= 0);
+    assert(offset >= 0);
 #define bytes2bits(size) (size << 3)
+    int shift = bytes2bits(offset);
     uint64_t mask = (1 << bytes2bits(member_size)) - 1;
 #undef bytes2bits
 
-    // FIXME only first two bytes are working
     tree_exp_t* result = tree_exp_binop(
             TREE_BINOP_AND,
             tree_exp_binop(
