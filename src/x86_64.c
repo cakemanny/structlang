@@ -87,6 +87,10 @@ static const char* registers_64bit[] = {
 };
 
 
+/*
+ * calldefs should contain any registers that a called function
+ * will or is allowed to trash
+ */
 static temp_list_t* calldefs = NULL;
 
 static void init_calldefs()
@@ -100,22 +104,14 @@ static void init_calldefs()
     // the return value registers
     c = temp_list_cons(special_regs[0], c); // rax
     // -- the next line should be commented if we include it already in args
-    c = temp_list_cons(special_regs[1], c); // rdx
+    // c = temp_list_cons(special_regs[1], c); // rdx
 
-    // FIXME: I think this should be the case.
-    // The called function is allowed to trash these if it likes
-    if (0) { // I think not
-        // should all the argument registers be included also?
-        for (int i = 0; i < NELEMS(argregs); i++) {
-            temp_t t = argregs[i];
-            t.temp_size = word_size;
-            c = temp_list_cons(argregs[i], c);
-        }
+    for (int i = 0; i < NELEMS(argregs); i++) {
+        temp_t t = argregs[i];
+        t.temp_size = word_size;
+        c = temp_list_cons(t, c);
     }
 
-    // we should include the return address register here
-    // which one is that ??
-    // I think it's just stored on the stack as part of the call
     calldefs = c;
 }
 
