@@ -37,7 +37,7 @@ exitcode=0
 # Set defaults for the linker and its options
 : "${LD=clang}"
 : "${LDFLAGS=}"
-: "${LDLIBS=}"
+: "${LDLIBS=$BUILD_DIR/libslruntime.a}"
 
 if [ -n "$verbose" ]; then
     : "${MAKE=make}"

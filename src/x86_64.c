@@ -42,7 +42,6 @@ static const temp_t special_regs[] = {
 };
 
 // is this what he meant by outgoing arguments?
-// not quite the same as activation.c
 static const temp_t argregs[] = {
     {.temp_id = 7}, // rdi
     {.temp_id = 6}, // rsi
@@ -837,7 +836,10 @@ assm_instr_t* x86_64_codegen(
 }
 
 
-
+/*
+ * proc_entry_exit_2 defines which temporaries i.e. registers are live-out
+ * of the function
+ */
 assm_instr_t* x86_64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
 {
     temp_list_t* src_list = NULL;

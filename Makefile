@@ -1,6 +1,7 @@
 # Based on https://spin.atomicobject.com/2016/08/26/makefile-c-projects/
 TARGET_EXEC ?= structlangc
 TARGET_LIB ?= libstructlang.a
+RUNTIME_LIB ?= libslruntime.a
 
 BUILD_DIR ?= ./build
 SRC_DIRS ?= ./src
@@ -33,6 +34,8 @@ CPPFLAGS ?= $(INC_FLAGS) -MMD -MP
 CFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer
 LDFLAGS = -L$(BUILD_DIR) -lgraph
 
+RTCFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer -O1
+
 ifdef PROFILE
   CFLAGS += -O1 -fprofile-instr-generate -fcoverage-mapping
   LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
@@ -47,17 +50,24 @@ endif
 
 RUSTC=rustc
 
-all: gen lib $(BUILD_DIR)/$(TARGET_EXEC) $(BUILD_DIR)/compile_commands.json
+all: gen lib $(BUILD_DIR)/$(TARGET_EXEC) $(BUILD_DIR)/compile_commands.json runtime
 
 lib: gen $(BUILD_DIR)/$(TARGET_LIB)
 
 gen: $(BUILD_DIR)/src/grammar.tab.h
+
+runtime: $(BUILD_DIR)/$(RUNTIME_LIB)
 
 $(BUILD_DIR)/$(TARGET_LIB): $(filter-out $(MAINS),$(OBJS))
 	$(AR) rcs $@ $^
 
 $(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(BUILD_DIR)/libgraph.a
 	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+
+$(BUILD_DIR)/$(RUNTIME_LIB): runtime/runtime.c
+	$(MKDIR_P) $(BUILD_DIR)/runtime
+	$(CC) -g -Wall -Werror -fno-omit-frame-pointer -c $< -o $(BUILD_DIR)/runtime/runtime.o
+	$(AR) rcs $@ $(BUILD_DIR)/runtime/runtime.o
 
 $(BUILD_DIR)/libgraph.a: src/graph.rs
 	$(RUSTC) --crate-type staticlib --out-dir $(BUILD_DIR) $<
@@ -96,7 +106,7 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 $(BUILD_DIR)/compile_commands.json: $(OBJS) $(COMPILE_DB_PARTS)
 	sed -e '1s/^/[\'$$'\n''/' -e '$$s/,$$/\'$$'\n'']/' $(COMPILE_DB_PARTS) > $@
 
-.PHONY: clean all lib gen
+.PHONY: clean all lib gen runtime
 
 clean:
 	$(RM) -r $(BUILD_DIR)

@@ -442,7 +442,7 @@ static translate_exp_t* translate_expr_new(
     tree_stm_t* assign = tree_stm_move(
             tree_exp_temp(r, r.temp_size),
             tree_exp_call(
-                tree_exp_name("malloc"),
+                tree_exp_name("sl_alloc"),
                 tree_exp_const(struct_size, ac_word_size),
                 ac_word_size
             )
