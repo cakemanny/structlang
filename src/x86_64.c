@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h> // strdup
+#include "format.h" // fprint_str_escaped
 
 // Useful references
 // - https://web.stanford.edu/class/cs107/guide/x86-64.html
@@ -489,7 +490,10 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             // but if we were we could do
             //
             // leaq func_name(%rip), `d0
-            assert(0 && "unexpected name expression");
+            temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+            char* s = NULL;
+            Asprintf(&s, "leaq	%s(%%rip), `d0\n", exp->te_name);
+            return r;
         }
         case TREE_EXP_CALL:
         {
@@ -940,6 +944,40 @@ assm_fragment_t x86_64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
     };
 }
 
+static void
+emit_text_segment_header(FILE* out)
+{
+    fprintf(out, "\t.text\n");
+}
+
+void emit_str_escaped(FILE* out, const char* str);
+
+static void
+emit_data_segment(FILE* out, const sl_fragment_t* fragments)
+{
+    // No idea what this means, but it's what clang outputs
+    fprintf(out, "\t.section	.rodata.str1.1,\"aMS\",@progbits,1\n");
+
+    for (var frag = fragments; frag; frag = frag->fr_list) {
+        switch (frag->fr_tag) {
+            case FR_CODE:
+                continue;
+            case FR_STRING:
+            {
+                fprintf(out, "	.type	%s,@object\n", frag->fr_label);
+                fprintf(out, "%s:\n", frag->fr_label);
+
+                size_t required = fmt_escaped_len(frag->fr_string);
+                assert(required < 512);
+                char buf[512];
+                fmt_snprint_escaped(buf, 512, frag->fr_string);
+                fprintf(out, "	.asciz	%s\n", buf);
+                // TODO output .size ?
+            }
+        }
+    }
+}
+
 
 /*
  * Here down is the implementation of the target types declared in target.h
@@ -968,6 +1006,8 @@ static codegen_t x86_64_codegen_module = {
     .proc_entry_exit_3 = x86_64_proc_entry_exit_3,
     .load_temp = x86_64_load_temp,
     .store_temp = x86_64_store_temp,
+    .emit_text_segment_header = emit_text_segment_header,
+    .emit_data_segment = emit_data_segment,
 };
 
 const target_t target_x86_64 = {

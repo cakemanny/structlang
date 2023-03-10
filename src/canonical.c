@@ -864,15 +864,23 @@ sl_fragment_t* canonicalise_tree(
         temp_state_t* temp_state, sl_fragment_t* fragments)
 {
     for (var frag = fragments; frag; frag = frag->fr_list) {
-        frag->fr_body = linearise(temp_state, frag->fr_body);
-        verify_statements(frag->fr_body, "post-linearise");
+        switch (frag->fr_tag) {
+            case FR_CODE:
+            {
+                frag->fr_body = linearise(temp_state, frag->fr_body);
+                verify_statements(frag->fr_body, "post-linearise");
 
-        basic_blocks_t blocks =
-            basic_blocks(temp_state, frag->fr_body);
-        verify_basic_blocks(blocks, "post-basic_blocks");
+                basic_blocks_t blocks =
+                    basic_blocks(temp_state, frag->fr_body);
+                verify_basic_blocks(blocks, "post-basic_blocks");
 
-        frag->fr_body = trace_schedule(temp_state, blocks);
-        verify_statements(frag->fr_body, "post-trace_schedule");
+                frag->fr_body = trace_schedule(temp_state, blocks);
+                verify_statements(frag->fr_body, "post-trace_schedule");
+                break;
+            }
+            case FR_STRING:
+                continue;
+        }
     }
     return fragments;
 }

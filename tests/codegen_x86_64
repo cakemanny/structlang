@@ -20,7 +20,8 @@ while :; do
     esac
 done
 
-BUILD_DIR="$(dirname "$0")/../build/debug"
+SCRIPT_DIR=$(dirname "$0")
+BUILD_DIR="$SCRIPT_DIR/../build/debug"
 test -x "$BUILD_DIR/structlangc" || exit 1
 SLC="$BUILD_DIR/structlangc"
 
@@ -29,9 +30,17 @@ grn=$(tput setaf 2)
 rst=$(tput sgr0)
 exitcode=0
 
+# todo: move to the actual makefile ?
+RTO="$BUILD_DIR/runtime_x86_64.o"
+if ! [ -f "$BUILD_DIR" ]; then
+    zig cc -c --target=x86_64-linux-gnu $SCRIPT_DIR/../runtime/runtime.c \
+        -o $RTO
+fi
+
 LD="zig cc"
 LDFLAGS="--target=x86_64-linux-gnu -Wno-unused-command-line-argument"
-LDLIBS=""
+LDLIBS="$RTO"
+
 
 tmp_d=$(mktemp -d) || exit 1
 echo "$tmp_d"

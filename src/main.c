@@ -197,10 +197,16 @@ int main(int argc, char* argv[])
         fprintf(stderr, "internal error: failed to translate into trees\n");
         return 1;
     }
+
     if (stop_after_translation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
-            fprintf(out, "# %s\n", frag->fr_frame->acf_name);
-            tree_printf(out, "%S\n", frag->fr_body);
+            if (frag->fr_tag == FR_CODE) {
+                fprintf(out, "# %s\n", frag->fr_frame->acf_name);
+                tree_printf(out, "%S\n", frag->fr_body);
+            } else {
+                assert(frag->fr_tag == FR_STRING);
+                fr_string_print(out, frag);
+            }
         }
         return 0;
     }
@@ -212,16 +218,27 @@ int main(int argc, char* argv[])
     }
     if (stop_after_canonicalisation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
-            fprintf(out, "# %s\n", frag->fr_frame->acf_name);
-            for (var s = frag->fr_body; s; s = s->tst_list) {
-                tree_printf(out, "%S\n", s);
+            if (frag->fr_tag == FR_CODE) {
+                fprintf(out, "# %s\n", frag->fr_frame->acf_name);
+                for (var s = frag->fr_body; s; s = s->tst_list) {
+                    tree_printf(out, "%S\n", s);
+                }
+                fprintf(out, "\n");
+            } else {
+                assert(frag->fr_tag == FR_STRING);
+                fr_string_print(out, frag);
             }
-            fprintf(out, "\n");
         }
         return 0;
     }
 
+    bool emitted_header = false;
+
     for (var frag = fragments; frag; frag = frag->fr_list) {
+        if (frag->fr_tag != FR_CODE) {
+            // data is handled below
+            continue;
+        }
         assm_instr_t* body_instrs = NULL;
         fprintf(out, "# %s\n", frag->fr_frame->acf_name); // TODO: remove
         for (var s = frag->fr_body; s; s = s->tst_list) {
@@ -259,6 +276,11 @@ int main(int argc, char* argv[])
         var final_fragment = target->tgt_backend->proc_entry_exit_3(
                 frag->fr_frame, instrs_and_allocation.ra_instrs);
 
+        if (!emitted_header) {
+            target->tgt_backend->emit_text_segment_header(out);
+            emitted_header = true;
+        }
+
         fputs(final_fragment.asf_prologue, out);
         for (var i = final_fragment.asf_instrs; i; i = i->ai_list) {
             char buf[128];
@@ -269,6 +291,11 @@ int main(int argc, char* argv[])
 
         assm_free_list(&body_instrs);
     }
+
+    if (emitted_header) {
+        target->tgt_backend->emit_data_segment(out, fragments);
+    }
+
 
     // end of program... maybe
     temp_state_free(&temp_state);

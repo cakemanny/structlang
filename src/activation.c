@@ -263,7 +263,7 @@ static void ptr_map_for_type(
 
                 if (field_alignment >= target->word_size) {
                     // possible to be a pointer
-                    ptr_map_for_type(program, type, map,
+                    ptr_map_for_type(program, field->dl_type, map,
                             offset + num_words(total_size));
                 }
 
@@ -283,6 +283,29 @@ static void ptr_map_for_type(
     fprintf(stderr, "type->ty_tag = %d (0x%x)\n", type->ty_tag, type->ty_tag);
     assert(0 && "missing case");
 }
+
+
+char* ac_record_descriptor_for_type(const sl_decl_t* program, sl_type_t* type)
+{
+    size_t size = size_of_type(program, type);
+
+    unsigned long nwords = num_words(size);
+    // +1 for the null terminator
+    char* buf = xmalloc(nwords + 1);
+
+    // for now we just reuse the ptr map logic
+    uint64_t* ptr_map = xmalloc(BitsetLen(nwords) * sizeof *ptr_map);
+    ptr_map_for_type(program, type, ptr_map, 0);
+    for (int i = 0; i < nwords; i++) {
+        if (IsBitSet(ptr_map, i)) {
+            buf[i] = 'p';
+        } else {
+            buf[i] = 'n';
+        }
+    }
+    return buf;
+}
+
 
 static void calculate_activation_record_expr(
         const sl_decl_t* program, ac_frame_t* frame, sl_expr_t* expr)

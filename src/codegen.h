@@ -3,6 +3,8 @@
 // vim:ft=c:
 #include "activation.h"
 #include "assem.h"
+#include "fragment.h"
+#include <stdio.h>
 
 typedef struct codegen_t {
     /*
@@ -28,6 +30,12 @@ typedef struct codegen_t {
 
     assm_instr_t* (*load_temp)(struct ac_frame_var*, temp_t);
     assm_instr_t* (*store_temp)(struct ac_frame_var*, temp_t);
+
+
+    void (*emit_text_segment_header)(FILE* out);
+
+    void (*emit_data_segment)(FILE* out, const sl_fragment_t* fragments);
+
 } codegen_t;
 
 #endif /* __CODEGEN_H__ */

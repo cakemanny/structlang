@@ -325,3 +325,33 @@ fn main() -> int {
     f(*x)
 }
 '
+
+# Structs containing pointers
+check_pass '
+struct X {
+    a: int,
+}
+struct Y {
+    a: *X,
+    b: *X,
+}
+struct Z {
+    a: *Y,
+    b: Y,
+    c: int,
+    d: bool,
+}
+
+fn foo(bar: *Z) -> int { bar->a->a->a + bar->b.b->a + bar->c }
+
+fn main() -> int {
+    let y: *Y = new Y { new X {3}, new X {4} };
+    let z: *Z = new Z {
+        new Y { new X {1}, new X {2} },
+        *y,
+        5,
+        true
+    };
+    foo(z)
+}
+'

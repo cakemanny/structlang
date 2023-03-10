@@ -13,6 +13,7 @@ typedef struct translate_info_t {
     sl_sym_t current_loop_end;
     sl_sym_t function_end_label;
     bool is_end_label_used;
+    sl_fragment_t* string_fragments;
 } translate_info_t;
 
 struct translate_exp_t;
@@ -434,16 +435,26 @@ static translate_exp_t* translate_expr_new(
 
     temp_t r = temp_newtemp(info->temp_state, ac_word_size);
 
-    // to work out the size, we need the struct size
     sl_type_t* struct_type = expr->ex_type->ty_pointee;
-    size_t struct_size = size_of_type(info->program, struct_type);
-    assert(struct_size > 0);
+
+    char* descriptor =
+        ac_record_descriptor_for_type(info->program, struct_type);
+
+    // TODO: check for existing label with same descriptor
+    sl_sym_t descriptor_label = temp_newlabel(info->temp_state);
+
+    info->string_fragments =
+        fr_append(info->string_fragments,
+                sl_string_fragment(descriptor_label, descriptor));
+
+    var arg_exp = tree_exp_name(descriptor_label);
+    arg_exp->te_size = 8; // FIXME: pass in the target
 
     tree_stm_t* assign = tree_stm_move(
             tree_exp_temp(r, r.temp_size),
             tree_exp_call(
-                tree_exp_name("sl_alloc"),
-                tree_exp_const(struct_size, ac_word_size),
+                tree_exp_name("sl_alloc_des"),
+                arg_exp,
                 ac_word_size
             )
     );
@@ -852,7 +863,7 @@ sl_fragment_t* translate_program(
         if (d->dl_tag == SL_DECL_FUNC) {
             var body = translate_decl(&info, f, d);
             body = proc_entry_exit_1(temp_state, f, body);
-            var frag = sl_fragment(body, f);
+            var frag = sl_code_fragment(body, f);
             result = fr_append(result, frag);
 
             // the next frame will be for the next function, so iter
@@ -860,6 +871,8 @@ sl_fragment_t* translate_program(
         }
     }
     assert(!f);
+
+    result = fr_append(result, info.string_fragments);
 
     return result;
 }

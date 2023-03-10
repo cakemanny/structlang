@@ -5,6 +5,8 @@
 #include <stdlib.h> // abort
 #include <string.h> // strlen
 #include "codegen.h"
+#include "fragment.h"
+#include "format.h" // fprint_str_escaped
 
 // Useful resources
 // - https://developer.arm.com/documentation/102374/0101/Overview?lang=en
@@ -391,7 +393,21 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
         }
         case TREE_EXP_NAME:
         {
-            assert(!"unexpected name expression");
+            /*
+             * A label pointing to some data (or maybe a function in the future)
+             */
+            temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+            {
+                char* s = NULL;
+                Asprintf(&s, "adrp	`d0, %s@PAGE\n", exp->te_name);
+                emit(state, assm_oper(s, temp_list(r), NULL, NULL));
+            }
+            {
+                char* s = NULL;
+                Asprintf(&s, "add	`d0, `s0, %s@PAGEOFF\n", exp->te_name);
+                emit(state, assm_oper(s, temp_list(r), temp_list(r), NULL));
+            }
+            return r;
         }
         case TREE_EXP_CALL:
         {
@@ -629,7 +645,8 @@ arm64_codegen(temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* stm)
  * proc_entry_exit_2 defines which temporaries i.e. registers are live-out
  * of the function
  */
-assm_instr_t* arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
+static assm_instr_t*
+arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
 {
     temp_list_t* src_list = NULL;
     for (int i = 0; i < NELEMS(arm64_callee_saves); i++) {
@@ -669,7 +686,8 @@ assm_instr_t* arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
     return body;
 }
 
-assm_fragment_t arm64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
+static assm_fragment_t
+arm64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
 {
     const char* fn_label = frame->acf_name;
     int frame_size = ac_frame_words(frame)*word_size;
@@ -704,6 +722,37 @@ _%s:\n\
     };
 }
 
+static
+void emit_text_segment_header(FILE* out)
+{
+    fprintf(out, "\t.section	__TEXT,__text,regular,pure_instructions\n");
+}
+
+
+static void
+emit_data_segment(FILE* out, const sl_fragment_t* fragments)
+{
+    fprintf(out, "\n");
+    fprintf(out, "\t.section	__TEXT,__cstring,cstring_literals\n");
+
+    for (var frag = fragments; frag; frag = frag->fr_list) {
+        switch (frag->fr_tag) {
+            case FR_CODE:
+                continue;
+            case FR_STRING:
+            {
+                fprintf(out, "%s:\n", frag->fr_label);
+
+                size_t required = fmt_escaped_len(frag->fr_string);
+                assert(required < 512);
+                char buf[512];
+                fmt_snprint_escaped(buf, 512, frag->fr_string);
+                fprintf(out, "	.asciz	%s\n", buf);
+                break;
+            }
+        }
+    }
+}
 
 /*
  *
@@ -733,6 +782,8 @@ static codegen_t arm64_codegen_module = {
     .proc_entry_exit_3 = arm64_proc_entry_exit_3,
     .load_temp = arm64_load_temp,
     .store_temp = arm64_store_temp,
+    .emit_text_segment_header = emit_text_segment_header,
+    .emit_data_segment = emit_data_segment,
 };
 
 const target_t target_arm64 = {

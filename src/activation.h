@@ -69,6 +69,30 @@ ac_frame_t* calculate_activation_records(
 size_t size_of_type(const sl_decl_t* program, sl_type_t* type);
 size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);
 
+/*
+ * Returns a record descriptor for the type. That is, a string indicating
+ * whether each field is a pointer to another. A character for
+ * each word
+ * - p - means there is a word that holds a pointer
+ * - n - means there is a word that holds no pointer (though could be multiple
+ *   fields.)
+ *
+ * e.g.
+ *   struct X { a: int, b: int, c: *int, d: bool }
+ * would yield
+ *   "npn"
+ * The two ints, a and b, are 32-bit and fit into a single word which
+ * is not a pointer, so the first character is 'n'. Then c is a pointer,
+ * so the second character becomes 'p' and then d does not take a whole
+ * word of space, but due to alignment criteria it uses up a non-pointer
+ * word, and thus the final character is 'n'.
+ *
+ * The memory belongs to the caller and must be freed once the caller
+ * is done with it.
+ */
+char* ac_record_descriptor_for_type(const sl_decl_t* program, sl_type_t* type);
+
+
 extern const size_t ac_word_size;
 
 extern bool ac_debug;
