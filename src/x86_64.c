@@ -486,10 +486,6 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
         }
         case TREE_EXP_NAME:
         {
-            // not sure we should be emitting these at this time?
-            // but if we were we could do
-            //
-            // leaq func_name(%rip), `d0
             temp_t r = temp_newtemp(state.temp_state, exp->te_size);
             char* s = NULL;
             Asprintf(&s, "leaq	%s(%%rip), `d0\n", exp->te_name);

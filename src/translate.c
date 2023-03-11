@@ -1,6 +1,7 @@
 #include "translate.h"
 #include <assert.h> /* assert */
 #include <stdbool.h> /* bool */
+#include <string.h>
 #include "mem.h" // xmalloc
 #include "grammar.tab.h"
 
@@ -427,6 +428,23 @@ static translate_exp_t* translate_expr_let(
     return translate_nx(result);
 }
 
+static sl_sym_t label_for_descriptor(
+        translate_info_t* info, char* descriptor) {
+
+    for (var frag = info->string_fragments; frag; frag = frag->fr_list) {
+        if (strcmp(frag->fr_string, descriptor) == 0) {
+            return frag->fr_label;
+        }
+    }
+
+    sl_sym_t descriptor_label = temp_newlabel(info->temp_state);
+
+    info->string_fragments =
+        fr_append(info->string_fragments,
+                sl_string_fragment(descriptor_label, descriptor));
+    return descriptor_label;
+}
+
 static translate_exp_t* translate_expr_new(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
@@ -440,14 +458,7 @@ static translate_exp_t* translate_expr_new(
     char* descriptor =
         ac_record_descriptor_for_type(info->program, struct_type);
 
-    // TODO: check for existing label with same descriptor
-    sl_sym_t descriptor_label = temp_newlabel(info->temp_state);
-
-    info->string_fragments =
-        fr_append(info->string_fragments,
-                sl_string_fragment(descriptor_label, descriptor));
-
-    var arg_exp = tree_exp_name(descriptor_label);
+    var arg_exp = tree_exp_name(label_for_descriptor(info, descriptor));
     arg_exp->te_size = 8; // FIXME: pass in the target
 
     tree_stm_t* assign = tree_stm_move(
