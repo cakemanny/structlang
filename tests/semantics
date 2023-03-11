@@ -63,6 +63,35 @@ struct X {
     x: *X,
 }
 "
+check_pass "
+struct X {
+    y: *Y,
+}
+struct Y {
+    x: *X,
+}
+"
+if false; then
+check_fail "
+struct X {
+    y: Y,
+}
+struct Y {
+    x: X,
+}
+
+fn g() -> Y {
+    let y: *Y = new Y{f()};
+    *y
+}
+fn f() -> X {
+    let x: *X = new X{g()};
+    *x
+}
+
+fn main() -> int { f(); 0 }
+"
+fi
 
 # functions
 check_pass "fn main() -> int { 0 }"
