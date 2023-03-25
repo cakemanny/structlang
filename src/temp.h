@@ -2,13 +2,21 @@
 #define __TEMP_H__
 
 #include "symbols.h" // sl_sym_t
+#include <stdbool.h>
 
 struct temp_state;
 typedef struct temp_state temp_state_t;
 
+typedef enum temp_ptr_disposition : unsigned char {
+    TEMP_DISP_PTR = 1,
+    TEMP_DISP_NOT_PTR,
+    TEMP_DISP_INHERIT,
+} temp_ptr_disposition_t;
+
 typedef struct temp {
     int temp_id;
-    unsigned temp_size;
+    unsigned char temp_size;
+    temp_ptr_disposition_t temp_ptr_dispo;
 } temp_t;
 
 typedef struct temp_list {
@@ -19,7 +27,7 @@ typedef struct temp_list {
 temp_state_t* temp_state_new();
 void temp_state_free(temp_state_t** ts);
 
-temp_t temp_newtemp(temp_state_t* ts, unsigned size);
+temp_t temp_newtemp(temp_state_t* ts, unsigned size, temp_ptr_disposition_t ptr_dispo);
 // Not sure what this is for
 // char* temp_makestring(temp_state_t* ts,  int tempval);
 

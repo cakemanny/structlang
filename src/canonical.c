@@ -1,7 +1,6 @@
 #include "canonical.h"
 #include "mem.h"
 #include <assert.h> /* assert */
-#include <string.h> /* memcpy */
 #include <stdbool.h> /* bool */
 #include "interfaces/table.h"
 
@@ -48,15 +47,15 @@ static canon_stm_exp_pair_t
 {
     canon_stm_exp_pair_t result = {};
     if (es == NULL) {
-        result.cnp_stm = tree_stm_exp(tree_exp_const(0, 1));
+        result.cnp_stm = tree_stm_exp(tree_exp_const(0, 0, tree_typ_void()));
         result.cnp_exp = NULL; // just being explicit
         return result;
     }
     if (es->te_tag == TREE_EXP_CALL) {
-        var t = temp_newtemp(temp_state, es->te_size);
+        var t = temp_newtemp(temp_state, es->te_size, tree_dispo_from_type(es->te_type));
         var new_head = tree_exp_eseq(
-                tree_stm_move(tree_exp_temp(t, es->te_size), es),
-                tree_exp_temp(t, es->te_size)
+                tree_stm_move(tree_exp_temp(t, es->te_size, es->te_type), es),
+                tree_exp_temp(t, es->te_size, es->te_type)
                 );
         new_head->te_list = es->te_list;
         return reorder(temp_state, new_head);
@@ -79,12 +78,12 @@ static canon_stm_exp_pair_t
         result.cnp_exp = e;
         return result;
     } else {
-        var t = temp_newtemp(temp_state, e->te_size);
+        var t = temp_newtemp(temp_state, e->te_size, tree_dispo_from_type(e->te_type));
         result.cnp_stm = seq(seq(
                     stms,
-                    tree_stm_move(tree_exp_temp(t, e->te_size),  e)),
+                    tree_stm_move(tree_exp_temp(t, e->te_size, e->te_type),  e)),
                 stms2);
-        result.cnp_exp = tree_exp_temp(t, e->te_size);
+        result.cnp_exp = tree_exp_temp(t, e->te_size, e->te_type);
         result.cnp_exp->te_list = el;
         return result;
     }
@@ -165,8 +164,8 @@ static tree_exp_t* rebuild_binop(tree_exp_t* el, void* cl)
 
 static tree_exp_t* rebuild_mem(tree_exp_t* el, void* cl)
 {
-    size_t* psize = cl;
-    return tree_exp_mem(el, *psize);
+    tree_exp_t* orig_e = cl;
+    return tree_exp_mem(el, orig_e->te_size, orig_e->te_type);
 }
 
 static tree_exp_t* rebuild_call(tree_exp_t* el, void* cl)
@@ -175,8 +174,8 @@ static tree_exp_t* rebuild_call(tree_exp_t* el, void* cl)
     var args = el->te_list;
     // unlist the func
     func->te_list = NULL;
-    size_t* psize = cl;
-    return tree_exp_call(func, args, *psize);
+    tree_exp_t* e = cl;
+    return tree_exp_call(func, args, e->te_size, e->te_type);
 }
 
 static tree_exp_t* rebuild_exp_other(tree_exp_t* _el, void* cl)
@@ -198,7 +197,7 @@ static canon_stm_exp_pair_t do_exp(temp_state_t* temp_state, tree_exp_t* e)
             return reorder_exp(
                     temp_state,
                     e->te_mem_addr,
-                    bep_func(rebuild_mem, &e->te_size));
+                    bep_func(rebuild_mem, e));
         }
         case TREE_EXP_ESEQ:
         {
@@ -217,7 +216,7 @@ static canon_stm_exp_pair_t do_exp(temp_state_t* temp_state, tree_exp_t* e)
         {
             var el = tree_exp_append(e->te_func, e->te_args);
             return reorder_exp(
-                    temp_state, el, bep_func(rebuild_call, &e->te_size));
+                    temp_state, el, bep_func(rebuild_call, e));
         }
         default:
             return reorder_exp(temp_state, NULL, bep_func(rebuild_exp_other, e));
@@ -251,12 +250,14 @@ static tree_stm_t* rebuild_move_temp_call(tree_exp_t* el, void* cl)
     struct {
         tree_exp_t* temp;
         size_t call_size;
-    } cl_ = {};
-    memcpy(&cl_, cl, sizeof cl_);
+        tree_typ_t* result_type;
+    } *cl_ = cl;
+
     var e = el;
     el = el->te_list;
     e->te_list = NULL;
-    return tree_stm_move(cl_.temp, tree_exp_call(e, el, cl_.call_size));
+    return tree_stm_move(
+            cl_->temp, tree_exp_call(e, el, cl_->call_size, cl_->result_type));
 }
 
 static tree_stm_t* rebuild_move_temp(tree_exp_t* el, void* cl)
@@ -267,20 +268,24 @@ static tree_stm_t* rebuild_move_temp(tree_exp_t* el, void* cl)
 
 static tree_stm_t* rebuild_move_mem(tree_exp_t* el, void* cl)
 {
-    size_t* psize = cl;
+    tree_exp_t* orig_dst = cl;
     var e = el;
     var b = el->te_list;
     e->te_list = NULL;
-    return tree_stm_move(tree_exp_mem(e, *psize), b);
+    return tree_stm_move(tree_exp_mem(e, orig_dst->te_size, orig_dst->te_type), b);
 }
 
 static tree_stm_t* rebuild_exp_call(tree_exp_t* el, void* cl)
 {
-    size_t* pcallsize = cl;
+    struct {
+        size_t call_size;
+        tree_typ_t* result_type;
+    } *cl_ = cl;
+
     var e = el;
     el = el->te_list;
     e->te_list = NULL;
-    return tree_stm_exp(tree_exp_call(e, el, *pcallsize));
+    return tree_stm_exp(tree_exp_call(e, el, cl_->call_size, cl_->result_type));
 }
 
 static tree_stm_t* rebuild_exp(tree_exp_t* el, void* _cl)
@@ -317,9 +322,11 @@ static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s)
                     struct {
                         tree_exp_t* temp;
                         size_t call_size;
+                        tree_typ_t* result_type;
                     } cl = {
                         .temp = s->tst_move_dst,
-                        .call_size = s->tst_move_exp->te_size
+                        .call_size = s->tst_move_exp->te_size,
+                        .result_type = s->tst_move_exp->te_type
                     };
                     var e = s->tst_move_exp->te_func;
                     var el = s->tst_move_exp->te_args;
@@ -339,8 +346,7 @@ static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s)
                 return reorder_stm(
                         temp_state,
                         tree_exp_append(e, b),
-                        bsp_func(rebuild_move_mem,
-                            &s->tst_move_dst->te_size));
+                        bsp_func(rebuild_move_mem, s->tst_move_dst));
             }
             if (s->tst_move_dst->te_tag == TREE_EXP_ESEQ) {
                 var as_seq = tree_stm_seq(
@@ -355,12 +361,16 @@ static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s)
         case TREE_STM_EXP:
         {
             if (s->tst_exp->te_tag == TREE_EXP_CALL) {
+                struct {
+                    size_t _0;
+                    tree_typ_t* _1;
+                } cl = {s->tst_exp->te_size, s->tst_exp->te_type};
                 var e = s->tst_exp->te_func;
                 var el = s->tst_exp->te_args;
                 return reorder_stm(
                         temp_state,
                         tree_exp_append(e, el),
-                        bsp_func(rebuild_exp_call, &s->tst_exp->te_size));
+                        bsp_func(rebuild_exp_call, &cl));
             }
             var e = s->tst_exp;
             return reorder_stm(temp_state, e, bsp_func(rebuild_exp, NULL));

@@ -2,6 +2,7 @@
 #include "x86_64.h"
 #include "mem.h" // xmalloc
 #include <assert.h>
+#include "translate.h"
 
 #define var __auto_type
 
@@ -192,6 +193,18 @@ size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type)
     }
     fprintf(stderr, "type->ty_tag = %d (0x%x)\n", type->ty_tag, type->ty_tag);
     assert(0 && " missing case");
+}
+
+static temp_ptr_disposition_t ptr_disp_of_type(const sl_type_t* type)
+{
+    switch (type->ty_tag) {
+        case SL_TYPE_NAME: return TEMP_DISP_NOT_PTR;
+        case SL_TYPE_PTR: return TEMP_DISP_PTR;
+        case SL_TYPE_ARRAY:
+            assert(!"not implemented, size_of_type, array");
+        case SL_TYPE_FUNC:
+            assert(!"not implemented, size_of_type, function");
+    }
 }
 
 // TODO: we should scan through the program and calculate the types as a
@@ -410,14 +423,15 @@ int ac_frame_words(ac_frame_t* frame) {
  * an argument to an function called by this function.).
  */
 static temp_t assign_temporary_for_reg(
-        temp_state_t* temp_state, ac_frame_t* frame, temp_t reg, size_t size)
+        temp_state_t* temp_state, ac_frame_t* frame, temp_t reg, size_t size,
+        temp_ptr_disposition_t ptr_dispo, tree_typ_t* type)
 {
     temp_t param_reg = reg;
     param_reg.temp_size = size;
-    temp_t temp = temp_newtemp(temp_state, size);
+    temp_t temp = temp_newtemp(temp_state, size, ptr_dispo);
     var move = tree_stm_move(
-            tree_exp_temp(temp, size), // <- dest
-            tree_exp_temp(param_reg, size)); // <- src
+            tree_exp_temp(temp, size, type), // <- dest
+            tree_exp_temp(param_reg, size, type)); // <- src
 
     if (frame->acf_arg_moves == NULL) {
         frame->acf_arg_moves = move;
@@ -488,7 +502,8 @@ static void calculate_activation_record_decl_func(
             v->acf_tag = ACF_ACCESS_REG;
             v->acf_reg = assign_temporary_for_reg(temp_state, frame,
                     target->arg_registers.elems[frame->acf_next_arg_reg++],
-                    size);
+                    size, ptr_disp_of_type(type),
+                    translate_type(program, type));
         } else {
             // Add formal parameter
             v->acf_tag = ACF_ACCESS_FRAME;
@@ -506,7 +521,9 @@ static void calculate_activation_record_decl_func(
         // And maybe temporaries
         calculate_activation_record_expr(program, frame, e);
     }
+}
 
+void calculate_ptr_maps(ac_frame_t* frame) {
     // Now, scan through the frame vars and calculate a bitset showing where
     // the pointers in the frame are
 
@@ -656,21 +673,23 @@ tree_stm_t* proc_entry_exit_1(
     const size_t word_size = target->word_size;
     temp_t temps_for_callee_saves[num_callee_saves];
     for (int i = 0; i < num_callee_saves; i++) {
-        temps_for_callee_saves[i] = temp_newtemp(temp_state, word_size);
+        temps_for_callee_saves[i] =
+            temp_newtemp(temp_state, word_size, TEMP_DISP_INHERIT);
     }
 
     tree_stm_t* saves = NULL;
     for (int i = 0; i < num_callee_saves; i++) {
-        var dst_access = tree_exp_temp(temps_for_callee_saves[i], word_size);
-        var src_access = tree_exp_temp(target->callee_saves.elems[i], word_size);
+        // TODO: maybe use a type that will be resolved later
+        var dst_access = tree_exp_temp(temps_for_callee_saves[i], word_size, NULL);
+        var src_access = tree_exp_temp(target->callee_saves.elems[i], word_size, NULL);
         var move = tree_stm_move(dst_access, src_access);
         saves = (saves) ? tree_stm_seq(saves, move) : move;
     }
 
     tree_stm_t* restores = NULL;
     for (int i = 0; i < num_callee_saves; i++) {
-        var dst_access = tree_exp_temp(target->callee_saves.elems[i], word_size);
-        var src_access = tree_exp_temp(temps_for_callee_saves[i], word_size);
+        var dst_access = tree_exp_temp(target->callee_saves.elems[i], word_size, NULL);
+        var src_access = tree_exp_temp(temps_for_callee_saves[i], word_size, NULL);
         var move = tree_stm_move(dst_access, src_access);
         restores = (restores) ? tree_stm_seq(restores, move) : move;
     }

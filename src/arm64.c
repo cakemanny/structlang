@@ -296,6 +296,14 @@ static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* e
     }
 }
 
+/*
+ * creates a new temporary for storing the result of the expression
+ */
+static temp_t new_temp_for_exp(temp_state_t* temp_state, tree_exp_t* exp)
+{
+    return temp_newtemp(temp_state, exp->te_size,
+            tree_dispo_from_type(exp->te_type));
+}
 
 static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
 {
@@ -308,7 +316,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             if (addr->te_tag == TREE_EXP_BINOP
                     && addr->te_binop == TREE_BINOP_PLUS) {
                 if (addr->te_rhs->te_tag == TREE_EXP_CONST) {
-                    var r = temp_newtemp(state.temp_state, exp->te_size);
+                    var r = new_temp_for_exp(state.temp_state, exp);
                     char* s = NULL;
                     Asprintf(&s, "ldr%s	`d0, [`s0, #%d]\n",
                             suff(exp), addr->te_rhs->te_const);
@@ -323,7 +331,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             }
 
             // MEM(e1)
-            var r = temp_newtemp(state.temp_state, exp->te_size);
+            var r = new_temp_for_exp(state.temp_state, exp);
             char* s = NULL;
             Asprintf(&s, "ldr%s	`d0, [`s0]\n", suff(exp));
             var src_list = temp_list(Munch_exp(addr));
@@ -337,7 +345,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             if (exp->te_binop == TREE_BINOP_PLUS
                     && exp->te_rhs->te_tag == TREE_EXP_CONST) {
                 if (can_be_immediate(exp->te_rhs->te_const)) {
-                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    temp_t r = new_temp_for_exp(state.temp_state, exp);
                     char* s = NULL;
                     Asprintf(&s, "add	`d0, `s0, #%d\n",
                             exp->te_rhs->te_const);
@@ -363,7 +371,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 case TREE_BINOP_RSHIFT: op = "lsr"; break;
                 case TREE_BINOP_ARSHIFT: op = "asr"; break;
             }
-            temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+            temp_t r = new_temp_for_exp(state.temp_state, exp);
             char* s = NULL;
             Asprintf(&s, "%s	`d0, `s0, `s1\n", op);
             var src_list =
@@ -376,7 +384,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
         case TREE_EXP_CONST:
         {
             assert(exp->te_size <= 8);
-            temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+            temp_t r = new_temp_for_exp(state.temp_state, exp);
             char* s = NULL;
             if (can_be_immediate(exp->te_const)) {
                 Asprintf(&s, "mov	`d0, #%d\n", exp->te_const);
@@ -396,7 +404,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             /*
              * A label pointing to some data (or maybe a function in the future)
              */
-            temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+            temp_t r = new_temp_for_exp(state.temp_state, exp);
             {
                 char* s = NULL;
                 Asprintf(&s, "adrp	`d0, %s@PAGE\n", exp->te_name);
@@ -411,6 +419,12 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
         }
         case TREE_EXP_CALL:
         {
+            /*
+             * TODO: next for garbage collector
+             * insert label directly after the call instruction
+             * to use as a key for the stack map ...
+             */
+
             assert(exp->te_size <= 8 && "TODO larger sizes");
             var func = exp->te_func;
             var args = exp->te_args;
@@ -530,7 +544,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
             }
 
             assert(stm->tst_exp->te_size <= word_size);
-            var t = temp_newtemp(state.temp_state, stm->tst_exp->te_size);
+            var t = new_temp_for_exp(state.temp_state, stm->tst_exp);
             // Move the result to an unused temporary so that the result
             // registers don't stay live for the rest of the function
             var r = Munch_exp(stm->tst_exp);

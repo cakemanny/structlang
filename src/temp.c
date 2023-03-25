@@ -22,9 +22,17 @@ void temp_state_free(temp_state_t** ts)
     *ts = NULL;
 }
 
-temp_t temp_newtemp(temp_state_t* ts, unsigned size)
+temp_t temp_newtemp(temp_state_t* ts, unsigned size, temp_ptr_disposition_t ptr_dispo)
 {
-    temp_t result = { .temp_id = ts->next_temp++, .temp_size = size };
+    assert(size <= 8); // register width on a 64-bit architecture
+                       // forgetting vector and floating point registers
+    assert(ptr_dispo != 0);
+
+    temp_t result = {
+        .temp_id = ts->next_temp++,
+        .temp_size = size,
+        .temp_ptr_dispo = ptr_dispo,
+    };
     return result;
 }
 

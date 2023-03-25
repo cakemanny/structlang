@@ -5,11 +5,31 @@
 #include "temp.h" // temp_t
 #include <stddef.h> // size_t
 
+struct tree_typ_t;
+typedef struct tree_typ_t tree_typ_t;
+
 struct tree_exp_t;
 typedef struct tree_exp_t tree_exp_t;
 
 struct tree_stm_t;
 typedef struct tree_stm_t tree_stm_t;
+
+struct tree_typ_t {
+    enum {
+        TREE_TYPE_INT = 1,
+        TREE_TYPE_BOOL,
+        TREE_TYPE_VOID,
+        TREE_TYPE_PTR,
+        TREE_TYPE_PTR_DIFF,
+        TREE_TYPE_STRUCT,
+        // Should we have a string type here?
+    } tt_tag;
+    union {
+        tree_typ_t* tt_pointee; // TREE_TYPE_PTR
+        tree_typ_t* tt_fields; // TREE_TYPE_STRUCT
+    };
+    tree_typ_t* tt_list; /* used to link struct fields */
+};
 
 enum tree_binop_t {
     TREE_BINOP_PLUS = 1,
@@ -72,6 +92,7 @@ struct tree_exp_t {
         }; // ESEQ
     };
     size_t te_size;
+    tree_typ_t* te_type;
     tree_exp_t* te_list;
 };
 
@@ -112,18 +133,27 @@ struct tree_stm_t {
     tree_stm_t* tst_list;
 };
 
+
+tree_typ_t* tree_typ_int();
+tree_typ_t* tree_typ_bool();
+tree_typ_t* tree_typ_void();
+tree_typ_t* tree_typ_ptr(tree_typ_t* pointee);
+tree_typ_t* tree_typ_ptr_diff();
+tree_typ_t* tree_typ_struct(tree_typ_t* fields /* list */);
+tree_typ_t* tree_typ_append(tree_typ_t* hd, tree_typ_t* to_append);
+
 /* the integer constant _value_ */
-tree_exp_t* tree_exp_const(int value, size_t size);
+tree_exp_t* tree_exp_const(int value, size_t size, tree_typ_t* type);
 /* symbolic constant _name_ corresonding to an assembly label */
 tree_exp_t* tree_exp_name(sl_sym_t name);
 /* a temp in the abstract machine, similar to a register, but infinitely many*/
-tree_exp_t* tree_exp_temp(temp_t temp, size_t size);
+tree_exp_t* tree_exp_temp(temp_t temp, size_t size, tree_typ_t* type);
 /* evaluate lhs, rhs, and then apply op */
 tree_exp_t* tree_exp_binop(tree_binop_t op, tree_exp_t* lhs, tree_exp_t* rhs);
 /* the contents of size bytes of memory starting at address addr */
-tree_exp_t* tree_exp_mem(tree_exp_t* addr, size_t size);
+tree_exp_t* tree_exp_mem(tree_exp_t* addr, size_t size, tree_typ_t* type);
 /* evaluate func, then args (left-to-right), then apply func to args */
-tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args, size_t size);
+tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args, size_t, tree_typ_t*);
 /* eval s for side-effects then e for a result */
 tree_exp_t* tree_exp_eseq(tree_stm_t* s, tree_exp_t* e);
 
@@ -149,5 +179,12 @@ tree_stm_t* tree_stm_append(tree_stm_t* hd, tree_stm_t* to_append);
 void tree_printf(FILE* out, const char* fmt, ...);
 void tree_exp_print(FILE* out, const tree_exp_t*);
 void tree_stm_print(FILE* out, const tree_stm_t*);
+
+
+/*
+ * Returns the pointer disposition for a tree type.
+ */
+temp_ptr_disposition_t tree_dispo_from_type(const tree_typ_t* tree_type);
+
 
 #endif /* __TREE_H__ */

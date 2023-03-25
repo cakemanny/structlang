@@ -267,6 +267,15 @@ static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* e
     }
 }
 
+/*
+ * creates a new temporary for storing the result of the expression
+ */
+static temp_t new_temp_for_exp(temp_state_t* temp_state, tree_exp_t* exp)
+{
+    return temp_newtemp(temp_state, exp->te_size,
+            tree_dispo_from_type(exp->te_type));
+}
+
 static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
 {
 #define Munch_exp(_exp) munch_exp(state, _exp)
@@ -284,7 +293,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                     && addr->te_binop == TREE_BINOP_PLUS) {
                 // MEM(BINOP(+, e1, CONST))
                 if (addr->te_rhs->te_tag == TREE_EXP_CONST) {
-                    var r = temp_newtemp(state.temp_state, exp->te_size);
+                    var r = new_temp_for_exp(state.temp_state, exp);
                     char* s = NULL;
                     Asprintf(&s, "mov%s %d(`s0), `d0\n", suff(exp),
                             addr->te_rhs->te_const);
@@ -303,7 +312,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             }
 
             // MEM(e1)
-            var r = temp_newtemp(state.temp_state, exp->te_size);
+            var r = new_temp_for_exp(state.temp_state, exp);
             char* s = NULL;
             Asprintf(&s, "mov%s (`s0), `d0\n", suff(exp));
             var src_list = temp_list(Munch_exp(addr));
@@ -318,7 +327,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 {
                     // BINOP(+, e1, CONST)
                     if (exp->te_rhs->te_tag == TREE_EXP_CONST) {
-                        temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                        temp_t r = new_temp_for_exp(state.temp_state, exp);
                         char* s = NULL;
                         Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                         var lhs = Munch_exp(exp->te_lhs);
@@ -342,7 +351,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                     // this has to be done in two instructions due to the
                     // ciscness. but hopefully the reg-allocator can elide the
                     // first move
-                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    temp_t r = new_temp_for_exp(state.temp_state, exp);
                     char* s = NULL;
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                     var lhs = Munch_exp(exp->te_lhs);
@@ -359,7 +368,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 }
                 case TREE_BINOP_MINUS:
                 {
-                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    temp_t r = new_temp_for_exp(state.temp_state, exp);
                     char* s = NULL;
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                     var lhs = Munch_exp(exp->te_lhs);
@@ -377,7 +386,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 case TREE_BINOP_MUL:
                 {
                     // TODO: more cases, incl w/ consts or maybe mem refs
-                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    temp_t r = new_temp_for_exp(state.temp_state, exp);
                     char* s = NULL;
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                     var lhs = Munch_exp(exp->te_lhs);
@@ -431,7 +440,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                          assm_oper(s, temp_list(rax), src_list, NULL));
 
                     // Move the result out of rax again to keep it free
-                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    temp_t r = new_temp_for_exp(state.temp_state, exp);
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                     emit(state, assm_move(s, r, rax));
                     return r;
@@ -443,7 +452,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 case TREE_BINOP_RSHIFT:
                 case TREE_BINOP_ARSHIFT:
                 {
-                    temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+                    temp_t r = new_temp_for_exp(state.temp_state, exp);
                     char* s = NULL;
                     Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
                     var lhs = Munch_exp(exp->te_lhs);
@@ -472,7 +481,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
         case TREE_EXP_CONST:
         {
             assert(exp->te_size <= 8);
-            temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+            temp_t r = new_temp_for_exp(state.temp_state, exp);
             char* s = NULL;
             Asprintf(&s, "mov%s $%d, `d0\n", suff(exp), exp->te_const);
             emit(state, assm_oper(s, temp_list(r), NULL, NULL));
@@ -486,7 +495,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
         }
         case TREE_EXP_NAME:
         {
-            temp_t r = temp_newtemp(state.temp_state, exp->te_size);
+            temp_t r = new_temp_for_exp(state.temp_state, exp);
             char* s = NULL;
             Asprintf(&s, "leaq	%s(%%rip), `d0\n", exp->te_name);
             return r;

@@ -9,6 +9,69 @@
 typedef tree_exp_t* exp;
 typedef tree_stm_t* stm;
 
+
+static tree_typ_t* tree_typ_new(int tag)
+{
+    assert(tag > 0);
+    assert(tag <= TREE_TYPE_STRUCT);
+    tree_typ_t* t = xmalloc(sizeof *t);
+    t->tt_tag = tag;
+    return t;
+}
+
+/*
+static tree_typ_t base_types[] = {
+    { .tt_tag = TREE_TYPE_INT },
+    { .tt_tag = TREE_TYPE_BOOL },
+    { .tt_tag = TREE_TYPE_VOID },
+    { .tt_tag = TREE_TYPE_PTR_DIFF },
+};
+*/
+
+tree_typ_t* tree_typ_int()
+{
+    return tree_typ_new(TREE_TYPE_INT);
+}
+
+tree_typ_t* tree_typ_bool()
+{
+    return tree_typ_new(TREE_TYPE_BOOL);
+}
+
+tree_typ_t* tree_typ_void()
+{
+    return tree_typ_new(TREE_TYPE_VOID);
+}
+
+tree_typ_t* tree_typ_ptr(tree_typ_t* pointee)
+{
+    var t = tree_typ_new(TREE_TYPE_PTR);
+    t->tt_pointee = pointee;
+    return t;
+}
+
+tree_typ_t* tree_typ_ptr_diff()
+{
+    return tree_typ_new(TREE_TYPE_PTR_DIFF);
+}
+
+tree_typ_t* tree_typ_struct(tree_typ_t* fields)
+{
+    var t = tree_typ_new(TREE_TYPE_STRUCT);
+    t->tt_fields = fields;
+    return t;
+}
+
+tree_typ_t* tree_typ_append(tree_typ_t* hd, tree_typ_t* to_append)
+{
+    tree_typ_t** p = &hd;
+    while (*p)
+        p = &(*p)->tt_list;
+    *p = to_append;
+    return hd;
+}
+
+
 static exp tree_exp_new(int tag)
 {
     assert(tag > 0);
@@ -18,11 +81,12 @@ static exp tree_exp_new(int tag)
     return e;
 }
 
-exp tree_exp_const(int value, size_t size)
+exp tree_exp_const(int value, size_t size, tree_typ_t* type)
 {
     exp e = tree_exp_new(TREE_EXP_CONST);
     e->te_const = value;
     e->te_size = size;
+    e->te_type = type;
     return e;
 }
 
@@ -31,15 +95,20 @@ exp tree_exp_name(sl_sym_t name)
     exp e = tree_exp_new(TREE_EXP_NAME);
     e->te_name = name;
     // FIXME: e->te_size = ??? word size?
+
+    // could be a string, or maybe some code :shrug:
+    // but it's not too important
+    e->te_type = tree_typ_ptr(tree_typ_void());
     return e;
 }
 
-exp tree_exp_temp(temp_t temp, size_t size)
+exp tree_exp_temp(temp_t temp, size_t size, tree_typ_t* type)
 {
     exp e = tree_exp_new(TREE_EXP_TEMP);
     e->te_temp = temp;
     assert(size == temp.temp_size);
     e->te_size = size;
+    e->te_type = type;
     return e;
 }
 
@@ -52,24 +121,30 @@ exp tree_exp_binop(tree_binop_t op, exp lhs, exp rhs)
     // can left and right have different sizes?
     e->te_size = lhs->te_size;
     assert(lhs->te_size == rhs->te_size); // let's see
+
+    // hopefully we can say the same thing about types being the same as
+    // that of the operands
+    e->te_type = lhs->te_type;
     return e;
 }
 
-exp tree_exp_mem(exp addr, size_t size)
+exp tree_exp_mem(exp addr, size_t size, tree_typ_t* type)
 {
     exp e = tree_exp_new(TREE_EXP_MEM);
     e->te_mem_addr = addr;
     e->te_size = size;
+    e->te_type = type;
     return e;
 }
 
-exp tree_exp_call(exp func, exp args, size_t size)
+exp tree_exp_call(exp func, exp args, size_t size, tree_typ_t* type)
 {
     assert(size);
     exp e = tree_exp_new(TREE_EXP_CALL);
     e->te_func = func;
     e->te_args = args;
     e->te_size = size;
+    e->te_type = type;
     return e;
 }
 
@@ -79,6 +154,7 @@ exp tree_exp_eseq(stm s, exp e)
     e_->te_eseq_stm = s;
     e_->te_eseq_exp = e;
     e_->te_size = e->te_size;
+    e_->te_type = e->te_type;
     return e_;
 }
 
@@ -355,4 +431,20 @@ void tree_printf(FILE* out, const char* fmt, ...)
     funlockfile(out);
 
     va_end(valist);
+}
+
+
+temp_ptr_disposition_t tree_dispo_from_type(const tree_typ_t* tree_type) {
+    switch (tree_type->tt_tag) {
+        case TREE_TYPE_INT:
+        case TREE_TYPE_BOOL:
+        case TREE_TYPE_VOID:
+            return TEMP_DISP_NOT_PTR;
+        case TREE_TYPE_PTR:
+            return TEMP_DISP_PTR;
+        case TREE_TYPE_PTR_DIFF:
+            return TEMP_DISP_NOT_PTR;
+        case TREE_TYPE_STRUCT:
+            return TEMP_DISP_NOT_PTR;
+    }
 }
