@@ -30,6 +30,7 @@ void temp_state_free(temp_state_t** ts);
 temp_t temp_newtemp(temp_state_t* ts, unsigned size, temp_ptr_disposition_t ptr_dispo);
 // Not sure what this is for
 // char* temp_makestring(temp_state_t* ts,  int tempval);
+bool temp_is_machine(temp_t);
 
 sl_sym_t temp_newlabel(temp_state_t* ts);
 sl_sym_t temp_namedlabel(temp_state_t* ts, const char* name);

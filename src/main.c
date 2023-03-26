@@ -211,7 +211,8 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    sl_fragment_t* canonical_frags = canonicalise_tree(temp_state, fragments);
+    sl_fragment_t* canonical_frags =
+        canonicalise_tree(target, temp_state, fragments);
     if(!canonical_frags) {
         fprintf(stderr, "internal error: failed to canonicalise trees\n");
         return 1;

@@ -97,7 +97,7 @@ static tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
             break;
         case TR_EXP_NX:
             ret = tree_exp_eseq(ex->tr_exp_nx,
-                    tree_exp_const(0, 0, tree_typ_void()));
+                    tree_exp_const(0, ac_word_size, tree_typ_void()));
             break;
         case TR_EXP_CX:
         {

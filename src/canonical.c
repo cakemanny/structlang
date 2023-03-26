@@ -8,18 +8,32 @@
 
 static const bool debug = 0;
 
+typedef struct canon_info_t {
+    temp_state_t* temp_state;
+    const target_t* target;
+} canon_info_t;
+
 typedef struct canon_stm_exp_pair_t {
     tree_stm_t* cnp_stm;
     tree_exp_t* cnp_exp;
 } canon_stm_exp_pair_t;
 
-static canon_stm_exp_pair_t do_exp(temp_state_t*, tree_exp_t*);
-static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s);
+static canon_stm_exp_pair_t do_exp(canon_info_t*, tree_exp_t*);
+static tree_stm_t* do_stm(canon_info_t*, tree_stm_t* s);
 
 static bool is_nop(tree_stm_t* s)
 {
     return s->tst_tag == TREE_STM_EXP
         && s->tst_exp->te_tag == TREE_EXP_CONST;
+}
+
+static bool is_const(const target_t* target, tree_exp_t* e)
+{
+    return e->te_tag == TREE_EXP_CONST
+        // The frame pointer is constant for the duration of the body of the
+        // function
+        || (e->te_tag == TREE_EXP_TEMP && e->te_temp.temp_id == target->tgt_fp.temp_id)
+        || (e->te_tag == TREE_EXP_BINOP && is_const(target, e->te_lhs) && is_const(target, e->te_rhs));
 }
 
 static tree_stm_t* seq(tree_stm_t* s1, tree_stm_t* s2)
@@ -33,52 +47,128 @@ static tree_stm_t* seq(tree_stm_t* s1, tree_stm_t* s2)
     return tree_stm_seq(s1, s2);
 }
 
-static bool commute(tree_stm_t* s, tree_exp_t* e)
+
+static bool may_define_temps(canon_info_t* info, tree_stm_t* s, tree_exp_t* e)
 {
-    // TODO: there is an exercise to find more cases to add here
-    return is_nop(s)
+    switch (e->te_tag) {
+        case TREE_EXP_CONST:
+            return false;
+        case TREE_EXP_NAME:
+            return false;
+        case TREE_EXP_TEMP:
+            // non-fp machine registers are easily clobbered by calls.
+            if (temp_is_machine(e->te_temp) && e->te_temp.temp_id != info->target->tgt_fp.temp_id) {
+                return true;
+            }
+            switch (s->tst_tag) {
+                case TREE_STM_MOVE:
+                    if (s->tst_move_dst->te_tag == TREE_EXP_TEMP &&
+                            s->tst_move_dst->te_temp.temp_id == e->te_temp.temp_id) {
+                        return true;
+                    }
+                    // This is the key result. This move does not define this
+                    // temp.
+                    return false;
+                case TREE_STM_EXP:
+                    // This will be a call or something that has no effect
+                    // calls themselves do not define non-machine temps
+                    return false;
+                case TREE_STM_JUMP:
+                    return true;
+                case TREE_STM_CJUMP:
+                    return true;
+                case TREE_STM_SEQ:
+                    return may_define_temps(info, s->tst_seq_s1, e)
+                        || may_define_temps(info, s->tst_seq_s2, e);
+                case TREE_STM_LABEL:
+                    return true;
+            }
+            break;
+        case TREE_EXP_BINOP:
+            return may_define_temps(info, s, e->te_lhs)
+                || may_define_temps(info, s, e->te_rhs);
+        case TREE_EXP_MEM:
+            // not checking for now
+            return true;
+        case TREE_EXP_CALL:
+            return true;
+        case TREE_EXP_ESEQ:
+            assert(false);
+            break;
+    }
+}
+
+/*
+ * Checks whether the statement(s) s and the expression e commute
+ *
+ * e has already had all ESEQs removed, and calls are not nested within
+ *
+ */
+static bool commute(canon_info_t* info, tree_stm_t* s, tree_exp_t* e)
+{
+    bool result = is_nop(s)
         || e->te_tag == TREE_EXP_NAME
-        || e->te_tag == TREE_EXP_CONST;
+        || is_const(info->target, e);
+    if (result) {
+        return result;
+    }
+    return !may_define_temps(info, s, e);
+
+    // The condition is that any temporaries or memory locations
+    // assigned by s, none are referenced in e
+
+    // if s and e contain no calls, and the lhs of any statement in s is a move
+    //   MOVE(t0, ...) and e commute if t0 does not appear in e
+    //   MOVE(MEM(e0), ...) and e1 commute if e0 is constant (except referring
+    //   to the frame pointer) and the location is not read by e
+
+    // first thing to do would be to print non-commuters, to see what is worthy
+    // of tackling
 }
 
 
 static canon_stm_exp_pair_t
-    reorder(temp_state_t* temp_state, tree_exp_t* es /*exp list*/)
+    reorder(canon_info_t* info, tree_exp_t* es /*exp list*/)
 {
     canon_stm_exp_pair_t result = {};
     if (es == NULL) {
-        result.cnp_stm = tree_stm_exp(tree_exp_const(0, 0, tree_typ_void()));
+        // TODO: should be size zero
+        result.cnp_stm = tree_stm_exp(tree_exp_const(0, ac_word_size, tree_typ_void()));
         result.cnp_exp = NULL; // just being explicit
         return result;
     }
     if (es->te_tag == TREE_EXP_CALL) {
-        var t = temp_newtemp(temp_state, es->te_size, tree_dispo_from_type(es->te_type));
+        var t = temp_newtemp(info->temp_state, es->te_size, tree_dispo_from_type(es->te_type));
         var new_head = tree_exp_eseq(
                 tree_stm_move(tree_exp_temp(t, es->te_size, es->te_type), es),
                 tree_exp_temp(t, es->te_size, es->te_type)
                 );
         new_head->te_list = es->te_list;
-        return reorder(temp_state, new_head);
+        return reorder(info, new_head);
     }
 
     var rest = es->te_list;
     es->te_list = NULL;
 
-    var stms_and_e = do_exp(temp_state, es);
+    var stms_and_e = do_exp(info, es);
     var stms = stms_and_e.cnp_stm;
     var e = stms_and_e.cnp_exp;
 
-    var stms2_and_el = reorder(temp_state, rest);
+    var stms2_and_el = reorder(info, rest);
     var stms2 = stms2_and_el.cnp_stm;
     var el = stms2_and_el.cnp_exp;
 
-    if (commute(stms2, e)) {
+    if (commute(info, stms2, e)) {
         result.cnp_stm = seq(stms, stms2);
         e->te_list = el;
         result.cnp_exp = e;
         return result;
     } else {
-        var t = temp_newtemp(temp_state, e->te_size, tree_dispo_from_type(e->te_type));
+        if (debug) {
+            tree_printf(stderr, "do not commute: %S <-> %E\n", stms2, e);
+        }
+
+        var t = temp_newtemp(info->temp_state, e->te_size, tree_dispo_from_type(e->te_type));
         result.cnp_stm = seq(seq(
                     stms,
                     tree_stm_move(tree_exp_temp(t, e->te_size, e->te_type),  e)),
@@ -111,9 +201,9 @@ static tree_exp_t* bep_call(build_exp_func_t bepf, tree_exp_t* el)
 
 
 static canon_stm_exp_pair_t reorder_exp(
-        temp_state_t* temp_state, tree_exp_t* el, build_exp_func_t build)
+        canon_info_t* info, tree_exp_t* el, build_exp_func_t build)
 {
-    var stms_and_el2 = reorder(temp_state, el);
+    var stms_and_el2 = reorder(info, el);
     canon_stm_exp_pair_t result = {
         .cnp_stm = stms_and_el2.cnp_stm,
         .cnp_exp = bep_call(build, stms_and_el2.cnp_exp),
@@ -143,9 +233,9 @@ static tree_stm_t* bsp_call(build_stm_func_t bspf, tree_exp_t* el)
 
 
 static tree_stm_t* /* list */ reorder_stm(
-        temp_state_t* temp_state, tree_exp_t* el, build_stm_func_t build)
+        canon_info_t* info, tree_exp_t* el, build_stm_func_t build)
 {
-    var stms_and_el2 = reorder(temp_state, el);
+    var stms_and_el2 = reorder(info, el);
     var stms = stms_and_el2.cnp_stm;
     var el2 = stms_and_el2.cnp_exp;
     return seq(stms, bsp_call(build, el2));
@@ -183,28 +273,26 @@ static tree_exp_t* rebuild_exp_other(tree_exp_t* _el, void* cl)
     return (tree_exp_t*)cl;
 }
 
-static canon_stm_exp_pair_t do_exp(temp_state_t* temp_state, tree_exp_t* e)
+static canon_stm_exp_pair_t do_exp(canon_info_t* info, tree_exp_t* e)
 {
     switch(e->te_tag) {
         case TREE_EXP_BINOP:
         {
             tree_exp_t* el = tree_exp_append(e->te_lhs, e->te_rhs);
             return reorder_exp(
-                    temp_state, el, bep_func(rebuild_binop, &e->te_binop));
+                    info, el, bep_func(rebuild_binop, &e->te_binop));
         }
         case TREE_EXP_MEM:
         {
             return reorder_exp(
-                    temp_state,
-                    e->te_mem_addr,
-                    bep_func(rebuild_mem, e));
+                    info, e->te_mem_addr, bep_func(rebuild_mem, e));
         }
         case TREE_EXP_ESEQ:
         {
             var s = e->te_eseq_stm;
             var e2 = e->te_eseq_exp;
-            var stms = do_stm(temp_state, s);
-            var stms2_and_e3 = do_exp(temp_state, e2);
+            var stms = do_stm(info, s);
+            var stms2_and_e3 = do_exp(info, e2);
             var stms2 = stms2_and_e3.cnp_stm;
             var e3 = stms2_and_e3.cnp_exp;
             return (canon_stm_exp_pair_t){
@@ -215,11 +303,10 @@ static canon_stm_exp_pair_t do_exp(temp_state_t* temp_state, tree_exp_t* e)
         case TREE_EXP_CALL:
         {
             var el = tree_exp_append(e->te_func, e->te_args);
-            return reorder_exp(
-                    temp_state, el, bep_func(rebuild_call, e));
+            return reorder_exp(info, el, bep_func(rebuild_call, e));
         }
         default:
-            return reorder_exp(temp_state, NULL, bep_func(rebuild_exp_other, e));
+            return reorder_exp(info, NULL, bep_func(rebuild_exp_other, e));
     }
 }
 
@@ -298,22 +385,22 @@ static tree_stm_t* rebuild_stm_other(tree_exp_t* _el, void* cl)
     return (tree_stm_t*)cl;
 }
 
-static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s)
+static tree_stm_t* do_stm(canon_info_t* info, tree_stm_t* s)
 {
     switch (s->tst_tag) {
         case TREE_STM_SEQ:
             return seq(
-                    do_stm(temp_state, s->tst_seq_s1),
-                    do_stm(temp_state, s->tst_seq_s2));
+                    do_stm(info, s->tst_seq_s1),
+                    do_stm(info, s->tst_seq_s2));
         case TREE_STM_JUMP:
             return reorder_stm(
-                    temp_state, s->tst_jump_dst, bsp_func(rebuild_jump, s));
+                    info, s->tst_jump_dst, bsp_func(rebuild_jump, s));
         case TREE_STM_CJUMP:
         {
             tree_exp_t* el = tree_exp_append(
                     s->tst_cjump_lhs, s->tst_cjump_rhs);
             return reorder_stm(
-                    temp_state, el, bsp_func(rebuild_cjump, s));
+                    info, el, bsp_func(rebuild_cjump, s));
         }
         case TREE_STM_MOVE:
         {
@@ -331,12 +418,12 @@ static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s)
                     var e = s->tst_move_exp->te_func;
                     var el = s->tst_move_exp->te_args;
                     return reorder_stm(
-                            temp_state,
+                            info,
                             tree_exp_append(e, el),
                             bsp_func(rebuild_move_temp_call, &cl));
                 }
                 return reorder_stm(
-                        temp_state,
+                        info,
                         s->tst_move_exp,
                         bsp_func(rebuild_move_temp, s->tst_move_dst));
             }
@@ -344,7 +431,7 @@ static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s)
                 var e = s->tst_move_dst->te_mem_addr;
                 var b = s->tst_move_exp;
                 return reorder_stm(
-                        temp_state,
+                        info,
                         tree_exp_append(e, b),
                         bsp_func(rebuild_move_mem, s->tst_move_dst));
             }
@@ -353,10 +440,10 @@ static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s)
                         s->tst_move_dst->te_eseq_stm,
                         tree_stm_move(
                             s->tst_move_dst->te_eseq_exp, s->tst_move_exp));
-                return do_stm(temp_state, as_seq);
+                return do_stm(info, as_seq);
             }
             // default case
-            return reorder_stm(temp_state, NULL, bsp_func(rebuild_stm_other, s));
+            return reorder_stm(info, NULL, bsp_func(rebuild_stm_other, s));
         }
         case TREE_STM_EXP:
         {
@@ -368,15 +455,15 @@ static tree_stm_t* do_stm(temp_state_t* temp_state, tree_stm_t* s)
                 var e = s->tst_exp->te_func;
                 var el = s->tst_exp->te_args;
                 return reorder_stm(
-                        temp_state,
+                        info,
                         tree_exp_append(e, el),
                         bsp_func(rebuild_exp_call, &cl));
             }
             var e = s->tst_exp;
-            return reorder_stm(temp_state, e, bsp_func(rebuild_exp, NULL));
+            return reorder_stm(info, e, bsp_func(rebuild_exp, NULL));
         }
         case TREE_STM_LABEL:
-            return reorder_stm(temp_state, NULL, bsp_func(rebuild_stm_other, s));
+            return reorder_stm(info, NULL, bsp_func(rebuild_stm_other, s));
     }
 }
 
@@ -399,9 +486,9 @@ static tree_stm_t* linear(tree_stm_t* head, tree_stm_t* tail)
  *   2. The parent of every CALL is an EXP(..) or a MOVE(TEMP t,..)
  */
 /* stm -> stm list */
-static tree_stm_t* linearise(temp_state_t* temp_state, tree_stm_t* s)
+static tree_stm_t* linearise(canon_info_t* info, tree_stm_t* s)
 {
-    return linear(do_stm(temp_state, s), NULL);
+    return linear(do_stm(info, s), NULL);
 }
 
 typedef struct basic_block_t basic_block_t;
@@ -871,13 +958,18 @@ static void verify_basic_blocks(basic_blocks_t blocks, const char* check)
 }
 
 sl_fragment_t* canonicalise_tree(
-        temp_state_t* temp_state, sl_fragment_t* fragments)
+        const target_t* target, temp_state_t* temp_state, sl_fragment_t* fragments)
 {
+    canon_info_t info = {
+        .temp_state = temp_state,
+        .target = target,
+    };
+
     for (var frag = fragments; frag; frag = frag->fr_list) {
         switch (frag->fr_tag) {
             case FR_CODE:
             {
-                frag->fr_body = linearise(temp_state, frag->fr_body);
+                frag->fr_body = linearise(&info, frag->fr_body);
                 verify_statements(frag->fr_body, "post-linearise");
 
                 basic_blocks_t blocks =

@@ -7,7 +7,6 @@
 #include <stdbool.h> // bool
 #include "target.h"
 #include "temp.h"
-#include "target.h"
 #include "tree.h"
 #include "interfaces/table.h"
 #include "assem.h"

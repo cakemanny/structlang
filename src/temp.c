@@ -3,6 +3,8 @@
 #include <stdio.h> // snprintf
 #include <assert.h>
 
+static const int start_temp = 100;
+
 struct temp_state {
     int next_temp;
     int next_label;
@@ -11,7 +13,7 @@ struct temp_state {
 temp_state_t* temp_state_new()
 {
     temp_state_t* ts = xmalloc(sizeof *ts);
-    ts->next_temp = 100;
+    ts->next_temp = start_temp;
     ts->next_label = 0;
     return ts;
 }
@@ -34,6 +36,11 @@ temp_t temp_newtemp(temp_state_t* ts, unsigned size, temp_ptr_disposition_t ptr_
         .temp_ptr_dispo = ptr_dispo,
     };
     return result;
+}
+
+bool temp_is_machine(temp_t t)
+{
+    return t.temp_id < start_temp;
 }
 
 sl_sym_t temp_newlabel(temp_state_t* temp)
