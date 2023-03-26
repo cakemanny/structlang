@@ -574,7 +574,8 @@ static translate_exp_t* translate_expr_new(
                 tree_exp_name("sl_alloc_des"),
                 arg_exp,
                 ac_word_size,
-                translate_type(info->program, expr->ex_type)
+                translate_type(info->program, expr->ex_type),
+                ac_calculate_ptr_maps(frame, expr->ex_new_defd_vars)
             )
     );
 
@@ -639,7 +640,8 @@ static translate_exp_t* translate_expr_call(
         tree_exp_name(expr->ex_fn_name),
         translated_args,
         size_of_type(info->program, expr->ex_type),
-        translate_type(info->program, expr->ex_type)
+        translate_type(info->program, expr->ex_type),
+        ac_calculate_ptr_maps(frame, expr->ex_fn_defd_vars)
     );
     return translate_ex(result);
 }

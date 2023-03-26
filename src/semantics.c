@@ -161,6 +161,41 @@ bool sem_is_lvalue(const sl_expr_t* expr)
     }
 }
 
+
+static void defined_vars_helper(const void* key, void** value, void* cl)
+{
+    scope_entry_t** entry = (scope_entry_t**)value;
+    int** pvar_array = cl;
+    **pvar_array = (*entry)->sce_var_id;
+    *pvar_array += 1;
+}
+
+/*
+ * In order for the garbage collector not to reference uninitialised stack
+ * memory, we attach an array of in-scope variable ids to each function
+ * call and allocation.
+ */
+static int* defined_vars(sem_info_t* info)
+{
+    int total_vars = 0;
+
+    // we test for scope->sc_parent instead of scope, because we
+    // don't care about the root scope, where functions are defined
+    for (scope_t* scope = info->si_current_scope;
+            scope->sc_parent; scope = scope->sc_parent) {
+        total_vars += Table_length(scope->sc_bindings);
+    }
+
+    int* const result = xmalloc((1 + total_vars) * sizeof *result);
+    int* it = result;
+
+    for (scope_t* scope = info->si_current_scope;
+            scope->sc_parent; scope = scope->sc_parent) {
+        Table_map(scope->sc_bindings, defined_vars_helper, &it);
+    }
+    return result;
+}
+
 static int verify_expr(sem_info_t* info, sl_expr_t* expr);
 
 static int verify_expr_binop_operands(sem_info_t* info, sl_expr_t* expr,
@@ -339,6 +374,10 @@ static int verify_expr_call(sem_info_t* info, sl_expr_t* expr)
             result -= 1;
         }
     }
+
+    if (result >= 0) {
+        expr->ex_fn_defd_vars = defined_vars(info);
+    }
     return result;
 }
 
@@ -387,6 +426,10 @@ static int verify_expr_new(sem_info_t* info, sl_expr_t* expr)
                     i, expr->ex_new_ctor, arg->ex_type, param->dl_type);
             result -= 1;
         }
+    }
+
+    if (result >= 0) {
+        expr->ex_new_defd_vars = defined_vars(info);
     }
     return result;
 }

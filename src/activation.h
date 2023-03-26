@@ -17,8 +17,6 @@ typedef struct ac_frame {
     sl_sym_t acf_name; // function name
     int acf_last_local_offset;
     int acf_next_arg_offset;
-    uint64_t *acf_locals_ptr_bitset;
-    uint64_t *acf_args_ptr_bitset;
     int acf_next_arg_reg; // temp
     size_t acf_outgoing_arg_bytes;
     tree_stm_t* acf_arg_moves;
@@ -91,6 +89,18 @@ size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);
  */
 char* ac_record_descriptor_for_type(const sl_decl_t* program, sl_type_t* type);
 
+
+typedef struct ac_frame_map_t {
+    int acfm_num_arg_words;
+    int acfm_num_local_words;
+    uint64_t* acfm_args;
+    uint64_t* acfm_locals;
+} ac_frame_map_t;
+
+/*
+ *
+ */
+ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars);
 
 extern const size_t ac_word_size;
 

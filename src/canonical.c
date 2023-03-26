@@ -265,7 +265,7 @@ static tree_exp_t* rebuild_call(tree_exp_t* el, void* cl)
     // unlist the func
     func->te_list = NULL;
     tree_exp_t* e = cl;
-    return tree_exp_call(func, args, e->te_size, e->te_type);
+    return tree_exp_call(func, args, e->te_size, e->te_type, e->te_ptr_map);
 }
 
 static tree_exp_t* rebuild_exp_other(tree_exp_t* _el, void* cl)
@@ -338,13 +338,15 @@ static tree_stm_t* rebuild_move_temp_call(tree_exp_t* el, void* cl)
         tree_exp_t* temp;
         size_t call_size;
         tree_typ_t* result_type;
+        void* ptr_map;
     } *cl_ = cl;
 
     var e = el;
     el = el->te_list;
     e->te_list = NULL;
     return tree_stm_move(
-            cl_->temp, tree_exp_call(e, el, cl_->call_size, cl_->result_type));
+            cl_->temp, tree_exp_call(e, el, cl_->call_size, cl_->result_type,
+                cl_->ptr_map));
 }
 
 static tree_stm_t* rebuild_move_temp(tree_exp_t* el, void* cl)
@@ -367,12 +369,15 @@ static tree_stm_t* rebuild_exp_call(tree_exp_t* el, void* cl)
     struct {
         size_t call_size;
         tree_typ_t* result_type;
+        void* ptr_map;
     } *cl_ = cl;
 
     var e = el;
     el = el->te_list;
     e->te_list = NULL;
-    return tree_stm_exp(tree_exp_call(e, el, cl_->call_size, cl_->result_type));
+    return tree_stm_exp(
+            tree_exp_call(e, el, cl_->call_size, cl_->result_type,
+                cl_->ptr_map));
 }
 
 static tree_stm_t* rebuild_exp(tree_exp_t* el, void* _cl)
@@ -410,10 +415,12 @@ static tree_stm_t* do_stm(canon_info_t* info, tree_stm_t* s)
                         tree_exp_t* temp;
                         size_t call_size;
                         tree_typ_t* result_type;
+                        void* ptr_map;
                     } cl = {
                         .temp = s->tst_move_dst,
                         .call_size = s->tst_move_exp->te_size,
-                        .result_type = s->tst_move_exp->te_type
+                        .result_type = s->tst_move_exp->te_type,
+                        .ptr_map = s->tst_move_exp->te_ptr_map
                     };
                     var e = s->tst_move_exp->te_func;
                     var el = s->tst_move_exp->te_args;
@@ -451,7 +458,12 @@ static tree_stm_t* do_stm(canon_info_t* info, tree_stm_t* s)
                 struct {
                     size_t _0;
                     tree_typ_t* _1;
-                } cl = {s->tst_exp->te_size, s->tst_exp->te_type};
+                    void* _2;
+                } cl = {
+                    s->tst_exp->te_size,
+                    s->tst_exp->te_type,
+                    s->tst_exp->te_ptr_map,
+                };
                 var e = s->tst_exp->te_func;
                 var el = s->tst_exp->te_args;
                 return reorder_stm(

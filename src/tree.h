@@ -85,6 +85,7 @@ struct tree_exp_t {
         struct {
             tree_exp_t* te_func;
             tree_exp_t* te_args; // list
+            void* te_ptr_map;
         }; // CALL
         struct {
             tree_stm_t* te_eseq_stm;
@@ -153,7 +154,7 @@ tree_exp_t* tree_exp_binop(tree_binop_t op, tree_exp_t* lhs, tree_exp_t* rhs);
 /* the contents of size bytes of memory starting at address addr */
 tree_exp_t* tree_exp_mem(tree_exp_t* addr, size_t size, tree_typ_t* type);
 /* evaluate func, then args (left-to-right), then apply func to args */
-tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args, size_t, tree_typ_t*);
+tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args, size_t, tree_typ_t*, void*);
 /* eval s for side-effects then e for a result */
 tree_exp_t* tree_exp_eseq(tree_stm_t* s, tree_exp_t* e);
 

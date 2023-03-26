@@ -434,6 +434,13 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 assert(calldefs);
                 emit(state, assm_oper(
                             s, calldefs, munch_args(state, 0, args), NULL));
+
+                // Here we will generate a label and pass it to
+                // a function that generates a stack map fragment
+
+                // I guess we can find this instruction again by looking
+                // for the label and then looking one instruction before.
+
             } else {
                 tree_printf(stderr, ">>> %E\n", exp);
                 assert(!"TODO: TREE_EXP_CALL");

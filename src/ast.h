@@ -87,6 +87,7 @@ struct sl_expr_t {
         struct {
             sl_sym_t _ref;
             sl_expr_t* _args;
+            int* _defd_vars;
         } _call;
 
         struct {
@@ -111,31 +112,33 @@ struct sl_expr_t {
     sl_expr_t* ex_link; // All allocated sl_expr_t nodes
 };
 
-#define ex_value        ex_u._const._value  // SL_EXPR_INT, SL_EXPR_BOOL
-#define ex_op           ex_u._binop._op     // SL_EXPR_BINOP
-#define ex_left         ex_u._binop._left   // SL_EXPR_BINOP
-#define ex_right        ex_u._binop._right  // SL_EXPR_BINOP
-#define ex_name         ex_u._let._name     // SL_EXPR_LET
-#define ex_type_ann     ex_u._let._type     // SL_EXPR_LET
-#define ex_init         ex_u._let._init     // SL_EXPR_LET
-#define ex_let_id       ex_u._let._id       // SL_EXPR_LET
-#define ex_field_label  ex_u._let._name     // SL_EXPR_FIELD // TODO
-#define ex_field_init   ex_u._let._init     // SL_EXPR_FIELD
-#define ex_fn_name      ex_u._call._ref     // SL_EXPR_CALL
-#define ex_fn_args      ex_u._call._args    // SL_EXPR_CALL
-#define ex_new_ctor     ex_u._call._ref     // SL_EXPR_NEW
-#define ex_new_args     ex_u._call._args    // SL_EXPR_NEW
-#define ex_var          ex_u._var._ref      // SL_EXPR_VAR
-#define ex_var_id       ex_u._var._id       // SL_EXPR_VAR
-#define ex_ret_arg      ex_u._binop._left   // SL_EXPR_RETURN
-#define ex_loop_body    ex_u._binop._left   // SL_EXPR_LOOP
-#define ex_deref_arg    ex_u._binop._left   // SL_EXPR_DEREF
-#define ex_addrof_arg   ex_u._binop._left   // SL_EXPR_ADDROF
-#define ex_composite    ex_u._member._struct // SL_EXPR_MEMBER
-#define ex_member       ex_u._member._member // SL_EXPR_MEMBER
-#define ex_if_cond      ex_u._if._cond      // SL_EXPR_IF
-#define ex_if_cons      ex_u._if._cons      // SL_EXPR_IF
-#define ex_if_alt       ex_u._if._alt       // SL_EXPR_IF
+#define ex_value            ex_u._const._value  // SL_EXPR_INT, SL_EXPR_BOOL
+#define ex_op               ex_u._binop._op     // SL_EXPR_BINOP
+#define ex_left             ex_u._binop._left   // SL_EXPR_BINOP
+#define ex_right            ex_u._binop._right  // SL_EXPR_BINOP
+#define ex_name             ex_u._let._name     // SL_EXPR_LET
+#define ex_type_ann         ex_u._let._type     // SL_EXPR_LET
+#define ex_init             ex_u._let._init     // SL_EXPR_LET
+#define ex_let_id           ex_u._let._id       // SL_EXPR_LET
+#define ex_field_label      ex_u._let._name     // SL_EXPR_FIELD // TODO
+#define ex_field_init       ex_u._let._init     // SL_EXPR_FIELD
+#define ex_fn_name          ex_u._call._ref     // SL_EXPR_CALL
+#define ex_fn_args          ex_u._call._args    // SL_EXPR_CALL
+#define ex_fn_defd_vars     ex_u._call._defd_vars    // SL_EXPR_CALL
+#define ex_new_ctor         ex_u._call._ref     // SL_EXPR_NEW
+#define ex_new_args         ex_u._call._args    // SL_EXPR_NEW
+#define ex_new_defd_vars    ex_u._call._defd_vars    // SL_EXPR_NEW
+#define ex_var              ex_u._var._ref      // SL_EXPR_VAR
+#define ex_var_id           ex_u._var._id       // SL_EXPR_VAR
+#define ex_ret_arg          ex_u._binop._left   // SL_EXPR_RETURN
+#define ex_loop_body        ex_u._binop._left   // SL_EXPR_LOOP
+#define ex_deref_arg        ex_u._binop._left   // SL_EXPR_DEREF
+#define ex_addrof_arg       ex_u._binop._left   // SL_EXPR_ADDROF
+#define ex_composite        ex_u._member._struct // SL_EXPR_MEMBER
+#define ex_member           ex_u._member._member // SL_EXPR_MEMBER
+#define ex_if_cond          ex_u._if._cond      // SL_EXPR_IF
+#define ex_if_cons          ex_u._if._cons      // SL_EXPR_IF
+#define ex_if_alt           ex_u._if._alt       // SL_EXPR_IF
 
 // AST Node Constructors
 

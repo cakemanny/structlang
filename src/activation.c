@@ -85,14 +85,6 @@ void ac_frame_free(ac_frame_t** pframe)
         }
         free(v);
     }
-    if (frame->acf_locals_ptr_bitset) {
-        free(frame->acf_locals_ptr_bitset);
-        frame->acf_locals_ptr_bitset = NULL;
-    }
-    if (frame->acf_args_ptr_bitset) {
-        free(frame->acf_args_ptr_bitset);
-        frame->acf_args_ptr_bitset = NULL;
-    }
     free(frame);
     *pframe = NULL;
 }
@@ -523,62 +515,57 @@ static void calculate_activation_record_decl_func(
     }
 }
 
-void calculate_ptr_maps(ac_frame_t* frame) {
+
+static bool in_defined_vars(int needle, int* defined_vars)
+{
+    for (int* it = defined_vars; *it > 0; it++) {
+        if (needle == *it) {
+            return true;
+        }
+    }
+    return false;
+}
+
+ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
     // Now, scan through the frame vars and calculate a bitset showing where
     // the pointers in the frame are
 
-    int frame_words = ac_frame_words(frame);
+    ac_frame_map_t* frame_map = xmalloc(sizeof *frame_map);
 
-    if (ac_debug) {
-        fprintf(stderr, "frame_words = %d\n", frame_words);
-    }
-    frame->acf_locals_ptr_bitset = xmalloc(
-            BitsetLen(frame_words) * sizeof *frame->acf_locals_ptr_bitset);
-    uint64_t* const local_bs = frame->acf_locals_ptr_bitset;
-    if (ac_debug) {
-        fprintf(stderr, "local_bs = %p\n", local_bs);
-    }
+    int frame_words = frame_map->acfm_num_local_words = ac_frame_words(frame);
+    frame_map->acfm_num_local_words = frame_words;
+    frame_map->acfm_locals = xmalloc(
+            BitsetLen(frame_words) * sizeof *frame_map->acfm_locals);
 
     int args_words = num_words(frame->acf_next_arg_offset);
-    if (ac_debug) {
-        fprintf(stderr, "args_words = %d\n", args_words);
-    }
-    frame->acf_args_ptr_bitset = xmalloc(
-            BitsetLen(args_words) * sizeof *frame->acf_args_ptr_bitset);
-    uint64_t* const arg_bs = frame->acf_args_ptr_bitset;
-    if (ac_debug) {
-        fprintf(stderr, "args_bs = %p\n", arg_bs);
-    }
+    frame_map->acfm_num_arg_words = args_words;
+
+    frame_map->acfm_args = xmalloc(
+            BitsetLen(args_words) * sizeof *frame_map->acfm_args);
 
 
     for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
-        if (ac_debug) {
-            fprintf(stderr, "setting frame ptr map from var %s\n", v->acf_varname);
-            fprintf(stderr, "v->acf_size = %zu\n", v->acf_size);
-            fprintf(stderr, "v->acf_alignment = %zu\n", v->acf_alignment);
-            fprintf(stderr, "v->acf_ptr_map = %p\n", v->acf_ptr_map);
-        }
-        if (v->acf_tag == ACF_ACCESS_FRAME) {
-            // if, is ptr type
-            if (v->acf_alignment >= target->word_size) {
-                for (int i = 0; i < num_words(v->acf_size); i++) {
-                    if (ac_debug) { fprintf(stderr, "i = %d\n", i); }
-                    if (IsBitSet(v->acf_ptr_map, i)) {
-                        if (v->acf_offset < 0) {
-                            if (ac_debug) {
-                                fprintf(stderr, "frame_words = %d\n", frame_words);
-                                fprintf(stderr, "num_words(v->acf_offset) = %zu\n", num_words(-v->acf_offset));
-                            }
-                            SetBit(local_bs,
-                                   frame_words + num_words(-v->acf_offset));
-                        } else {
-                            SetBit(arg_bs, num_words(v->acf_offset) + i);
-                        }
+        if (v->acf_tag == ACF_ACCESS_FRAME
+                // if, is ptr type
+                && v->acf_alignment >= target->word_size
+                // skip if the local is not in scope
+                && in_defined_vars(v->acf_var_id, defined_vars)
+        ) {
+            assert(num_words(v->acf_size) <= 1 && "code below is broken");
+
+            for (int i = 0; i < num_words(v->acf_size); i++) {
+                if (IsBitSet(v->acf_ptr_map, i)) {
+                    if (v->acf_offset < 0) {
+                        SetBit(frame_map->acfm_locals,
+                                frame_words + num_words(-v->acf_offset) + i);
+                    } else {
+                        SetBit(frame_map->acfm_args, num_words(v->acf_offset) + i);
                     }
                 }
             }
         }
     }
+    return frame_map;
 }
 
 ac_frame_t* calculate_activation_records(

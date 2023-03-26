@@ -137,7 +137,8 @@ exp tree_exp_mem(exp addr, size_t size, tree_typ_t* type)
     return e;
 }
 
-exp tree_exp_call(exp func, exp args, size_t size, tree_typ_t* type)
+exp tree_exp_call(exp func, exp args, size_t size, tree_typ_t* type,
+        void* ptr_map)
 {
     assert(size);
     exp e = tree_exp_new(TREE_EXP_CALL);
@@ -145,6 +146,7 @@ exp tree_exp_call(exp func, exp args, size_t size, tree_typ_t* type)
     e->te_args = args;
     e->te_size = size;
     e->te_type = type;
+    e->te_ptr_map = ptr_map;
     return e;
 }
 
