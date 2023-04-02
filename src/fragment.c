@@ -29,6 +29,18 @@ sl_fragment_t* sl_string_fragment(sl_sym_t label, const char* string)
     return x;
 }
 
+sl_fragment_t* sl_frame_map_fragment(ac_frame_map_t* map, sl_sym_t ret_label)
+{
+    assert(map);
+    assert(ret_label);
+    sl_fragment_t* x = xmalloc(sizeof *x);
+    x->fr_tag = FR_FRAME_MAP;
+    x->fr_map = map;
+    x->fr_ret_label = ret_label;
+    x->fr_list = NULL;
+    return x;
+}
+
 sl_fragment_t* fr_append(sl_fragment_t* hd, sl_fragment_t* to_append)
 {
     if (!hd)

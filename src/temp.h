@@ -34,6 +34,7 @@ bool temp_is_machine(temp_t);
 
 sl_sym_t temp_newlabel(temp_state_t* ts);
 sl_sym_t temp_namedlabel(temp_state_t* ts, const char* name);
+sl_sym_t temp_prefixedlabel(temp_state_t* ts, const char* name);
 
 temp_list_t* temp_list(temp_t temp);
 temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail);

@@ -993,6 +993,7 @@ sl_fragment_t* canonicalise_tree(
                 break;
             }
             case FR_STRING:
+            case FR_FRAME_MAP:
                 continue;
         }
     }

@@ -249,7 +249,7 @@ int main(int argc, char* argv[])
             }
 
             assm_instr_t* instrs =
-                target->tgt_backend->codegen(temp_state, frag->fr_frame, s);
+                target->tgt_backend->codegen(temp_state, frag, s);
             if (stop_after_instruction_selection) {
                 for (var i = instrs; i; i = i->ai_list) {
                     char buf[128];

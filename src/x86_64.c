@@ -829,7 +829,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
 }
 
 assm_instr_t* x86_64_codegen(
-        temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* stm)
+        temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm)
 {
     if (!calldefs) {
         init_calldefs();
@@ -838,7 +838,7 @@ assm_instr_t* x86_64_codegen(
     codegen_state_t codegen_state = {
         .ilist = &result,
         .temp_state = temp_state,
-        .frame = frame,
+        .frame = fragment->fr_frame,
     };
     munch_stm(codegen_state, stm);
     return assm_list_reverse(result);
@@ -978,6 +978,10 @@ emit_data_segment(FILE* out, const sl_fragment_t* fragments)
                 fmt_snprint_escaped(buf, 512, frag->fr_string);
                 fprintf(out, "	.asciz	%s\n", buf);
                 // TODO output .size ?
+            }
+            case FR_FRAME_MAP:
+            {
+                assert(!"TODO: frame map");
             }
         }
     }

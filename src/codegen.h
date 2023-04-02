@@ -12,7 +12,7 @@ typedef struct codegen_t {
      * language. It returns a list of instructions in the target architecture
      */
     assm_instr_t* /* list */
-    (*codegen)(temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* stm);
+    (*codegen)(temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm);
 
     /*
      * This sets our special registers e.g. the stack pointer and the callee-save

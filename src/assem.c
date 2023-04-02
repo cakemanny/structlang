@@ -69,7 +69,16 @@ void assm_free_list(assm_instr_t** pinstr)
     }
 }
 
-const char* register_for_size(const char* regname, size_t size);
+static const char*
+temp_dispo_str(temp_t t)
+{
+    switch (t.temp_ptr_dispo) {
+        case TEMP_DISP_PTR: return "*";
+        case TEMP_DISP_NOT_PTR: return "";
+        case TEMP_DISP_INHERIT: return "^";
+    }
+    return "!!!!!!!";
+}
 
 // returns chars written not including null term
 static int format_temp(
@@ -87,7 +96,8 @@ static int format_temp(
         assert(n > 0); // rudimentary error check lol
         o += n;
     } else {
-        int n = snprintf(o, size - (o - out), "t%d.%d", t.temp_id, t.temp_size);
+        int n = snprintf(o, size - (o - out), "t%d.%d%s", t.temp_id,
+                t.temp_size, temp_dispo_str(t));
         assert(n > 0); // rudimentary error check lol
         o += n;
     }

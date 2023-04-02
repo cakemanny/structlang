@@ -43,17 +43,27 @@ bool temp_is_machine(temp_t t)
     return t.temp_id < start_temp;
 }
 
-sl_sym_t temp_newlabel(temp_state_t* temp)
+sl_sym_t temp_newlabel(temp_state_t* ts)
 {
-    int label_id = temp->next_label++;
+    int label_id = ts->next_label++;
     char str[45];
     snprintf(str, sizeof str, "L%d", label_id); // snprintf null terminates str
     return symbol(str); // symbol memcpys str onto the heap
 }
 
-sl_sym_t temp_namedlabel(temp_state_t* temp, const char* name)
+sl_sym_t temp_namedlabel(temp_state_t* ts, const char* name)
 {
     return symbol(name);
+}
+
+sl_sym_t temp_prefixedlabel(temp_state_t* ts, const char* prefix)
+{
+    int label_id = ts->next_label++;
+    char* str = NULL;
+    asprintf(&str, "L%s%d", prefix, label_id);
+    sl_sym_t result = symbol(str);
+    free(str);
+    return result;
 }
 
 temp_list_t* temp_list(temp_t temp)

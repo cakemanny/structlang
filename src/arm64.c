@@ -4,6 +4,7 @@
 #include <stdio.h> // asprintf
 #include <stdlib.h> // abort
 #include <string.h> // strlen
+#include <inttypes.h>
 #include "codegen.h"
 #include "fragment.h"
 #include "format.h" // fprint_str_escaped
@@ -29,6 +30,7 @@ typedef struct codegen_state_t {
     assm_instr_t** ilist;
     temp_state_t* temp_state;
     ac_frame_t* frame;
+    sl_fragment_t** ptr_map_fragments;
 } codegen_state_t;
 
 // pre-declarations
@@ -123,6 +125,13 @@ static void emit(codegen_state_t state, assm_instr_t* new_instr)
 {
     new_instr->ai_list = *state.ilist;
     *state.ilist = new_instr;
+}
+
+static void emit_ptr_map(codegen_state_t state, ac_frame_map_t* map, sl_sym_t ret_label)
+{
+    var new_frag = sl_frame_map_fragment(map, ret_label);
+    new_frag->fr_list = *state.ptr_map_fragments;
+    *state.ptr_map_fragments = new_frag;
 }
 
 static const char* suff_from_size(size_t size)
@@ -263,7 +272,7 @@ static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* e
             param_reg.temp_size = exp->te_size;
             var src = munch_exp(state, exp);
             char* s = NULL;
-            Asprintf(&s, "mov    `d0, `s0\n");
+            Asprintf(&s, "mov	`d0, `s0\n");
             emit(state, assm_move(s, param_reg, src));
 
             return temp_list_cons(
@@ -419,12 +428,6 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
         }
         case TREE_EXP_CALL:
         {
-            /*
-             * TODO: next for garbage collector
-             * insert label directly after the call instruction
-             * to use as a key for the stack map ...
-             */
-
             assert(exp->te_size <= 8 && "TODO larger sizes");
             var func = exp->te_func;
             var args = exp->te_args;
@@ -434,17 +437,27 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 assert(calldefs);
                 emit(state, assm_oper(
                             s, calldefs, munch_args(state, 0, args), NULL));
-
-                // Here we will generate a label and pass it to
-                // a function that generates a stack map fragment
-
-                // I guess we can find this instruction again by looking
-                // for the label and then looking one instruction before.
-
             } else {
                 tree_printf(stderr, ">>> %E\n", exp);
                 assert(!"TODO: TREE_EXP_CALL");
             }
+
+            /*
+             * Here we a insert label directly after the call instruction
+             * to use as a key for the stack map ...
+             * i.e. the label refers to the return address the for the
+             * function that is being called.
+             */
+
+            // I guess we can find this instruction again by looking
+            // for the label and then looking one instruction before.
+            sl_sym_t retaddr_label = temp_prefixedlabel(state.temp_state, "ret");
+            char* s = NULL;
+            Asprintf(&s, "%s:\n", retaddr_label);
+            emit(state, assm_label(s, retaddr_label));
+            emit_ptr_map(state, exp->te_ptr_map, retaddr_label);
+
+            // And the result of the call will be in the first result register
             temp_t r = state.frame->acf_target->tgt_ret0;
             r.temp_size = exp->te_size;
             assert(r.temp_size);
@@ -645,20 +658,31 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
 #undef Munch_stm
 }
 
-
+/*
+ * arm64_codegen selects instructions for a single statement in the tree IR
+ * language. It returns a list of instructions in the arm64 architecture
+ */
 assm_instr_t* /* list */
-arm64_codegen(temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* stm)
+arm64_codegen(temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm)
 {
     if (!calldefs) {
         init_calldefs();
     }
     assm_instr_t* result = NULL;
+    sl_fragment_t* ptr_map_fragments = NULL;
     codegen_state_t codegen_state = {
         .ilist = &result,
         .temp_state = temp_state,
-        .frame = frame,
+        .frame = fragment->fr_frame,
+        .ptr_map_fragments = &ptr_map_fragments,
     };
     munch_stm(codegen_state, stm);
+
+    /*
+     * insert the generated frame maps into the list of all fragments
+     */
+    fragment->fr_list = fr_append(ptr_map_fragments, fragment->fr_list);
+
     return assm_list_reverse(result);
 }
 
@@ -769,6 +793,58 @@ emit_data_segment(FILE* out, const sl_fragment_t* fragments)
                 char buf[512];
                 fmt_snprint_escaped(buf, 512, frag->fr_string);
                 fprintf(out, "	.asciz	%s\n", buf);
+                break;
+            }
+            case FR_FRAME_MAP:
+                continue;
+        }
+    }
+
+    fprintf(out, "\n");
+    fprintf(out, "\t.section	__DATA,__const\n");
+
+    int entry_num = 0;
+    for (var frag = fragments; frag; frag = frag->fr_list) {
+        switch (frag->fr_tag) {
+            case FR_CODE:
+                continue;
+            case FR_STRING:
+                continue;
+            case FR_FRAME_MAP:
+            {
+
+                fprintf(out, "	.p2align	3\n");
+                fprintf(out, "Lptrmap%d:\n", entry_num);
+
+                // The pointer to the previous frame map
+                if (entry_num == 0) {
+                    fprintf(out, "	.quad	0\n");
+                } else {
+                    fprintf(out, "	.quad	Lptrmap%d\n", entry_num - 1);
+                }
+
+                fprintf(out, "	.quad	%s	; return address - the key\n",
+                        frag->fr_ret_label);
+                // TODO: work out the callee-save bitmap
+                fprintf(out, "	.long	0	; callee-save bitmap\n");
+                // This number actually includes the saved FP and RA...
+                fprintf(out, "	.short	%d	; number of stack args\n",
+                        frag->fr_map->acfm_num_arg_words);
+                fprintf(out, "	.short	%d	; length of locals space\n",
+                        frag->fr_map->acfm_num_local_words);
+
+                int arg_quads = (frag->fr_map->acfm_num_arg_words + 63) / 64;
+                for (int i = 0; i < arg_quads; i++) {
+                    fprintf(out, "	.quad	%"PRIu64"	; arg bitmap\n",
+                            frag->fr_map->acfm_args[i]);
+                }
+                int locals_quads = (frag->fr_map->acfm_num_local_words + 63) / 64;
+                for (int i = 0; i < locals_quads; i++) {
+                    fprintf(out, "	.quad	%"PRIu64"	; locals bitmap\n",
+                            frag->fr_map->acfm_locals[i]);
+                }
+
+                entry_num = entry_num + 1;
                 break;
             }
         }
