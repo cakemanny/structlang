@@ -830,6 +830,9 @@ emit_data_segment(FILE* out, const sl_fragment_t* fragments)
                 // This number actually includes the saved FP and RA...
                 fprintf(out, "	.short	%d	; number of stack args\n",
                         frag->fr_map->acfm_num_arg_words);
+
+                // This will need to be adjusted because it doesn't
+                // consider spilled registers.
                 fprintf(out, "	.short	%d	; length of locals space\n",
                         frag->fr_map->acfm_num_local_words);
 
@@ -848,6 +851,14 @@ emit_data_segment(FILE* out, const sl_fragment_t* fragments)
                 break;
             }
         }
+    }
+
+    if (entry_num > 0) {
+        // point to the final entry
+        fprintf(out, "\t.globl	_sl_rt_frame_maps\n");
+        fprintf(out, "\t.p2align	3\n");
+        fprintf(out, "_sl_rt_frame_maps:\n");
+        fprintf(out, "\t.quad	Lptrmap%d\n", entry_num - 1);
     }
 }
 

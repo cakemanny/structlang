@@ -51,6 +51,11 @@ struct frame_map_t {
 
 
 /*
+ * This symbol is emitted by in the structlang compilation unit
+ */
+extern const frame_map_t* sl_rt_frame_maps;
+
+/*
  * We will rewrite this to be the allocator for our garbage collector
  * in due course.
  */
