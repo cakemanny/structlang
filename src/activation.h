@@ -9,7 +9,6 @@
 #include "temp.h"
 #include "tree.h"
 #include "interfaces/table.h"
-#include "assem.h"
 
 
 typedef struct ac_frame {

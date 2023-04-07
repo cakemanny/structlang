@@ -1157,13 +1157,117 @@ remove_dead_moves(
 }
 
 
+static const char*
+temp_dispo_str(temp_t t)
+{
+    switch (t.temp_ptr_dispo) {
+        case TEMP_DISP_PTR: return "*";
+        case TEMP_DISP_NOT_PTR: return "";
+        case TEMP_DISP_INHERIT: return "^";
+    }
+    return "!!!!!!!";
+}
+
+static bool
+is_call_instr(assm_instr_t* instr)
+{
+    /*
+     * We abuse the knowledge that we have put Lret labels for the
+     * instruction after each call.
+     */
+    return instr->ai_list
+        && instr->ai_list->ai_tag == ASSM_INSTR_LABEL
+        && strstr(instr->ai_list->ai_label, "Lret");
+}
+
+/*
+ * Here cs_idx is the index of the register when they are put
+ * in an array, in order. See callee_saved in runtime/runtime.c
+ */
+static void
+set_cs_bitmap(
+        uint32_t* cs_bitmap, int cs_idx, temp_ptr_disposition_t dispo)
+{
+    uint32_t value = -1;
+    switch (dispo) {
+        case TEMP_DISP_NOT_PTR: value = 0b00; break;
+        case TEMP_DISP_PTR:     value = 0b01; break;
+        case TEMP_DISP_INHERIT: value = 0b10; break;
+    }
+    assert(value != -1);
+
+    // a mask of 1s except where value will go
+    uint32_t mask = 0xFFFFFFFFUL ^ (0b11 << (2*cs_idx));
+    *cs_bitmap = (*cs_bitmap & mask) | (value << (2*cs_idx));
+}
+
+/*
+ * Work out the type of the data contained in the callee saved registers
+ * across call instructions to help a garbage collector find roots.
+ */
+static void
+compute_cs_ptr_dispo_at_call_sites(
+        ac_frame_t* frame,
+        assm_instr_t* instrs,
+        lv_flowgraph_t* flowgraph,
+        struct igraph_and_table igraph_and_table,
+        Table_T allocation, // temp_t* -> register (char*)
+        Table_T label_to_cs_bitmap // sl_sym_t -> uint32_t
+        )
+{
+    const target_t* target = frame->acf_target;
+    const int csn = target->callee_saves.length;
+    const char* callee_save_names[target->callee_saves.length];
+    for (int i = 0, n = target->callee_saves.length; i < n; i++) {
+        callee_save_names[i] =
+            target->register_names[target->callee_saves.elems[i].temp_id];
+    }
+
+    var nodes = lv_nodes(flowgraph->lvfg_control);
+    var nd = nodes;
+    for (var instr = instrs; instr; instr = instr->ai_list, nd = nd->nl_list) {
+        if (is_call_instr(instr)) {
+            temp_list_t* live_outs =
+                Table_get(igraph_and_table.live_outs, nd->nl_node);
+
+            // Any non-live callee saved will get a value of 0b00.
+            uint32_t cs_bitmap = 0;
+
+            for (var tl = live_outs; tl; tl = tl->tmp_list) {
+                const char* reg = Table_get(allocation, &(tl->tmp_temp));
+                var t = tl->tmp_temp;
+                for (int i = 0; i < csn; i++) {
+                    // Safe comparison because these come from the same place.
+                    if (reg == callee_save_names[i]) {
+                        if (debug) {
+                            fprintf(stderr,
+                                    "%s (t%d%s) is live across call %s\n",
+                                    reg, t.temp_id, temp_dispo_str(t),
+                                    instr->ai_list->ai_label);
+                        }
+                        set_cs_bitmap(&cs_bitmap, i, t.temp_ptr_dispo);
+                    }
+                }
+            }
+
+            // Table_T only accepts non-zero pointers as values.
+            union { uint32_t i32; void* v; } table_value = {.i32=cs_bitmap};
+            Table_put(label_to_cs_bitmap, instr->ai_list->ai_label,
+                    table_value.v);
+        }
+    }
+    lv_node_list_free(nodes);
+}
+
+
 struct instr_list_and_allocation
 ra_alloc(
         FILE* out,
         temp_state_t* temp_state,
         assm_instr_t* body_instrs,
         ac_frame_t* frame,
-        bool print_interference_and_return)
+        bool print_interference_and_return,
+        Table_T label_to_cs_bitmap)
 {
     // here: liveness analysis
     var flow_and_nodes = instrs2graph(body_instrs);
@@ -1207,8 +1311,16 @@ ra_alloc(
         }
 
         lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
-        return ra_alloc(out, temp_state, body_instrs, frame, false);
+        return ra_alloc(out, temp_state, body_instrs, frame, false,
+                label_to_cs_bitmap);
     }
+
+    /* TODO NEXT: Here call a function that goes through the flowgraph
+     * nodes together with the operations, (see the bottom of instrs2graph)
+     * and ...
+     */
+    compute_cs_ptr_dispo_at_call_sites(frame, body_instrs, flow,
+            igraph_and_table, color_result.racr_allocation, label_to_cs_bitmap);
 
     remove_dead_moves(color_result.racr_allocation, &body_instrs);
 

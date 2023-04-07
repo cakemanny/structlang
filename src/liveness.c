@@ -229,13 +229,8 @@ struct flowgraph_and_node_list instrs2graph(const assm_instr_t* instrs)
             for (int i = 0; instr->ai_oper_jump[i]; i++) {
                 var lbl = instr->ai_oper_jump[i];
                 var target_node = Table_get(label_to_node, lbl);
-                if (!target_node) {
-                    fprintf(stderr, "no node for label: %s\n", lbl);
-                } else {
-                    // FIXME: always run this assert (once we've fixed the bug)
-                    assert(target_node);
-                    lv_mk_edge(node, target_node);
-                }
+                assert(target_node);
+                lv_mk_edge(node, target_node);
             }
         }
     }

@@ -613,6 +613,14 @@ struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame)
         v->acf_offset--;
     v->acf_is_formal = false;
     // TODO: think about the ptr_map stuff ...
+    /*
+     * Idea: Track that it was a spill, and which temporary.
+     * After final allocation, track backwards through the program
+     * and work out either its type or the callee saved register it came
+     * from.  (If it came from a CS reg, then assume it inherits type from
+     *  the previous frame)
+     */
+
 
     frame->acf_last_local_offset = v->acf_offset;
     ac_frame_append_var(frame, v);

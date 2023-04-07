@@ -775,7 +775,8 @@ void emit_text_segment_header(FILE* out)
 
 
 static void
-emit_data_segment(FILE* out, const sl_fragment_t* fragments)
+emit_data_segment(
+        FILE* out, const sl_fragment_t* fragments, Table_T label_to_cs_bitmap)
 {
     fprintf(out, "\n");
     fprintf(out, "\t.section	__TEXT,__cstring,cstring_literals\n");
@@ -825,12 +826,19 @@ emit_data_segment(FILE* out, const sl_fragment_t* fragments)
 
                 fprintf(out, "	.quad	%s	; return address - the key\n",
                         frag->fr_ret_label);
-                // TODO: work out the callee-save bitmap
-                fprintf(out, "	.long	0	; callee-save bitmap\n");
+
+                union { uint32_t bm; void* v; } cs_bitmap = {};
+                static_assert(sizeof(cs_bitmap.v) >= sizeof(cs_bitmap.bm),
+                        "16-bit machine?");
+                cs_bitmap.v = Table_get(label_to_cs_bitmap, frag->fr_ret_label);
+                fprintf(out, "	.long	%"PRIu32"	; callee-save bitmap\n",
+                        cs_bitmap.bm);
+
                 // This number actually includes the saved FP and RA...
                 fprintf(out, "	.short	%d	; number of stack args\n",
                         frag->fr_map->acfm_num_arg_words);
 
+                // TODO NEXT:
                 // This will need to be adjusted because it doesn't
                 // consider spilled registers.
                 fprintf(out, "	.short	%d	; length of locals space\n",

@@ -55,20 +55,26 @@ struct frame_map_t {
  */
 extern const frame_map_t* sl_rt_frame_maps;
 
+#define NELEMS(A) ((sizeof A) / sizeof A[0])
+void print_cs_bitmaps()
+{
+    const frame_map_t* m = sl_rt_frame_maps;
+
+    int n = NELEMS(callee_saved);
+    for (; m ; m = m->prev) {
+        fprintf(stderr, "Frame descriptor for: %p\n", m->ret_addr);
+        for (int i = 0; i < n; i++) {
+            uint32_t cs_bitmap = m->cs_bitmap;
+            int value = (cs_bitmap >> (2 * i)) & 0b11;
+            fprintf(stderr, "%s: %d \n", callee_saved[i], value);
+        }
+    }
+}
+
 /*
  * We will rewrite this to be the allocator for our garbage collector
  * in due course.
  */
-void* sl_alloc(size_t size)
-{
-    void* result = calloc(1, size);
-    if (result == NULL) {
-        perror("out of memory");
-        abort();
-    }
-    return result;
-}
-
 void* sl_alloc_des(const char* descriptor)
 {
     size_t size = strlen(descriptor);

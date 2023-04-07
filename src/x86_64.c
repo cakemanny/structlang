@@ -958,7 +958,8 @@ emit_text_segment_header(FILE* out)
 void emit_str_escaped(FILE* out, const char* str);
 
 static void
-emit_data_segment(FILE* out, const sl_fragment_t* fragments)
+emit_data_segment(
+        FILE* out, const sl_fragment_t* fragments, Table_T label_to_cs_bitmap)
 {
     // No idea what this means, but it's what clang outputs
     fprintf(out, "\t.section	.rodata.str1.1,\"aMS\",@progbits,1\n");
