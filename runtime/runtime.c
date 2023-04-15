@@ -41,13 +41,23 @@ struct frame_map_t {
      * register when put in numerical order (see the callee_saved array)
      */
     uint32_t        cs_bitmap;
+
     uint16_t        num_arg_words;
     uint16_t        num_frame_words;
+
+    /*
+     * An array of 10 4-bit cs register indexes. N used for unused
+     * One for each offset after the frame_words
+     */
+    //uint8_t         spill_reg[5];
+    //uint8_t         _reserved0[3];
+
     /*
      * The arg bitmap followed directly by the frame bitmap.
      */
     uint64_t        bitmaps[0];
 };
+
 
 
 /*

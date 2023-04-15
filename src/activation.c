@@ -470,6 +470,7 @@ static void calculate_activation_record_decl_func(
         v->acf_ptr_map = xmalloc(
             BitsetLen(num_words(ret_type_size)) * sizeof *v->acf_ptr_map);
         ptr_map_for_type(program, ret_type, v->acf_ptr_map, 0);
+        v->acf_spilled.temp_id = -1;
 
         ac_frame_append_var(frame, v);
     }
@@ -488,6 +489,7 @@ static void calculate_activation_record_decl_func(
         v->acf_ptr_map = xmalloc(
             BitsetLen(num_words(size)) * sizeof *v->acf_ptr_map);
         ptr_map_for_type(program, type, v->acf_ptr_map, 0);
+        v->acf_spilled.temp_id = -1;
 
         if (size <= 8 && frame->acf_next_arg_reg < target->arg_registers.length) {
             // passed in register
@@ -516,6 +518,34 @@ static void calculate_activation_record_decl_func(
 }
 
 
+ac_frame_t* calculate_activation_records(
+        enum target_type target_tag, temp_state_t* temp_state, sl_decl_t* program)
+{
+    if (ac_debug) {
+        fprintf(stderr, "calculating activation records\n");
+    }
+
+    Table_T temp_map =
+        (target_tag == TARGET_X86_64) ? x86_64_temp_map()
+        : arm64_temp_map();
+
+    // !!
+    target =
+        (target_tag == TARGET_X86_64) ? &target_x86_64
+        : &target_arm64;
+
+    ac_frame_t* frame_list = NULL;
+    for (sl_decl_t* d = program; d; d = d->dl_list) {
+        if (d->dl_tag == SL_DECL_FUNC) {
+            ac_frame_t* f = ac_frame_new(d->dl_name, target, temp_map);
+            calculate_activation_record_decl_func(temp_state, program, f, d);
+            frame_list = ac_frame_append_frame(frame_list, f);
+        }
+    }
+    return frame_list;
+}
+
+
 static bool in_defined_vars(int needle, int* defined_vars)
 {
     for (int* it = defined_vars; *it > 0; it++) {
@@ -526,11 +556,16 @@ static bool in_defined_vars(int needle, int* defined_vars)
     return false;
 }
 
+/*
+ * defined_vars is an array of var_id s that are in scope at the call site
+ * (call or new)
+ */
 ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
     // Now, scan through the frame vars and calculate a bitset showing where
     // the pointers in the frame are
 
     ac_frame_map_t* frame_map = xmalloc(sizeof *frame_map);
+    frame_map->acfm_frame = frame;
 
     int frame_words = frame_map->acfm_num_local_words = ac_frame_words(frame);
     frame_map->acfm_num_local_words = frame_words;
@@ -568,37 +603,11 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
     return frame_map;
 }
 
-ac_frame_t* calculate_activation_records(
-        enum target_type target_tag, temp_state_t* temp_state, sl_decl_t* program)
-{
-    if (ac_debug) {
-        fprintf(stderr, "calculating activation records\n");
-    }
-
-    Table_T temp_map =
-        (target_tag == TARGET_X86_64) ? x86_64_temp_map()
-        : arm64_temp_map();
-
-    // !!
-    target =
-        (target_tag == TARGET_X86_64) ? &target_x86_64
-        : &target_arm64;
-
-    ac_frame_t* frame_list = NULL;
-    for (sl_decl_t* d = program; d; d = d->dl_list) {
-        if (d->dl_tag == SL_DECL_FUNC) {
-            ac_frame_t* f = ac_frame_new(d->dl_name, target, temp_map);
-            calculate_activation_record_decl_func(temp_state, program, f, d);
-            frame_list = ac_frame_append_frame(frame_list, f);
-        }
-    }
-    return frame_list;
-}
-
 /*
- * Creates some space in the frame to store a temporary
+ * Creates some space in the frame to store a temporary.
+ * Called during register allocation.
  */
-struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame)
+struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame, temp_t t)
 {
     var target = frame->acf_target;
     size_t size = target->word_size;
@@ -612,19 +621,25 @@ struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame)
     while ((v->acf_offset % v->acf_alignment) != 0)
         v->acf_offset--;
     v->acf_is_formal = false;
-    // TODO: think about the ptr_map stuff ...
+
     /*
      * Idea: Track that it was a spill, and which temporary.
-     * After final allocation, track backwards through the program
-     * and work out either its type or the callee saved register it came
-     * from.  (If it came from a CS reg, then assume it inherits type from
-     *  the previous frame)
+     * After final allocation, we will know which register is being spilled
      */
+    v->acf_spilled = t;
 
 
     frame->acf_last_local_offset = v->acf_offset;
     ac_frame_append_var(frame, v);
     return v;
+}
+
+/*
+ * TODO: next
+ */
+void ac_extend_frame_map_for_spills(ac_frame_map_t* frame_map)
+{
+
 }
 
 /*

@@ -1061,7 +1061,7 @@ spill_temp(
 
     var backend = frame->acf_target->tgt_backend;
 
-    struct ac_frame_var* new_frame_var = ac_spill_temporary(frame);
+    struct ac_frame_var* new_frame_var = ac_spill_temporary(frame, temp_to_spill);
     for (var pinstr = pbody_instrs; *pinstr; pinstr = &((*pinstr)->ai_list)) {
         var instr = *pinstr;
         switch (instr->ai_tag) {
@@ -1181,6 +1181,54 @@ is_call_instr(assm_instr_t* instr)
 }
 
 /*
+ * Work out the liveness of any temporary that is spilled, before it is
+ * spilled.
+ * This will be used as the liveness of frame slot where it is spilled to.
+ */
+static void
+record_spill_liveness(
+        assm_instr_t* instrs,
+        lv_flowgraph_t* flowgraph,
+        struct igraph_and_table igraph_and_table,
+        temp_list_t* about_to_spill,
+        Table_T label_to_spill_liveness // sl_sym_t -> temp_list_t*
+        )
+{
+
+    var nodes = lv_nodes(flowgraph->lvfg_control);
+    var nd = nodes;
+    for (var instr = instrs; instr; instr = instr->ai_list, nd = nd->nl_list) {
+        if (is_call_instr(instr)) {
+            temp_list_t* live_outs =
+                Table_get(igraph_and_table.live_outs, nd->nl_node);
+
+            temp_list_t* spill_live_outs =
+                Table_get(label_to_spill_liveness, instr->ai_list->ai_label);
+
+            temp_list_t* updated = spill_live_outs;
+
+            // If only we had written an efficient set implementation
+            for (var tl0 = live_outs; tl0; tl0 = tl0->tmp_list) {
+                if (temp_list_contains(updated, tl0->tmp_temp)) {
+                    continue;
+                }
+                for (var tl1 = about_to_spill; tl1; tl1 = tl1->tmp_list) {
+                    if (tl0->tmp_temp.temp_id == tl1->tmp_temp.temp_id) {
+
+                        updated = temp_list_cons(tl0->tmp_temp, updated);
+
+                    }
+                }
+            }
+
+            Table_put(label_to_spill_liveness, instr->ai_list->ai_label,
+                    updated);
+        }
+    }
+    lv_node_list_free(nodes);
+}
+
+/*
  * Here cs_idx is the index of the register when they are put
  * in an array, in order. See callee_saved in runtime/runtime.c
  */
@@ -1259,6 +1307,17 @@ compute_cs_ptr_dispo_at_call_sites(
     lv_node_list_free(nodes);
 }
 
+static void
+debug_print_instrs(assm_instr_t* body_instrs, ac_frame_t* frame)
+{
+    for (var i = body_instrs; i; i = i->ai_list) {
+        char buf[128];
+        assm_format(buf, 128, i, frame->acf_temp_map, frame->acf_target);
+        fprintf(stderr, "%s", buf);
+    }
+}
+
+
 
 struct instr_list_and_allocation
 ra_alloc(
@@ -1267,7 +1326,8 @@ ra_alloc(
         assm_instr_t* body_instrs,
         ac_frame_t* frame,
         bool print_interference_and_return,
-        Table_T label_to_cs_bitmap)
+        Table_T label_to_cs_bitmap,
+        Table_T label_to_spill_liveness)
 {
     // here: liveness analysis
     var flow_and_nodes = instrs2graph(body_instrs);
@@ -1290,12 +1350,11 @@ ra_alloc(
         if (debug) {fprintf(stderr, "spilling!\n");}
         if (debug) {
             fprintf(stderr, "# before rewrite:\n");
-            for (var i = body_instrs; i; i = i->ai_list) {
-                char buf[128];
-                assm_format(buf, 128, i, frame->acf_temp_map, frame->acf_target);
-                fprintf(out, "%s", buf);
-            }
+            debug_print_instrs(body_instrs, frame);
         }
+
+        record_spill_liveness(body_instrs, flow, igraph_and_table,
+                color_result.racr_spills, label_to_spill_liveness);
 
         for (temp_list_t* x = color_result.racr_spills; x; x = x->tmp_list) {
             spill_temp(temp_state, frame, &body_instrs, x->tmp_temp);
@@ -1303,21 +1362,16 @@ ra_alloc(
 
         if (debug) {
             fprintf(stderr, "# rewritten:\n");
-            for (var i = body_instrs; i; i = i->ai_list) {
-                char buf[128];
-                assm_format(buf, 128, i, frame->acf_temp_map, frame->acf_target);
-                fprintf(out, "%s", buf);
-            }
+            debug_print_instrs(body_instrs, frame);
         }
 
         lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
         return ra_alloc(out, temp_state, body_instrs, frame, false,
-                label_to_cs_bitmap);
+                label_to_cs_bitmap, label_to_spill_liveness);
     }
 
-    /* TODO NEXT: Here call a function that goes through the flowgraph
-     * nodes together with the operations, (see the bottom of instrs2graph)
-     * and ...
+    /* Must happen before removing the dead moves, so that flowgraph
+     * nodes line up with instructions.
      */
     compute_cs_ptr_dispo_at_call_sites(frame, body_instrs, flow,
             igraph_and_table, color_result.racr_allocation, label_to_cs_bitmap);

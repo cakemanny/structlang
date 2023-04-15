@@ -234,6 +234,7 @@ int main(int argc, char* argv[])
     }
 
     Table_T label_to_cs_bitmap = Table_new(0, NULL, NULL);
+    Table_T label_to_spill_liveness = Table_new(0, NULL, NULL);
     bool emitted_header = false;
 
     for (var frag = fragments; frag; frag = frag->fr_list) {
@@ -270,7 +271,8 @@ int main(int argc, char* argv[])
 
         var instrs_and_allocation =
             ra_alloc(out, temp_state, body_instrs, frag->fr_frame,
-                    stop_after_liveness_analysis, label_to_cs_bitmap);
+                    stop_after_liveness_analysis, label_to_cs_bitmap,
+                    label_to_spill_liveness);
         if (stop_after_liveness_analysis) {
             continue;
         }
@@ -295,8 +297,11 @@ int main(int argc, char* argv[])
     }
 
     if (emitted_header) {
+        // TODO: next: pass spill liveness data and extend frame map for
+        // spills
         target->tgt_backend->emit_data_segment(out, fragments, label_to_cs_bitmap);
     }
+    Table_free(&label_to_spill_liveness);
     Table_free(&label_to_cs_bitmap);
 
 

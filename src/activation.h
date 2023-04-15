@@ -42,6 +42,7 @@ typedef struct ac_frame {
         //bool acf_escapes; //?
         bool acf_is_formal; // i.e. function parameter
         uint64_t* acf_ptr_map; // bitset
+        temp_t acf_spilled;
 
         struct ac_frame_var* acf_list;
     } *ac_frame_vars;
@@ -94,6 +95,7 @@ typedef struct ac_frame_map_t {
     int acfm_num_local_words;
     uint64_t* acfm_args;
     uint64_t* acfm_locals;
+    ac_frame_t* acfm_frame;
 } ac_frame_map_t;
 
 /*
@@ -105,7 +107,7 @@ extern const size_t ac_word_size;
 
 extern bool ac_debug;
 
-struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame);
+struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame, temp_t t);
 
 /*
  * Ensures that at least required_bytes have been added to the
