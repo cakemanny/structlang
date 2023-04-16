@@ -428,6 +428,12 @@ decrement_degree(reg_alloc_info_t* info, lv_node_t* m)
 
         enable_moves_adj(info, m);
 
+        // hack to deal with combine not keeping things consistent
+        if ((node_list_contains(info->freeze_worklist, m) && is_move_related(info, m)) ||
+                (node_list_contains(info->simplify_worklist, m) && !is_move_related(info, m))) {
+            return;
+        }
+
         var m_cell = node_list_remove(&info->spill_worklist, m);
         if (is_move_related(info, m_cell->nl_node)) {
             node_list_prepend(&info->freeze_worklist, m_cell);
@@ -444,7 +450,7 @@ decrement_degree(reg_alloc_info_t* info, lv_node_t* m)
  */
 static void
 simplify(reg_alloc_info_t* info) {
-    // Remove node from simplifyWorklist
+    // Remove node from simplify_worklist
     // We take the first cell of the list and cons
     // it onto the selectStack instead of actually pulling out the node
     assert(info->simplify_worklist != NULL);
@@ -602,7 +608,7 @@ combine(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 }
 
 /*
- * coalesce processes the worklist of moves attempting to
+ * false processes the worklist of moves attempting to
  * work out if the temporaries involved can be coalesced (assigned the
  * same register)
  */
@@ -827,6 +833,63 @@ debug_print_degrees(reg_alloc_info_t* info, int count_nodes)
     fprintf(stderr, "]\n");
 }
 
+
+static void
+check_invariants(reg_alloc_info_t* info)
+{
+    // Degree invariant:
+    // u ∈ simplify_worklist ∪ freeze_worklist ∪ spill_worklist ⇒
+    //  degree(u) = |adj_list(u) ∩ (precolored ∪ simplify_worklist
+    //                              ∪ freeze_worklist ∪ spill_worklist)|
+
+    lv_node_list_t* worklists[] = {
+        info->simplify_worklist, info->freeze_worklist, info->spill_worklist
+    };
+    const int n = sizeof worklists / sizeof(void*);
+
+    for (int i = 0; i < n; i++) {
+        for (var u_cell = worklists[i]; u_cell; u_cell = u_cell->nl_list) {
+            var u = u_cell->nl_node;
+            var d = info->degree[u->lvn_idx];
+
+            int num_adj = 0;
+            adj_it_t it = {};
+            adj_it_init(&it, info, u);
+            for (var n = adj_it_next(&it); n; n = adj_it_next(&it)) {
+                num_adj += 1;
+            }
+            assert(d == num_adj);
+        }
+    }
+
+
+    // Simplify worklist invariant:
+    // u ∈ simplify_worklist ⇒
+    //  degree(u) < K ∧ move_list[u] ∩ (active_moves ∪ worklist_moves) = ø
+    for (var u_cell = info->simplify_worklist; u_cell; u_cell = u_cell->nl_list) {
+        var u = u_cell->nl_node;
+        assert(info->degree[u->lvn_idx] < info->K || !is_move_related(info, u));
+    }
+
+    // Freeze worklist invariant:
+    // u ∈ freeze_worklist ⇒
+    //  degree(u) < K ∧ move_list[u] ∩ (active_moves ∪ worklist_moves) ≠ ø
+
+    for (var u_cell = info->freeze_worklist; u_cell; u_cell = u_cell->nl_list) {
+        var u = u_cell->nl_node;
+        assert(info->degree[u->lvn_idx] < info->K || is_move_related(info, u));
+    }
+
+    // Spill worklist invariant:
+    // u ∈ spill_worklist ⇒ degree(u) ≥ K
+
+    for (var u_cell = info->spill_worklist; u_cell; u_cell = u_cell->nl_list) {
+        var u = u_cell->nl_node;
+        assert(info->degree[u->lvn_idx] >= info->K);
+    }
+}
+
+
 static
 struct ra_color_result {
     Table_T racr_allocation; // temp_t* -> register (char*)
@@ -933,6 +996,8 @@ struct ra_color_result {
      */
     while (info.simplify_worklist || info.worklist_moves
             || info.freeze_worklist || info.spill_worklist) {
+        if (debug) { check_invariants(&info); }
+
         if (info.simplify_worklist) {
             simplify(&info);
         } else if (info.worklist_moves) {
