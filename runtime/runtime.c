@@ -44,14 +44,14 @@ struct frame_map_t {
 
     uint16_t        num_arg_words;
     uint16_t        num_frame_words;
-    uint16_t        num_spill_words; // FIXME: get everything aligned
+    uint16_t        num_spill_words;
 
     /*
      * An array of 10 4-bit cs register indexes. N used for unused
      * One for each offset after the frame_words
      */
-    //uint8_t         spill_reg[5];
-    //uint8_t         _reserved0[3];
+    uint8_t         spill_reg[5];
+    uint8_t         _padding0[1];
 
     /*
      * The arg bitmap followed directly by the frame bitmap, and then the spill

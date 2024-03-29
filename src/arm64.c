@@ -15,6 +15,7 @@
 
 #define var __auto_type
 
+#define BitsetLen(len) (((len) + 63) / 64)
 #define NELEMS(A) ((sizeof A) / sizeof A[0])
 
 #define unlikely(x)    __builtin_expect(!!(x), 0)
@@ -767,12 +768,92 @@ _%s:\n\
     };
 }
 
-static
-void emit_text_segment_header(FILE* out)
+static void
+emit_text_segment_header(FILE* out)
 {
     fprintf(out, "\t.section	__TEXT,__text,regular,pure_instructions\n");
 }
 
+static void
+emit_frame_map_entry(
+        FILE* out, const sl_fragment_t* frag, Table_T label_to_cs_bitmap,
+        int entry_num)
+{
+
+    fprintf(out, "	.p2align	3\n");
+    fprintf(out, "Lptrmap%d:\n", entry_num);
+
+    // The pointer to the previous frame map
+    if (entry_num == 0) {
+        fprintf(out, "	.quad	0\n");
+    } else {
+        fprintf(out, "	.quad	Lptrmap%d\n", entry_num - 1);
+    }
+
+    fprintf(out, "	.quad	%s	; return address - the key\n",
+            frag->fr_ret_label);
+
+    union { uint32_t bm; void* v; } cs_bitmap = {};
+    static_assert(sizeof(cs_bitmap.v) >= sizeof(cs_bitmap.bm),
+            "16-bit machine?");
+    cs_bitmap.v = Table_get(label_to_cs_bitmap, frag->fr_ret_label);
+    fprintf(out, "	.long	%"PRIu32"	; callee-save bitmap\n",
+            cs_bitmap.bm);
+
+    // TODO: panic if the num of stack or local words doesn't
+    // fit into a uint16_t
+
+    var map = frag->fr_map;
+
+    // This number actually includes the saved FP and RA...
+    fprintf(out, "	.short	%d	; number of stack args + 2\n",
+            map->acfm_num_arg_words);
+
+    // This number also includes the length of the spill space
+    fprintf(out, "	.short	%d	; length of locals space\n",
+            map->acfm_num_local_words);
+
+    fprintf(out, "	.short	%d	; length of spills space\n",
+            map->acfm_num_spill_words);
+
+    // TODO: next
+    //
+    // frame_map->acfm_spill_reg contains indexes into arm64_registers
+    // Take each, and turn it into a 4-bit index into arm64_callee_saves
+    // stuff those values into the next 40 bits.
+
+    for (int i = 0; i < 5; i++) {
+        fprintf(out, "	.byte	%d	; todo: spill_reg\n", 0);
+    }
+    fprintf(out, "	.byte	%d	; padding\n", 0);
+
+    for (int i = 0; i < BitsetLen(map->acfm_num_arg_words); i++) {
+        fprintf(out, "	.quad	%"PRIu64"	; arg bitmap\n",
+                map->acfm_args[i]);
+    }
+    for (int i = 0; i < BitsetLen(map->acfm_num_local_words); i++) {
+        fprintf(out, "	.quad	%"PRIu64"	; locals bitmap\n",
+                map->acfm_locals[i]);
+    }
+    for (int i = 0; i < BitsetLen(map->acfm_num_spill_words); i++) {
+        fprintf(out, "	.quad	%"PRIu64"	; spills bitmap\n",
+                map->acfm_spills[i]);
+    }
+}
+
+static void
+emit_frame_map_entry_root(
+        FILE* out, int entry_num)
+{
+    // point to the final entry
+    fprintf(out, "\
+	.globl	_sl_rt_frame_maps\n\
+	.p2align	3\n\
+_sl_rt_frame_maps:\n\
+	.quad	Lptrmap%d\n\
+",
+        entry_num - 1);
+}
 
 static void
 emit_data_segment(
@@ -812,70 +893,15 @@ emit_data_segment(
             case FR_STRING:
                 continue;
             case FR_FRAME_MAP:
-            {
-
-                fprintf(out, "	.p2align	3\n");
-                fprintf(out, "Lptrmap%d:\n", entry_num);
-
-                // The pointer to the previous frame map
-                if (entry_num == 0) {
-                    fprintf(out, "	.quad	0\n");
-                } else {
-                    fprintf(out, "	.quad	Lptrmap%d\n", entry_num - 1);
-                }
-
-                fprintf(out, "	.quad	%s	; return address - the key\n",
-                        frag->fr_ret_label);
-
-                union { uint32_t bm; void* v; } cs_bitmap = {};
-                static_assert(sizeof(cs_bitmap.v) >= sizeof(cs_bitmap.bm),
-                        "16-bit machine?");
-                cs_bitmap.v = Table_get(label_to_cs_bitmap, frag->fr_ret_label);
-                fprintf(out, "	.long	%"PRIu32"	; callee-save bitmap\n",
-                        cs_bitmap.bm);
-
-                // TODO: panic if the num of stack or local words doesn't
-                // fit into a uint16_t
-
-                // This number actually includes the saved FP and RA...
-                fprintf(out, "	.short	%d	; number of stack args + 2\n",
-                        frag->fr_map->acfm_num_arg_words);
-
-                // This number also includes the length of the spill space
-                fprintf(out, "	.short	%d	; length of locals space\n",
-                        frag->fr_map->acfm_num_local_words);
-
-                fprintf(out, "	.short	%d	; length of spills space\n",
-                        frag->fr_map->acfm_num_spill_words);
-
-                int arg_quads = (frag->fr_map->acfm_num_arg_words + 63) / 64;
-                for (int i = 0; i < arg_quads; i++) {
-                    fprintf(out, "	.quad	%"PRIu64"	; arg bitmap\n",
-                            frag->fr_map->acfm_args[i]);
-                }
-                int locals_quads = (frag->fr_map->acfm_num_local_words + 63) / 64;
-                for (int i = 0; i < locals_quads; i++) {
-                    fprintf(out, "	.quad	%"PRIu64"	; locals bitmap\n",
-                            frag->fr_map->acfm_locals[i]);
-                }
-                int spills_quads = (frag->fr_map->acfm_num_spill_words + 63) / 64;
-                for (int i = 0; i < spills_quads; i++) {
-                    fprintf(out, "	.quad	%"PRIu64"	; spills bitmap\n",
-                            frag->fr_map->acfm_spills[i]);
-                }
-
+                emit_frame_map_entry(
+                        out, frag, label_to_cs_bitmap, entry_num);
                 entry_num = entry_num + 1;
                 break;
-            }
         }
     }
 
     if (entry_num > 0) {
-        // point to the final entry
-        fprintf(out, "\t.globl	_sl_rt_frame_maps\n");
-        fprintf(out, "\t.p2align	3\n");
-        fprintf(out, "_sl_rt_frame_maps:\n");
-        fprintf(out, "\t.quad	Lptrmap%d\n", entry_num - 1);
+        emit_frame_map_entry_root(out, entry_num);
     }
 }
 

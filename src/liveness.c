@@ -54,7 +54,7 @@ node_set_table_new(size_t count, size_t max_elems)
         .count = count,
         .len = max_elems,
     };
-    table.bits = xmalloc(count * BitsetLen(max_elems) * sizeof *table.bits);
+    table.bits = xmalloc(count * BitsetBytes(max_elems));
     return table;
 }
 static void node_set_table_free(node_set_table_t* table)

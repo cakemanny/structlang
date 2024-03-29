@@ -2,6 +2,7 @@
 #include "x86_64.h"
 #include "mem.h" // xmalloc
 #include <assert.h>
+#include <string.h>
 #include "translate.h"
 
 #define var __auto_type
@@ -10,6 +11,7 @@
 #define IsBitSet(x, i) (( (x)[(i)>>6] & (1ULL<<((i)&63)) ) != 0ULL)
 #define SetBit(x, i) (x)[(i)>>6] |= (1ULL<<((i)&63))
 #define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
+#define BitsetBytes(len) (sizeof(uint64_t) * BitsetLen(len))
 // char 7
 // short 15
 // int  31
@@ -300,7 +302,7 @@ char* ac_record_descriptor_for_type(const sl_decl_t* program, sl_type_t* type)
     char* buf = xmalloc(nwords + 1);
 
     // for now we just reuse the ptr map logic
-    uint64_t* ptr_map = xmalloc(BitsetLen(nwords) * sizeof *ptr_map);
+    uint64_t* ptr_map = xmalloc(BitsetBytes(nwords));
     ptr_map_for_type(program, type, ptr_map, 0);
     for (int i = 0; i < nwords; i++) {
         if (IsBitSet(ptr_map, i)) {
@@ -336,8 +338,7 @@ static void calculate_activation_record_expr(
             while ((v->acf_offset % v->acf_alignment) != 0)
                 v->acf_offset--;
             v->acf_is_formal = false;
-            v->acf_ptr_map = xmalloc(
-                    BitsetLen(num_words(size)) * sizeof *v->acf_ptr_map);
+            v->acf_ptr_map = xmalloc(BitsetBytes(num_words(size)));
             ptr_map_for_type(program, expr->ex_type_ann, v->acf_ptr_map, 0);
             v->acf_spilled.temp_id = -1;
             v->acf_stored.temp_id = -1;
@@ -475,8 +476,7 @@ static void calculate_activation_record_decl_func(
         v->acf_reg = target->arg_registers.elems[frame->acf_next_arg_reg++];
         v->acf_reg.temp_size = target->word_size;
         v->acf_is_formal = true; // ... not really though ...
-        v->acf_ptr_map = xmalloc(
-            BitsetLen(num_words(ret_type_size)) * sizeof *v->acf_ptr_map);
+        v->acf_ptr_map = xmalloc(BitsetBytes(num_words(ret_type_size)));
         ptr_map_for_type(program, ret_type, v->acf_ptr_map, 0);
         v->acf_spilled.temp_id = -1;
         v->acf_stored.temp_id = -1;
@@ -495,8 +495,7 @@ static void calculate_activation_record_decl_func(
         v->acf_alignment = alignment_of_type(program, type);
         v->acf_var_id = p->dl_var_id;
         v->acf_is_formal = true;
-        v->acf_ptr_map = xmalloc(
-            BitsetLen(num_words(size)) * sizeof *v->acf_ptr_map);
+        v->acf_ptr_map = xmalloc(BitsetBytes(num_words(size)));
         ptr_map_for_type(program, type, v->acf_ptr_map, 0);
         v->acf_spilled.temp_id = -1;
         v->acf_stored.temp_id = -1;
@@ -625,41 +624,19 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
         debug_print_frame(frame);
     }
 
-    int frame_words = frame_map->acfm_num_local_words = ac_frame_words(frame);
-    frame_map->acfm_locals = xmalloc(
-            BitsetLen(frame_words) * sizeof *frame_map->acfm_locals);
+    // We ignore the padding at this point, as we will include it when
+    // extending this with spill data.
+    // We have to create it initially now while we have the defined vars.
+    int num_local_words =
+        frame_map->acfm_num_local_words =
+        num_words(-frame->acf_last_local_offset);
+    frame_map->acfm_locals = xmalloc(BitsetBytes(num_local_words));
 
     int args_words = num_words(frame->acf_next_arg_offset);
     frame_map->acfm_num_arg_words = args_words;
 
-    frame_map->acfm_args = xmalloc(
-            BitsetLen(args_words) * sizeof *frame_map->acfm_args);
+    frame_map->acfm_args = xmalloc(BitsetBytes(args_words));
 
-
-    /*
-     * Given the following program
-     *
-     *   fn main() -> int {
-     *    let x: *int = _; x
-     *   }
-     *
-     * We expect two words of local space
-     *
-     *   +--------------------------+
-     *   | x                        | -8
-     *   +--------------------------+
-     *   | (padding for alignment)  | -16
-     *   +--------------------------+
-     *
-     * The locals bitmap shall be 0b10.
-     * To think about this correctly, it's useful to rotate the block into
-     * an array
-     *
-     *   { <padding>, x }
-     *
-     * we set a bit for x at index 1, and not for padding at index 0.
-     * And we have to remember that binary reads from right to left.
-     */
 
     for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
         if (v->acf_tag == ACF_ACCESS_FRAME
@@ -674,8 +651,8 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
                 if (IsBitSet(v->acf_ptr_map, i)) {
                     if (v->acf_offset < 0) {
                         SetBit(frame_map->acfm_locals,
-                                frame_words - num_words(-v->acf_offset) + i);
-                        /*                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                num_local_words - num_words(-v->acf_offset) + i);
+                        /*                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
                          * it's best to think of this as: + offset
                          */
                     } else {
@@ -735,14 +712,6 @@ temp_dispo_str(temp_t t) // XXX: dup
     return "!!!!!!!";
 }
 
-static void print_allocation_entry(const void* key, void** value, void* cl)
-{
-    const temp_t* t = key;
-    const char* mapped = *value;
-    fprintf(stderr, "ZZZ(%d%s) :: %s\n",
-            t->temp_id, temp_dispo_str(*t), mapped);
-}
-
 static bool
 temp_eq(temp_t a, temp_t b) // XXX: dup
 {
@@ -760,8 +729,33 @@ temp_list_contains(const temp_list_t* haystack, temp_t temp) // XXX: dup
     return false;
 }
 
+
 /*
- * TODO: next
+ * Given the following program
+ *
+ *   fn main() -> int {
+ *    let x: *int = _; x
+ *   }
+ *
+ * We expect two words of local space
+ *
+ *   +--------------------------+
+ *   | x                        | -8
+ *   +--------------------------+
+ *   | (padding for alignment)  | -16
+ *   +--------------------------+
+ *
+ * The locals bitmap shall be 0b10.
+ * To think about this correctly, it's useful to rotate the block into
+ * an array
+ *
+ *   { <padding>, x }
+ *
+ * we set a bit for x at index 1, and not for padding at index 0.
+ * And we have to remember that binary reads from right to left.
+ */
+
+/*
  * After having gone through register allocation and now knowing which
  * temporaries have been spilled we recalculate the length of the locals
  * space and set bits in the bitmap to indicate
@@ -770,39 +764,43 @@ void ac_extend_frame_map_for_spills(
         ac_frame_map_t* frame_map, temp_list_t* spill_live_outs,
         Table_T allocation)
 {
-    if (ac_debug) {
-        Table_map(allocation, print_allocation_entry, NULL);
-    }
-
     const ac_frame_t* frame = frame_map->acfm_frame;
 
     //
-    // TODO: next
-    //
-    // I think it's going to be best to have a second bitmap for inherited
-    // instead of trying use a 2-bit item map.
+    // It's best to have a second bitmap for inherited disposition
+    // instead of trying use a 2-bit-item map.
     //
     // i.e. we need to extend num_local_words, realloc, and memmove the
     // existing bitmap
     //
-    //   +------------------+    +--------------------------+
-    //   | padding | locals | => | padding, spills   locals | <- bitset for ptr
-    //   +------------------+    +-----------------+--------+
-    //                         + | padding, spills | <- bitset for inherits
-    //                           +-----------------+
+    //   +--------+    +--------------------------+
+    //   | locals | => | padding, spills   locals | <- bitset for ptr
+    //   +--------+    +-----------------+--------+
+    //               + | padding, spills | <- bitset for inherits
+    //                 +-----------------+
     //
-    return; // Below here needs rewriting.
 
     const int frame_words = ac_frame_words(frame);
-    const int spill_words = frame_words - frame_map->acfm_num_local_words;
-    if (ac_debug) { fprintf(stderr, "# spill_words = %d\n", spill_words); }
+    const int old_num_local_words = frame_map->acfm_num_local_words;
 
-    // 2 bits per spill
-    //   00 = no pointer
-    //   01 = pointer here
-    //   10 = inherited from parent frame
-    frame_map->acfm_spills = xmalloc(
-            BitsetLen(2 * spill_words) * sizeof *frame_map->acfm_spills);
+    // spill_words includes the alignment padding.
+    const int spill_words = frame_words - old_num_local_words;
+    frame_map->acfm_num_local_words = frame_words;
+
+    if (spill_words > 0) {
+        var locals_old = frame_map->acfm_locals;
+        frame_map->acfm_locals = xmalloc(BitsetBytes(frame_words));
+
+        // copy old, shifting by spill_words bits
+        for (int i = 0; i < old_num_local_words; i++) {
+            if (IsBitSet(locals_old, i)) {
+                SetBit(frame_map->acfm_locals, i + spill_words);
+            }
+        }
+        free(locals_old);
+    }
+
+    frame_map->acfm_spills = xmalloc(BitsetBytes(spill_words));
     frame_map->acfm_num_spill_words = spill_words;
 
     int spill_reg_idx = 0;
@@ -827,22 +825,18 @@ void ac_extend_frame_map_for_spills(
                         reg_name);
             }
 
+            int bit_to_set = (frame_words - num_words(-v->acf_offset));
             switch (v->acf_spilled.temp_ptr_dispo) {
                 case TEMP_DISP_PTR:
-                {
-                    int bit_to_set =
-                        2*(frame_words - num_words(-v->acf_offset)) + 0;
-                    fprintf(stderr, "# bit_to_set = %d\n", bit_to_set);
-                    SetBit(frame_map->acfm_spills, bit_to_set);
+                    SetBit(frame_map->acfm_locals, bit_to_set);
                     break;
-                }
                 case TEMP_DISP_NOT_PTR:
                     break;
                 case TEMP_DISP_INHERIT:
                 {
                     // asserts that we always know which register was
                     // spilled.
-                    assert(reg_name);
+                    assert(strlen(reg_name) > 0);
                     // TODO: factor this out
                     const int num_registers = Table_length(frame->acf_temp_map);
                     uint8_t reg_idx = 0;
@@ -852,6 +846,7 @@ void ac_extend_frame_map_for_spills(
                             break;
                         }
                     }
+                    assert(reg_idx != num_registers);
 
                     // we should only need to store the spilled registers
                     // when we don't know if they are pointers, and need
@@ -862,9 +857,6 @@ void ac_extend_frame_map_for_spills(
                     assert(spill_reg_idx < NELEMS(frame_map->acfm_spill_reg) &&
                             "too many inherited dispositions");
                     frame_map->acfm_spill_reg[spill_reg_idx++] = reg_idx;
-                    int bit_to_set =
-                        2*(frame_words - num_words(-v->acf_offset)) + 1;
-                    fprintf(stderr, "# bit_to_set = %d\n", bit_to_set);
                     SetBit(frame_map->acfm_spills, bit_to_set);
                     break;
                 }
