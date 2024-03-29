@@ -35,7 +35,9 @@ typedef struct codegen_t {
     void (*emit_text_segment_header)(FILE* out);
 
     void (*emit_data_segment)(
-            FILE* out, const sl_fragment_t* fragments, Table_T label_to_cs_bitmap);
+            FILE* out,
+            const sl_fragment_t* fragments,
+            Table_T label_to_cs_bitmap);
 
 } codegen_t;
 

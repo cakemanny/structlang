@@ -153,7 +153,7 @@ static const char* suff(tree_exp_t* exp)
 }
 
 
-// TODO: change the interface so this takes the buffer
+// TODO: change the interface so this takes the buffer (or an arena)
 static const char* arm64_register_for_size(const char* regname, size_t size)
 {
     static char buf[8] = {};
@@ -834,15 +834,19 @@ emit_data_segment(
                 fprintf(out, "	.long	%"PRIu32"	; callee-save bitmap\n",
                         cs_bitmap.bm);
 
+                // TODO: panic if the num of stack or local words doesn't
+                // fit into a uint16_t
+
                 // This number actually includes the saved FP and RA...
-                fprintf(out, "	.short	%d	; number of stack args\n",
+                fprintf(out, "	.short	%d	; number of stack args + 2\n",
                         frag->fr_map->acfm_num_arg_words);
 
-                // TODO NEXT:
-                // This will need to be adjusted because it doesn't
-                // consider spilled registers.
+                // This number also includes the length of the spill space
                 fprintf(out, "	.short	%d	; length of locals space\n",
                         frag->fr_map->acfm_num_local_words);
+
+                fprintf(out, "	.short	%d	; length of spills space\n",
+                        frag->fr_map->acfm_num_spill_words);
 
                 int arg_quads = (frag->fr_map->acfm_num_arg_words + 63) / 64;
                 for (int i = 0; i < arg_quads; i++) {
@@ -853,6 +857,11 @@ emit_data_segment(
                 for (int i = 0; i < locals_quads; i++) {
                     fprintf(out, "	.quad	%"PRIu64"	; locals bitmap\n",
                             frag->fr_map->acfm_locals[i]);
+                }
+                int spills_quads = (frag->fr_map->acfm_num_spill_words + 63) / 64;
+                for (int i = 0; i < spills_quads; i++) {
+                    fprintf(out, "	.quad	%"PRIu64"	; spills bitmap\n",
+                            frag->fr_map->acfm_spills[i]);
                 }
 
                 entry_num = entry_num + 1;

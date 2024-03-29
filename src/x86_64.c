@@ -979,10 +979,12 @@ emit_data_segment(
                 fmt_snprint_escaped(buf, 512, frag->fr_string);
                 fprintf(out, "	.asciz	%s\n", buf);
                 // TODO output .size ?
+                break;
             }
             case FR_FRAME_MAP:
             {
                 assert(!"TODO: frame map");
+                break;
             }
         }
     }

@@ -41,6 +41,7 @@ Two bitmaps, one for arguments, another for locals.
 
  */
 
+// __builtin_debugtrap();
 bool ac_debug = 0;
 
 const struct ac_builtin_type {
@@ -338,6 +339,8 @@ static void calculate_activation_record_expr(
             v->acf_ptr_map = xmalloc(
                     BitsetLen(num_words(size)) * sizeof *v->acf_ptr_map);
             ptr_map_for_type(program, expr->ex_type_ann, v->acf_ptr_map, 0);
+            v->acf_spilled.temp_id = -1;
+            v->acf_stored.temp_id = -1;
 
             frame->acf_last_local_offset = v->acf_offset;
             ac_frame_append_var(frame, v);
@@ -401,13 +404,18 @@ static void calculate_activation_record_expr(
     assert(0 && " missing case");
 }
 
-int ac_frame_words(ac_frame_t* frame) {
+int ac_frame_words(const ac_frame_t* frame) {
     var target = frame->acf_target;
 
     return num_words(round_up_size(
                 -frame->acf_last_local_offset + frame->acf_outgoing_arg_bytes,
                 target->stack_alignment));
 }
+#if 0
+static int num_padding_words(const ac_frame_t* frame) {
+    return ac_frame_words(frame) - num_words(-frame->acf_last_local_offset);
+}
+#endif
 
 /*
  * function arguments are moved from the machine register into a temporary
@@ -471,6 +479,7 @@ static void calculate_activation_record_decl_func(
             BitsetLen(num_words(ret_type_size)) * sizeof *v->acf_ptr_map);
         ptr_map_for_type(program, ret_type, v->acf_ptr_map, 0);
         v->acf_spilled.temp_id = -1;
+        v->acf_stored.temp_id = -1;
 
         ac_frame_append_var(frame, v);
     }
@@ -490,6 +499,7 @@ static void calculate_activation_record_decl_func(
             BitsetLen(num_words(size)) * sizeof *v->acf_ptr_map);
         ptr_map_for_type(program, type, v->acf_ptr_map, 0);
         v->acf_spilled.temp_id = -1;
+        v->acf_stored.temp_id = -1;
 
         if (size <= 8 && frame->acf_next_arg_reg < target->arg_registers.length) {
             // passed in register
@@ -556,6 +566,50 @@ static bool in_defined_vars(int needle, int* defined_vars)
     return false;
 }
 
+static void
+debug_print_frame(ac_frame_t* frame)
+{
+    // let's abuse some knowledge that we add arguments first
+    // and then the locals
+
+    int max_offset = 0;
+    int min_offset = 0;
+
+    for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
+        if (v->acf_tag == ACF_ACCESS_FRAME) {
+            max_offset = (v->acf_offset > max_offset) ? v->acf_offset : max_offset;
+            min_offset = (v->acf_offset < min_offset) ? v->acf_offset : min_offset;
+        }
+    }
+
+    fprintf(stderr, "  %s\n", frame->acf_name);
+    int last_offset = max_offset + 8;
+    for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
+        if (v->acf_tag == ACF_ACCESS_FRAME) {
+            if (last_offset > 0 && v->acf_offset < 0) {
+            fprintf(stderr, "+--------------------------------------+\n");
+            fprintf(stderr, "| return addr                          | 8\n");
+            fprintf(stderr, "+--------------------------------------+\n");
+            fprintf(stderr, "| previous FP                          | 0 (FP)\n");
+            }
+
+            fprintf(stderr, "+--------------------------------------+\n");
+            for (int i = 0; i < num_words(v->acf_size) - 1; i++) {
+                fprintf(stderr, "|                                      |\n");
+            }
+            if (v->acf_varname != NULL) {
+                fprintf(stderr, "| %36s | %d \n", v->acf_varname, v->acf_offset);
+            } else {
+                fprintf(stderr, "| %36d | %d \n", v->acf_stored.temp_id, v->acf_offset);
+            }
+
+            last_offset = v->acf_offset;
+        }
+    }
+    fprintf(stderr, "+--------------------------------------+\n\n");
+
+}
+
 /*
  * defined_vars is an array of var_id s that are in scope at the call site
  * (call or new)
@@ -567,8 +621,11 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
     ac_frame_map_t* frame_map = xmalloc(sizeof *frame_map);
     frame_map->acfm_frame = frame;
 
+    if (ac_debug) {
+        debug_print_frame(frame);
+    }
+
     int frame_words = frame_map->acfm_num_local_words = ac_frame_words(frame);
-    frame_map->acfm_num_local_words = frame_words;
     frame_map->acfm_locals = xmalloc(
             BitsetLen(frame_words) * sizeof *frame_map->acfm_locals);
 
@@ -579,9 +636,34 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
             BitsetLen(args_words) * sizeof *frame_map->acfm_args);
 
 
+    /*
+     * Given the following program
+     *
+     *   fn main() -> int {
+     *    let x: *int = _; x
+     *   }
+     *
+     * We expect two words of local space
+     *
+     *   +--------------------------+
+     *   | x                        | -8
+     *   +--------------------------+
+     *   | (padding for alignment)  | -16
+     *   +--------------------------+
+     *
+     * The locals bitmap shall be 0b10.
+     * To think about this correctly, it's useful to rotate the block into
+     * an array
+     *
+     *   { <padding>, x }
+     *
+     * we set a bit for x at index 1, and not for padding at index 0.
+     * And we have to remember that binary reads from right to left.
+     */
+
     for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
         if (v->acf_tag == ACF_ACCESS_FRAME
-                // if, is ptr type
+                // if can be ptr type
                 && v->acf_alignment >= target->word_size
                 // skip if the local is not in scope
                 && in_defined_vars(v->acf_var_id, defined_vars)
@@ -592,7 +674,10 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
                 if (IsBitSet(v->acf_ptr_map, i)) {
                     if (v->acf_offset < 0) {
                         SetBit(frame_map->acfm_locals,
-                                frame_words + num_words(-v->acf_offset) + i);
+                                frame_words - num_words(-v->acf_offset) + i);
+                        /*                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                         * it's best to think of this as: + offset
+                         */
                     } else {
                         SetBit(frame_map->acfm_args, num_words(v->acf_offset) + i);
                     }
@@ -628,18 +713,164 @@ struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame, temp_t t)
      */
     v->acf_spilled = t;
 
+    /*
+     * The register allocator will fill this in when spilling, and we'll use
+     * the allocation to work out what register it ends up being.
+     */
+    v->acf_stored.temp_id = -1; // to be filled in in reg_alloc
 
     frame->acf_last_local_offset = v->acf_offset;
     ac_frame_append_var(frame, v);
     return v;
 }
 
+static const char*
+temp_dispo_str(temp_t t) // XXX: dup
+{
+    switch (t.temp_ptr_dispo) {
+        case TEMP_DISP_PTR: return "*";
+        case TEMP_DISP_NOT_PTR: return "";
+        case TEMP_DISP_INHERIT: return "^";
+    }
+    return "!!!!!!!";
+}
+
+static void print_allocation_entry(const void* key, void** value, void* cl)
+{
+    const temp_t* t = key;
+    const char* mapped = *value;
+    fprintf(stderr, "ZZZ(%d%s) :: %s\n",
+            t->temp_id, temp_dispo_str(*t), mapped);
+}
+
+static bool
+temp_eq(temp_t a, temp_t b) // XXX: dup
+{
+    return a.temp_id == b.temp_id;
+}
+
+static bool
+temp_list_contains(const temp_list_t* haystack, temp_t temp) // XXX: dup
+{
+    for (var h = haystack; h; h = h->tmp_list) {
+        if (temp_eq(h->tmp_temp, temp)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /*
  * TODO: next
+ * After having gone through register allocation and now knowing which
+ * temporaries have been spilled we recalculate the length of the locals
+ * space and set bits in the bitmap to indicate
  */
-void ac_extend_frame_map_for_spills(ac_frame_map_t* frame_map)
+void ac_extend_frame_map_for_spills(
+        ac_frame_map_t* frame_map, temp_list_t* spill_live_outs,
+        Table_T allocation)
 {
+    if (ac_debug) {
+        Table_map(allocation, print_allocation_entry, NULL);
+    }
 
+    const ac_frame_t* frame = frame_map->acfm_frame;
+
+    //
+    // TODO: next
+    //
+    // I think it's going to be best to have a second bitmap for inherited
+    // instead of trying use a 2-bit item map.
+    //
+    // i.e. we need to extend num_local_words, realloc, and memmove the
+    // existing bitmap
+    //
+    //   +------------------+    +--------------------------+
+    //   | padding | locals | => | padding, spills   locals | <- bitset for ptr
+    //   +------------------+    +-----------------+--------+
+    //                         + | padding, spills | <- bitset for inherits
+    //                           +-----------------+
+    //
+    return; // Below here needs rewriting.
+
+    const int frame_words = ac_frame_words(frame);
+    const int spill_words = frame_words - frame_map->acfm_num_local_words;
+    if (ac_debug) { fprintf(stderr, "# spill_words = %d\n", spill_words); }
+
+    // 2 bits per spill
+    //   00 = no pointer
+    //   01 = pointer here
+    //   10 = inherited from parent frame
+    frame_map->acfm_spills = xmalloc(
+            BitsetLen(2 * spill_words) * sizeof *frame_map->acfm_spills);
+    frame_map->acfm_num_spill_words = spill_words;
+
+    int spill_reg_idx = 0;
+
+    for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
+        if (v->acf_tag == ACF_ACCESS_FRAME
+                // is a spill
+                && v->acf_spilled.temp_id >= 0
+                && v->acf_var_id == -1
+                // was live during this call / allocation
+                && temp_list_contains(spill_live_outs, v->acf_spilled)
+        ) {
+            const char* reg_name = Table_get(allocation, &v->acf_stored);
+            if (reg_name == NULL) {
+                reg_name = "";
+            }
+
+            if (ac_debug) {
+                fprintf(stderr, "XXX(offset:%d): %d%s :: %s\n",
+                        v->acf_offset,
+                        v->acf_spilled.temp_id, temp_dispo_str(v->acf_spilled),
+                        reg_name);
+            }
+
+            switch (v->acf_spilled.temp_ptr_dispo) {
+                case TEMP_DISP_PTR:
+                {
+                    int bit_to_set =
+                        2*(frame_words - num_words(-v->acf_offset)) + 0;
+                    fprintf(stderr, "# bit_to_set = %d\n", bit_to_set);
+                    SetBit(frame_map->acfm_spills, bit_to_set);
+                    break;
+                }
+                case TEMP_DISP_NOT_PTR:
+                    break;
+                case TEMP_DISP_INHERIT:
+                {
+                    // asserts that we always know which register was
+                    // spilled.
+                    assert(reg_name);
+                    // TODO: factor this out
+                    const int num_registers = Table_length(frame->acf_temp_map);
+                    uint8_t reg_idx = 0;
+                    for (reg_idx = 0; reg_idx < num_registers; reg_idx++) {
+                        // abuses knowledge that these are from the same place
+                        if (reg_name == frame->acf_target->register_names[reg_idx]) {
+                            break;
+                        }
+                    }
+
+                    // we should only need to store the spilled registers
+                    // when we don't know if they are pointers, and need
+                    // to look into the parent frame.
+
+                    // asserts that only the callee-saves will have
+                    // inherited their pointer disposition.
+                    assert(spill_reg_idx < NELEMS(frame_map->acfm_spill_reg) &&
+                            "too many inherited dispositions");
+                    frame_map->acfm_spill_reg[spill_reg_idx++] = reg_idx;
+                    int bit_to_set =
+                        2*(frame_words - num_words(-v->acf_offset)) + 1;
+                    fprintf(stderr, "# bit_to_set = %d\n", bit_to_set);
+                    SetBit(frame_map->acfm_spills, bit_to_set);
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /*

@@ -43,6 +43,7 @@ typedef struct ac_frame {
         bool acf_is_formal; // i.e. function parameter
         uint64_t* acf_ptr_map; // bitset
         temp_t acf_spilled;
+        temp_t acf_stored;
 
         struct ac_frame_var* acf_list;
     } *ac_frame_vars;
@@ -59,7 +60,7 @@ void ac_frame_free(ac_frame_t** pframe);
  * This can be added to the stack pointer on function entry to allocate the
  * right amount of space for the function.
  */
-int ac_frame_words(ac_frame_t* frame);
+int ac_frame_words(const ac_frame_t* frame);
 
 ac_frame_t* calculate_activation_records(
         enum target_type, temp_state_t*, sl_decl_t* program);
@@ -92,10 +93,19 @@ char* ac_record_descriptor_for_type(const sl_decl_t* program, sl_type_t* type);
 
 typedef struct ac_frame_map_t {
     int acfm_num_arg_words;
-    int acfm_num_local_words;
-    uint64_t* acfm_args;
-    uint64_t* acfm_locals;
-    ac_frame_t* acfm_frame;
+    int acfm_num_local_words; // Total size of the space reserved for locals,
+                              // including padding for alignment.
+    int acfm_num_spill_words; // The length of prefix which contains spilled
+                              // temps
+    /*
+     *  Array of the ids of the spilled registers. Not the same as the meaning
+     *  in the final emitted frame map.
+     */
+    uint8_t acfm_spill_reg[10];
+    uint64_t* acfm_args; // Bitmap of ptrs in arg space of frame
+    uint64_t* acfm_locals; // Bitmap of ptrs in the space allocated for locals
+    uint64_t* acfm_spills; // Bitmap indicating inherited ptr dispositions.
+    ac_frame_t* acfm_frame; // The frame being mapped.
 } ac_frame_map_t;
 
 /*
@@ -108,6 +118,10 @@ extern const size_t ac_word_size;
 extern bool ac_debug;
 
 struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame, temp_t t);
+
+void ac_extend_frame_map_for_spills(
+        ac_frame_map_t* frame_map, temp_list_t* spill_live_outs,
+        Table_T allocation);
 
 /*
  * Ensures that at least required_bytes have been added to the

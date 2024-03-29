@@ -1099,8 +1099,7 @@ struct ra_color_result {
 static void
 replace_temp(temp_list_t* temp_list, temp_t to_be_replaced, temp_t replacement)
 {
-    for (var t = temp_list; t; t = t->tmp_list)
-    {
+    for (var t = temp_list; t; t = t->tmp_list) {
         if (temp_eq(t->tmp_temp, to_be_replaced)) {
             t->tmp_temp = replacement;
         }
@@ -1139,6 +1138,10 @@ spill_temp(
                     replace_temp(instr->ai_oper_dst, temp_to_spill, new_temp);
                     var new_instr = backend->store_temp(new_frame_var, new_temp);
 
+                    // HACK to know spilled registers in stack maps
+                    assert(new_frame_var->acf_stored.temp_id == -1);
+                    new_frame_var->acf_stored = new_temp;
+
                     // graft in
                     new_instr->ai_list = instr->ai_list;
                     instr->ai_list = new_instr;
@@ -1165,6 +1168,12 @@ spill_temp(
                             temp_to_spill.temp_size, temp_to_spill.temp_ptr_dispo);
                     instr->ai_move_dst = new_temp;
                     var new_instr = backend->store_temp(new_frame_var, new_temp);
+                    /*
+                     * Hack to know what register was spilled when creating
+                     * stack maps.
+                     */
+                    assert(new_frame_var->acf_stored.temp_id == -1);
+                    new_frame_var->acf_stored = new_temp;
 
                     // graft in
                     new_instr->ai_list = instr->ai_list;
@@ -1247,8 +1256,10 @@ is_call_instr(assm_instr_t* instr)
 
 /*
  * Work out the liveness of any temporary that is spilled, before it is
- * spilled.
+ * spilled, at each call instruction.
  * This will be used as the liveness of frame slot where it is spilled to.
+ * This will seem more useful on x86_64 where there are more spills with
+ * shorter lifetimes.
  */
 static void
 record_spill_liveness(
@@ -1429,6 +1440,9 @@ ra_alloc(
             fprintf(stderr, "# rewritten:\n");
             debug_print_instrs(body_instrs, frame);
         }
+
+        temp_list_free(&color_result.racr_spills);
+        Table_free(&color_result.racr_allocation);
 
         lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
         return ra_alloc(out, temp_state, body_instrs, frame, false,

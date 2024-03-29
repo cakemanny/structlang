@@ -17,7 +17,7 @@ struct instr_list_and_allocation {
 } ra_alloc(FILE* out, temp_state_t*, assm_instr_t*, ac_frame_t* frame,
         bool print_interference_and_return,
         Table_T label_to_cs_bitmap, // sl_sym_t -> uint32_t
-        Table_T label_to_spill_liveness // sl_sym_t -> ...
+        Table_T label_to_spill_liveness // sl_sym_t -> tmp_list_t*
         );
 
 

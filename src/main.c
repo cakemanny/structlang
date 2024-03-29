@@ -293,13 +293,30 @@ int main(int argc, char* argv[])
         }
         fputs(final_fragment.asf_epilogue, out);
 
+        // peek through upcoming non-code frags
+        // this abuses some knowledge about how they are added
+        for (; frag->fr_list && frag->fr_list->fr_tag != FR_CODE;
+                ) {
+            frag = frag->fr_list;
+            if (frag->fr_tag != FR_FRAME_MAP) {
+                continue;
+            }
+
+            temp_list_t* spill_live_outs =
+                Table_get(label_to_spill_liveness, frag->fr_ret_label);
+            ac_extend_frame_map_for_spills(frag->fr_map, spill_live_outs,
+                    instrs_and_allocation.ra_allocation);
+        }
+
+
+        // Free final fragment strings?
+        Table_free(&instrs_and_allocation.ra_allocation);
         assm_free_list(&body_instrs);
     }
 
     if (emitted_header) {
-        // TODO: next: pass spill liveness data and extend frame map for
-        // spills
-        target->tgt_backend->emit_data_segment(out, fragments, label_to_cs_bitmap);
+        target->tgt_backend->emit_data_segment(
+                out, fragments, label_to_cs_bitmap);
     }
     Table_free(&label_to_spill_liveness);
     Table_free(&label_to_cs_bitmap);

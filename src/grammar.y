@@ -282,6 +282,7 @@ int yywrap()
     return 1;
 }
 
+// FIXME: it's bad practise to prefix non-yacc/bison names with yy
 static const char* yyfilename;
 
 static void yyerror(const char* msg)
