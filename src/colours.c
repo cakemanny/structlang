@@ -1,4 +1,5 @@
-#include <stdlib.h> // exit, wait
+#include <stdlib.h> // exit
+#include <sys/wait.h> // wait
 #include <stdio.h> // perror
 #include <string.h> // strdup
 #include <unistd.h> // isatty

@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
+#include <stdint.h> // uint32_t, ...
 #include <string.h>
 
 

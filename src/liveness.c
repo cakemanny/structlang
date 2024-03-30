@@ -1,10 +1,11 @@
-#include <stddef.h>
-#include <stdbool.h>
-#include <assert.h>
-#include <string.h>
 #include "liveness.h"
 #include "mem.h"
 #include "list.h"
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
 
 #define var __auto_type
 

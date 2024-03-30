@@ -1,9 +1,10 @@
 #include "activation.h"
 #include "x86_64.h"
 #include "mem.h" // xmalloc
-#include <assert.h>
-#include <string.h>
 #include "translate.h"
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
 
 #define var __auto_type
 

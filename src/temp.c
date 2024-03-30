@@ -1,3 +1,4 @@
+#define _GNU_SOURCE // linux: ask for asprintf in stdio.h
 #include "temp.h"
 #include "mem.h"
 #include <stdio.h> // snprintf
