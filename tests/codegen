@@ -81,7 +81,7 @@ expect () {
 
     # Link
     # $LD $LDFLAGS $stmp -o $atmp $LDLIBS
-    if ! (printf '%s: %s\n\t%s %s $< -o $@ %s\n' "$atmp" "$stmp" "$LD" "$LDFLAGS" "$LDLIBS" | $MAKE -f -); then
+    if ! (printf '%s: %s %s\n\t%s %s $< -o $@ %s\n' "$atmp" "$stmp" "$LDLIBS" "$LD" "$LDFLAGS" "$LDLIBS" | $MAKE -f -); then
         echo "${red}FAILED${rst} to assmble and link '$code'"
         fail
         return

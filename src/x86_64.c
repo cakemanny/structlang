@@ -988,6 +988,22 @@ emit_data_segment(
             }
         }
     }
+
+    // The gas manual explains the .section syntax somewhat.
+    // https://ftp.gnu.org/old-gnu/Manuals/gas-2.9.1/html_chapter/as_7.html#SEC119
+
+    // Emit a NULL ptr until we implement the frame maps proper for x86_64.
+    fprintf(out, "\
+	.type	sl_rt_frame_maps,@object\n\
+	.section	.data.rel.ro,\"aw\",@progbits\n\
+	.globl	sl_rt_frame_maps\n\
+	.p2align	3, 0x0\n\
+sl_rt_frame_maps:\n\
+	.quad	0\n\
+	.size	sl_rt_frame_maps, 4\n\
+"
+        );
+
 }
 
 

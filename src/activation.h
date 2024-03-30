@@ -99,7 +99,9 @@ typedef struct ac_frame_map_t {
                               // temps
     /*
      *  Array of the ids of the spilled registers. Not the same as the meaning
-     *  in the final emitted frame map.
+     *  in the final emitted frame map. 0 means empty - which abuses the
+     *  knowledge that neither x0 nor rax are callee-save on arm64 and amd64
+     *  respectively.
      */
     uint8_t acfm_spill_reg[10];
     uint64_t* acfm_args; // Bitmap of ptrs in arg space of frame

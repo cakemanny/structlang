@@ -729,6 +729,20 @@ temp_list_contains(const temp_list_t* haystack, temp_t temp) // XXX: dup
     return false;
 }
 
+static int
+reg_idx_for_name(const ac_frame_t* frame, const char* reg_name)
+{
+    // O(1)
+    const int num_registers = Table_length(frame->acf_temp_map);
+    int i = 0;
+    for (i = 0; i < num_registers; i++) {
+        // abuses knowledge that these are from the same place
+        if (reg_name == frame->acf_target->register_names[i]) {
+            break;
+        }
+    }
+    return i;
+}
 
 /*
  * Given the following program
@@ -837,16 +851,8 @@ void ac_extend_frame_map_for_spills(
                     // asserts that we always know which register was
                     // spilled.
                     assert(strlen(reg_name) > 0);
-                    // TODO: factor this out
-                    const int num_registers = Table_length(frame->acf_temp_map);
-                    uint8_t reg_idx = 0;
-                    for (reg_idx = 0; reg_idx < num_registers; reg_idx++) {
-                        // abuses knowledge that these are from the same place
-                        if (reg_name == frame->acf_target->register_names[reg_idx]) {
-                            break;
-                        }
-                    }
-                    assert(reg_idx != num_registers);
+                    uint8_t reg_idx = reg_idx_for_name(frame, reg_name);
+                    assert(reg_idx != Table_length(frame->acf_temp_map));
 
                     // we should only need to store the spilled registers
                     // when we don't know if they are pointers, and need
@@ -856,6 +862,10 @@ void ac_extend_frame_map_for_spills(
                     // inherited their pointer disposition.
                     assert(spill_reg_idx < NELEMS(frame_map->acfm_spill_reg) &&
                             "too many inherited dispositions");
+
+                    // FIXME: we need to fill this array in order
+                    // of least to greatest offset - not the order they
+                    // appear on the frame vars list.
                     frame_map->acfm_spill_reg[spill_reg_idx++] = reg_idx;
                     SetBit(frame_map->acfm_spills, bit_to_set);
                     break;

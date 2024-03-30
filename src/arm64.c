@@ -4,7 +4,7 @@
 #include <stdio.h> // asprintf
 #include <stdlib.h> // abort
 #include <string.h> // strlen
-#include <inttypes.h>
+#include <inttypes.h> // PRIu64, ...
 #include "codegen.h"
 #include "fragment.h"
 #include "format.h" // fprint_str_escaped
@@ -774,6 +774,18 @@ emit_text_segment_header(FILE* out)
     fprintf(out, "\t.section	__TEXT,__text,regular,pure_instructions\n");
 }
 
+static int
+get_callee_save_idx(int reg_idx)
+{
+    int i = 0;
+    for (; i < NELEMS(arm64_callee_saves); i++) {
+        if (arm64_callee_saves[i].temp_id == reg_idx) {
+            break;
+        }
+    }
+    return i;
+}
+
 static void
 emit_frame_map_entry(
         FILE* out, const sl_fragment_t* frag, Table_T label_to_cs_bitmap,
@@ -816,14 +828,21 @@ emit_frame_map_entry(
     fprintf(out, "	.short	%d	; length of spills space\n",
             map->acfm_num_spill_words);
 
-    // TODO: next
-    //
     // frame_map->acfm_spill_reg contains indexes into arm64_registers
     // Take each, and turn it into a 4-bit index into arm64_callee_saves
     // stuff those values into the next 40 bits.
+    uint8_t spill_reg[5] = {};
+    for (int i = 0; i < 10; (i+=2)) {
+        uint8_t cs_idxs[2] = {
+            get_callee_save_idx(map->acfm_spill_reg[i + 0]),
+            get_callee_save_idx(map->acfm_spill_reg[i + 1]),
+        };
+        spill_reg[(i>>1)] = cs_idxs[0] | (cs_idxs[1] << 4);
+    }
 
     for (int i = 0; i < 5; i++) {
-        fprintf(out, "	.byte	%d	; todo: spill_reg\n", 0);
+        fprintf(out, "	.byte	%"PRIu8"	; spill_reg\n",
+                spill_reg[i]);
     }
     fprintf(out, "	.byte	%d	; padding\n", 0);
 
