@@ -94,7 +94,7 @@ expect "fn main() -> bool { true }" '1'
 expect "fn main() -> bool { false }" '0'
 
 # Arithmetic
-# expect 'fn main() -> int { 1 << 2; 2 >> 1 }' 1
+expect 'fn main() -> int { 1 << 2; 2 >> 1 }' 1
 expect 'fn main() -> int { 2 / 2 }' 1
 expect 'fn main() -> int { 4 / 2 }' 2
 

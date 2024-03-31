@@ -501,9 +501,6 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 case TREE_BINOP_AND:
                 case TREE_BINOP_OR:
                 case TREE_BINOP_XOR:
-                case TREE_BINOP_LSHIFT:
-                case TREE_BINOP_RSHIFT:
-                case TREE_BINOP_ARSHIFT:
                 {
                     temp_t r = new_temp_for_exp(state.temp_state, exp);
                     char* s = NULL;
@@ -515,11 +512,47 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                         (exp->te_binop == TREE_BINOP_AND) ? "and"
                         : (exp->te_binop == TREE_BINOP_OR) ? "or"
                         : (exp->te_binop == TREE_BINOP_XOR) ? "xor"
-                        : (exp->te_binop == TREE_BINOP_LSHIFT) ? "shl"
+                        : (assert(!"broken binop case"), NULL)
+                    ;
+                    Asprintf(&s, "%s%s `s0, `d0\n", instr_prefix, suff(exp));
+                    // r has to be in both sources and destinations
+                    var src_list =
+                        temp_list_cons(Munch_exp(exp->te_rhs),
+                                temp_list(r));
+                    emit(state,
+                         assm_oper(s, temp_list(r), src_list, NULL));
+                    return r;
+                }
+                case TREE_BINOP_LSHIFT:
+                case TREE_BINOP_RSHIFT:
+                case TREE_BINOP_ARSHIFT:
+                {
+                    const char* instr_prefix =
+                        (exp->te_binop == TREE_BINOP_LSHIFT) ? "shl"
                         : (exp->te_binop == TREE_BINOP_RSHIFT) ? "shr"
                         : (exp->te_binop == TREE_BINOP_ARSHIFT) ? "sar"
                         : (assert(!"broken binop case"), NULL)
                     ;
+                    temp_t r = new_temp_for_exp(state.temp_state, exp);
+                    char* s = NULL;
+                    Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
+                    var lhs = Munch_exp(exp->te_lhs);
+                    emit(state, assm_move(s, r, lhs));
+
+                    // BINOP(<<, e1, CONST)
+                    // BINOP(>>, e1, CONST)
+                    // BINOP(>>>, e1, CONST)
+                    if (exp->te_rhs->te_tag == TREE_EXP_CONST) {
+                        Asprintf(&s, "%s%s $%d, `d0\n", instr_prefix, suff(exp),
+                                exp->te_rhs->te_const);
+                        // r has to be in both sources and destinations
+                        var src_list = temp_list(r);
+                        emit(state,
+                            assm_oper(s, temp_list(r), src_list, NULL));
+                        return r;
+                    }
+                    // TODO: The rhs must be in cl (lower part of cx,ecx,rcx)
+
                     Asprintf(&s, "%s%s `s0, `d0\n", instr_prefix, suff(exp));
                     // r has to be in both sources and destinations
                     var src_list =
@@ -1014,8 +1047,13 @@ static void
 emit_data_segment(
         FILE* out, const sl_fragment_t* fragments, Table_T label_to_cs_bitmap)
 {
+    // For lack of better names
+#define A(mnemonic, opsfmt, ...) \
+    fprintf(out, "\t" mnemonic "\t" opsfmt "\n", ##__VA_ARGS__)
+#define L(label) fprintf(out, "%s:\n", label)
+
     // No idea what this means, but it's what clang outputs
-    fprintf(out, "\t.section	.rodata.str1.1,\"aMS\",@progbits,1\n");
+    A(".section", ".rodata.str1.1,\"aMS\",@progbits,1");
 
     for (var frag = fragments; frag; frag = frag->fr_list) {
         switch (frag->fr_tag) {
@@ -1023,14 +1061,14 @@ emit_data_segment(
                 continue;
             case FR_STRING:
             {
-                fprintf(out, "	.type	%s,@object\n", frag->fr_label);
-                fprintf(out, "%s:\n", frag->fr_label);
+                A(".type", "%s,@object", frag->fr_label);
+                L(frag->fr_label);
 
                 size_t required = fmt_escaped_len(frag->fr_string);
                 assert(required < 512);
                 char buf[512];
                 fmt_snprint_escaped(buf, 512, frag->fr_string);
-                fprintf(out, "	.asciz	%s\n", buf);
+                A(".asciz", "%s", buf);
                 // TODO output .size ?
                 break;
             }
@@ -1046,17 +1084,18 @@ emit_data_segment(
     // https://ftp.gnu.org/old-gnu/Manuals/gas-2.9.1/html_chapter/as_7.html#SEC119
 
     // Emit a NULL ptr until we implement the frame maps proper for x86_64.
-    fprintf(out, "\
-	.type	sl_rt_frame_maps,@object\n\
-	.section	.data.rel.ro,\"aw\",@progbits\n\
-	.globl	sl_rt_frame_maps\n\
-	.p2align	3, 0x0\n\
-sl_rt_frame_maps:\n\
-	.quad	0\n\
-	.size	sl_rt_frame_maps, 4\n\
-"
-        );
+    A(".type", "sl_rt_frame_maps,@object");
+    A(".section", ".data.rel.ro,\"aw\",@progbits");
+    A(".globl", "sl_rt_frame_maps");
+    A(".p2align", "3, 0x0");
+    L("sl_rt_frame_maps");
+    A(".quad", "0");
+    A(".size", "sl_rt_frame_maps, 4");
 
+    // Silence warning about executable stack.
+    A(".section", ".note.GNU-stack,\"\",@progbits");
+#undef L
+#undef A
 }
 
 
