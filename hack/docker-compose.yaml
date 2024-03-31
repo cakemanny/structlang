@@ -1,0 +1,18 @@
+---
+
+services:
+  aarch64-linux:
+    build:
+      dockerfile: Dockerfile
+    platform: linux/arm64/v8
+    command: bash
+    volumes:
+      - ..:/app
+
+  x86_64-linux:
+    build:
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    command: bash
+    volumes:
+      - ..:/app

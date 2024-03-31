@@ -25,15 +25,16 @@ extern sl_decl_t* parse_file(const char* filename);
 static void print_usage_and_exit(int exit_code) __attribute__((noreturn));
 static void print_usage_and_exit(int exit_code)
 {
-    fprintf(stderr, "usage: structc [options] <input>\n");
+    fprintf(stderr, "usage: structlangc [options] <input>\n");
     fputs("\
 \n\
 if '-' is given as an input, then stdin is read.\n\
 \n\
 options:\n\
   -o                Output filename\n\
-  --target=arm64    Produce arm64 assembly for macOS (default)\n\
+  --target=arm64    Produce arm64 assembly for macOS\n\
   --target=x86_64   Produce x86_64 GAS syntax assembly for Linux\n\
+  -S                Not yet implemented.\n\
 \n\
 debug options:\n\
   -p    Parse only (print ast)\n\
@@ -61,8 +62,7 @@ int main(int argc, char* argv[])
     bool stop_after_liveness_analysis = 0;
     char* inarg = NULL;
     char* outarg = NULL;
-    var target_tag = TARGET_ARM64;
-    var target = &target_arm64;
+    const target_t* target = &TARGET_DEFAULT;
 
     bool optsdone = false;
     for (int i = 1; i < argc; i++) {
@@ -78,9 +78,9 @@ int main(int argc, char* argv[])
                 if (strncmp(argv[i], "--target=", target_opt_len) == 0) {
                     const char* target_value = argv[i] + target_opt_len;
                     if (strcmp(target_value, "x86_64") == 0) {
-                        target_tag = TARGET_X86_64;
                         target = &target_x86_64;
                     } else if (strcmp(target_value, "arm64") == 0) {
+                        target = &target_arm64;
                     } else {
                         fprintf(stderr, "unknown target: %s\n", target_value);
                         exit(1);
@@ -103,17 +103,20 @@ int main(int argc, char* argv[])
                     case 'i': stop_after_instruction_selection = 1; break;
                     case 'l': stop_after_liveness_analysis = 1; break;
                     case 'o':
-                              if (!(i + 1 < argc)) {
-                                  fprintf(stderr, "argument to '-o' is missing\n");
-                                  print_usage_and_exit(1);
-                              }
-                              if (*(pc + 1)) {
-                                  fprintf(stderr, "no short args may follow '-o'\n");
-                                  print_usage_and_exit(1);
-                              }
-                              i += 1;
-                              outarg = argv[i];
-                              break;
+                       if (!(i + 1 < argc)) {
+                           fprintf(stderr, "argument to '-o' is missing\n");
+                           print_usage_and_exit(1);
+                       }
+                       if (*(pc + 1)) {
+                           fprintf(stderr, "no short args may follow '-o'\n");
+                           print_usage_and_exit(1);
+                       }
+                       i += 1;
+                       outarg = argv[i];
+                       break;
+                    // S will become our option to emit assembly and no option
+                    // will mean calling out to the assembler and linker.
+                    case 'S': break;
                     case 'h': print_usage_and_exit(0);
                     default: fprintf(stderr, "unknown option '%c'\n", *pc);
                              print_usage_and_exit(1);
@@ -180,7 +183,7 @@ int main(int argc, char* argv[])
 
     temp_state_t* temp_state = temp_state_new();
     ac_frame_t* frames =
-        calculate_activation_records(target_tag, temp_state, program);
+        calculate_activation_records(target, temp_state, program);
     if(!frames) {
         // TODO: consider a module with only struct definitions?
         fprintf(stderr, "internal error: failed to calculate frames\n");

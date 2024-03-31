@@ -50,6 +50,7 @@ endif
 
 RUSTC=rustc
 
+.PHONY: all lib gen runtime
 all: gen lib $(BUILD_DIR)/$(TARGET_EXEC) $(BUILD_DIR)/compile_commands.json runtime
 
 lib: gen $(BUILD_DIR)/$(TARGET_LIB)
@@ -106,12 +107,20 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 $(BUILD_DIR)/compile_commands.json: $(OBJS) $(COMPILE_DB_PARTS)
 	sed -e '1s/^/[\'$$'\n''/' -e '$$s/,$$/\'$$'\n'']/' $(COMPILE_DB_PARTS) > $@
 
-.PHONY: clean all lib gen runtime
-
+.PHONY: clean
 clean:
 	$(RM) -r $(BUILD_DIR)
 
--include $(DEPS)
+ifneq "$(MAKECMDGOALS)" "clean"
+  -include $(DEPS)
+endif
 
 MKDIR_P ?= mkdir -p
 
+.PHONY: test
+test:
+	./tests/parsing
+	./tests/semantics
+	./tests/activation
+	./tests/codegen
+	$(MAKE) -C ./tests/stackmaps test

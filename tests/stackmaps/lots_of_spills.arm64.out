@@ -1,0 +1,192 @@
+	.section	__DATA,__const
+	.p2align	3
+Lptrmap0:
+	.quad	0
+	.quad	Lret22	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap1:
+	.quad	Lptrmap0
+	.quad	Lret21	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap2:
+	.quad	Lptrmap1
+	.quad	Lret20	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap3:
+	.quad	Lptrmap2
+	.quad	Lret19	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap4:
+	.quad	Lptrmap3
+	.quad	Lret18	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap5:
+	.quad	Lptrmap4
+	.quad	Lret17	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap6:
+	.quad	Lptrmap5
+	.quad	Lret16	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap7:
+	.quad	Lptrmap6
+	.quad	Lret15	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap8:
+	.quad	Lptrmap7
+	.quad	Lret14	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap9:
+	.quad	Lptrmap8
+	.quad	Lret13	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.p2align	3
+Lptrmap10:
+	.quad	Lptrmap9
+	.quad	Lret12	; return address - the key
+	.long	524288	; callee-save bitmap
+	.short	2	; number of stack args + 2
+	.short	10	; length of locals space
+	.short	10	; length of spills space
+	.byte	120	; spill_reg
+	.byte	86	; spill_reg
+	.byte	52	; spill_reg
+	.byte	18	; spill_reg
+	.byte	160	; spill_reg
+	.zero	1
+	.quad	0	; arg bitmap
+	.quad	0	; locals bitmap
+	.quad	1022	; spills bitmap
+	.globl	_sl_rt_frame_maps
+	.p2align	3
+_sl_rt_frame_maps:
+	.quad	Lptrmap10

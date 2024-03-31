@@ -1,0 +1,11 @@
+Snapshot Tests
+==============
+
+To run snapshot tests, run
+
+    make test
+
+If you are happy with the shown diff output, then stage it with `git add`.
+
+In the future it may be nice to check that the stackmaps are correct
+in some other way.

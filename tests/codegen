@@ -101,7 +101,7 @@ expect () {
     if [ -n "$verbose" ]; then
         echo "${grn}pass${rst}: '$code'"
     else
-        echo "${grn}pass${rst}: $(echo "$code" | tr $'\n' $' ')"
+        echo "${grn}pass${rst}: $(echo "$code" | tr '\n' ' ')"
     fi
 }
 

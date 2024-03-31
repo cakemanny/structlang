@@ -19,6 +19,8 @@
 #define BitsetLen(len) (((len) + 63) / 64)
 #define NELEMS(A) ((sizeof A) / sizeof A[0])
 
+#define fatal(msg) do { perror(msg); abort(); } while(0)
+
 #define unlikely(x)    __builtin_expect(!!(x), 0)
 
 #define Asprintf(ret, format, ...) do { \
@@ -27,6 +29,7 @@
         abort(); \
     } \
 } while (0)
+
 
 typedef struct codegen_state_t {
     assm_instr_t** ilist;
@@ -117,8 +120,7 @@ static char* strdupchk(const char* s1)
 {
     char* s = strdup(s1);
     if (!s) {
-        perror("out of memory");
-        abort();
+        fatal("out of memory");
     }
     return s;
 }
@@ -813,10 +815,15 @@ emit_frame_map_entry(
     fprintf(out, "	.long	%"PRIu32"	; callee-save bitmap\n",
             cs_bitmap.bm);
 
-    // TODO: panic if the num of stack or local words doesn't
-    // fit into a uint16_t
-
     var map = frag->fr_map;
+
+    if (map->acfm_num_arg_words > UINT16_MAX) {
+        fatal("num arg words > uint16_max");
+    }
+    if (map->acfm_num_local_words > UINT16_MAX) {
+        fatal("num local words > uint16_max");
+    }
+    assert(map->acfm_num_spill_words <= map->acfm_num_local_words);
 
     // This number actually includes the saved FP and RA...
     fprintf(out, "	.short	%d	; number of stack args + 2\n",
@@ -845,7 +852,7 @@ emit_frame_map_entry(
         fprintf(out, "	.byte	%"PRIu8"	; spill_reg\n",
                 spill_reg[i]);
     }
-    fprintf(out, "	.byte	%d	; padding\n", 0);
+    fprintf(out, "	.zero	%d\n", 1); // padding
 
     for (int i = 0; i < BitsetLen(map->acfm_num_arg_words); i++) {
         fprintf(out, "	.quad	%"PRIu64"	; arg bitmap\n",
@@ -957,6 +964,8 @@ static codegen_t arm64_codegen_module = {
     .emit_data_segment = emit_data_segment,
 };
 
+static Table_T arm64_temp_map();
+
 const target_t target_arm64 = {
     .word_size = 8,
     .stack_alignment = 16,
@@ -974,6 +983,7 @@ const target_t target_arm64 = {
     },
     .register_names = arm64_registers,
     .register_for_size = arm64_register_for_size,
+    .tgt_temp_map = arm64_temp_map,
     .tgt_backend = &arm64_codegen_module,
 };
 
@@ -993,7 +1003,7 @@ static unsigned hashtemp(const void* key)
 }
 
 
-Table_T arm64_temp_map()
+static Table_T arm64_temp_map()
 {
     Table_T result = Table_new(0, cmptemp, hashtemp);
     for (int i = 0; i < NELEMS(arm64_registers); i++) {

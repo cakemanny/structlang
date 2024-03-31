@@ -1,5 +1,15 @@
 #!/bin/sh
 
+# This script is used in order to test the x86_64 linux backend
+# from an arm64 mac.
+# It contains a lesser number of tests due to development on that platform
+# lagging behind.
+
+if [ "$(uname)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]; then
+    echo "on x86_64-linux, use codegen instead" >&2
+    exit 1
+fi
+
 args=`getopt v $*`
 if [ $? -ne 0 ]; then
     echo "usage: $0 [-v]"
@@ -33,8 +43,8 @@ exitcode=0
 # todo: move to the actual makefile ?
 RTO="$BUILD_DIR/runtime_x86_64.o"
 if ! [ -f "$BUILD_DIR" ]; then
-    zig cc -c --target=x86_64-linux-gnu $SCRIPT_DIR/../runtime/runtime.c \
-        -o $RTO
+    zig cc -c --target=x86_64-linux-gnu "$SCRIPT_DIR/../runtime/runtime.c" \
+        -o "$RTO"
 fi
 
 LD="zig cc"
@@ -54,29 +64,29 @@ expect () {
     expected="$2"
     stmp="${tmp_d}/test.s"
     atmp="${tmp_d}/a.out"
-    if (echo "$code" | $SLC --target=x86_64 - > $stmp); then
+    if (echo "$code" | $SLC --target=x86_64 - > "$stmp"); then
         # Link
-        $LD $LDFLAGS $stmp -o $atmp $LDLIBS
+        $LD $LDFLAGS "$stmp" -o "$atmp" $LDLIBS
         # Run
         # We write to a file because docker seems to spit a carriage return out
-        docker exec -it $container_id sh -c './a.out; echo $? > test.result'
+        docker exec -it "$container_id" sh -c './a.out; echo $? > test.result'
 
-        result=$(cat ${tmp_d}/test.result)
+        result=$(cat "${tmp_d}/test.result")
         if [ "$result" = "$expected" ]; then
             if [ -n "$verbose" ]; then
                 echo "${grn}pass${rst}: '$code'"
             else
-                echo "${grn}pass${rst}: $(echo "$code" | tr $'\n' $' ')"
+                echo "${grn}pass${rst}: $(echo "$code" | tr '\n' ' ')"
             fi
         else
             echo "${red}FAIL:${rst} '$code'"
             echo "  expected: '$expected'"
             echo "  actual:   '$result'"
-            exitcode=$((1 + $exitcode))
+            exitcode=$((1 + exitcode))
         fi
     else
         echo "${red}FAILED${rst} to compile '$code'"
-        exitcode=$((1 + $exitcode))
+        exitcode=$((1 + exitcode))
     fi
 }
 

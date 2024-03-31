@@ -1039,6 +1039,8 @@ static codegen_t x86_64_codegen_module = {
     .emit_data_segment = emit_data_segment,
 };
 
+static Table_T x86_64_temp_map();
+
 const target_t target_x86_64 = {
     .word_size = 8,
     .stack_alignment = 16,
@@ -1056,6 +1058,7 @@ const target_t target_x86_64 = {
     },
     .register_names = x86_64_registers,
     .register_for_size = x86_64_register_for_size,
+    .tgt_temp_map = x86_64_temp_map,
     .tgt_backend = &x86_64_codegen_module,
 };
 
@@ -1074,7 +1077,7 @@ static unsigned hashtemp(const void* key)
     return k->temp_id;
 }
 
-Table_T x86_64_temp_map()
+static Table_T x86_64_temp_map()
 {
     Table_T result = Table_new(0, cmptemp, hashtemp);
     for (int i = 0; i < NELEMS(x86_64_registers); i++) {

@@ -32,6 +32,8 @@ typedef struct target_t {
     const temp_array_t callee_saves;
     const char** register_names;
     const char* (*register_for_size)(const char* regname, size_t size);
+    Table_T // temp_t* -> const char*
+        (*tgt_temp_map)(); // returns table mapping temps to their register names
 
     struct codegen_t* tgt_backend;
 } target_t;
@@ -40,7 +42,13 @@ typedef struct target_t {
 extern const target_t target_arm64;
 extern const target_t target_x86_64;
 
-Table_T x86_64_temp_map();
-Table_T arm64_temp_map();
+#if defined(__arm64__)
+#  define TARGET_DEFAULT target_arm64
+#elif defined(__x86_64__)
+#  define TARGET_DEFAULT target_x86_64
+#else
+#  warning "No target for platform: defaulting to arm64"
+#  define TARGET_DEFAULT target_arm64
+#endif
 
 #endif /* __TARGET_H__ */

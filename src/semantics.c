@@ -1,4 +1,4 @@
-#include <stdlib.h> // malloc, free, abort
+#include <stdlib.h> // free
 #include <assert.h> // assert
 #include <string.h> // strcmp
 #include "semantics.h"

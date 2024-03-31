@@ -25,7 +25,7 @@ check_pass() {
     _=$(echo "$1" | $SLC -)
     result=$?
     if [[ $result == 0 ]]; then
-        echo "${grn}passed${clr}: $(echo "$1" | tr $'\n' $' ')"
+        echo "${grn}passed${clr}: $(echo "$1" | tr '\n' ' ')"
     else
         echo "${red}failed${clr}"
         echo "**program**"

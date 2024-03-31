@@ -529,20 +529,13 @@ static void calculate_activation_record_decl_func(
 
 
 ac_frame_t* calculate_activation_records(
-        enum target_type target_tag, temp_state_t* temp_state, sl_decl_t* program)
+        const target_t* target, temp_state_t* temp_state, sl_decl_t* program)
 {
     if (ac_debug) {
         fprintf(stderr, "calculating activation records\n");
     }
 
-    Table_T temp_map =
-        (target_tag == TARGET_X86_64) ? x86_64_temp_map()
-        : arm64_temp_map();
-
-    // !!
-    target =
-        (target_tag == TARGET_X86_64) ? &target_x86_64
-        : &target_arm64;
+    Table_T temp_map = target->tgt_temp_map();
 
     ac_frame_t* frame_list = NULL;
     for (sl_decl_t* d = program; d; d = d->dl_list) {
