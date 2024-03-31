@@ -8,8 +8,15 @@ RUN apt update && \
         bison \
         rustc
 
+RUN apt update && \
+    apt install -y \
+        man-db \
+        gdb \
+        lldb
+
 WORKDIR /app
 
-ENV CC=clang
+ENV CC=clang \
+    ASAN_OPTIONS=detect_leaks=0
 
 CMD ["bash"]

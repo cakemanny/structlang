@@ -35,6 +35,7 @@ typedef struct codegen_state_t {
 static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp);
 
 static const int word_size = 8;
+static const int stack_alignment = 16;
 
 static const temp_t special_regs[] = {
     {.temp_id = 0, .temp_size = word_size}, // rax  return value pt1
@@ -42,6 +43,8 @@ static const temp_t special_regs[] = {
     {.temp_id = 4, .temp_size = word_size}, // rsp  stack pointer
     {.temp_id = 5, .temp_size = word_size}, // rbp  frame pointer
 };
+#define FP (special_regs[3])
+#define SP (special_regs[2])
 
 // is this what he meant by outgoing arguments?
 static const temp_t argregs[] = {
@@ -208,7 +211,7 @@ static assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp)
     char* s = NULL;
     Asprintf(&s, "mov%s %d(`s0), `d0	# unspill\n",
             suff_from_size(v->acf_size), v->acf_offset);
-    var src_list = temp_list(special_regs[3]);
+    var src_list = temp_list(FP);
     return assm_oper(s, temp_list(temp), src_list, NULL);
 }
 
@@ -218,13 +221,56 @@ static assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp)
     Asprintf(&s, "mov%s `s1, %d(`s0)	# spill\n",
             suff_from_size(v->acf_size), v->acf_offset);
     var src_list =
-        temp_list_cons(special_regs[3],
+        temp_list_cons(FP,
                 temp_list(temp));
     return assm_oper(
             s,
             NULL, /* dst list */
             src_list,
             NULL /* jump=None */);
+}
+
+/*
+ * Used mostly for working out the total size required when considering
+ * the alignment requirements of adjacent stored data.
+ */
+static int round_up_size(int size, int multiple) __attribute__((const));
+static int round_up_size(int size, int multiple)
+{
+    return ((size + multiple - 1) / multiple) * multiple;
+}
+
+static temp_list_t* munch_stack_args(codegen_state_t state, tree_exp_t* exp)
+{
+    // This will be wrong / broken!
+
+    for (var e = exp; e; e = e->te_list) {
+        assert(e->te_size <= word_size && "TODO: larger stack args");
+    }
+
+    size_t total_size = 0;
+    for (var e = exp; e; e = e->te_list) {
+        var src = munch_exp(state, e);
+        char* s = NULL;
+        Asprintf(&s, "mov%s  `s1, %zu(`s0)\n",
+                suff(e), total_size);
+        var src_list =
+            temp_list_cons(SP,
+                    temp_list(src));
+        emit(state, assm_oper(s, NULL, src_list, NULL));
+
+
+        size_t field_alignment =
+            /* use size as alignment for types smaller than 8 bytes */
+            e->te_size;
+        total_size = round_up_size(total_size, field_alignment);
+        total_size += e->te_size;
+    }
+    total_size = round_up_size(total_size, stack_alignment);
+
+    reserve_outgoing_arg_space(state.frame, total_size);
+
+    return NULL;
 }
 
 static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* exp)
@@ -234,37 +280,43 @@ static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* e
         return NULL;
     }
 
-    assert(arg_idx < NELEMS(argregs));
-    var param_reg = argregs[arg_idx];
+    if (arg_idx < NELEMS(argregs)) {
+        var param_reg = argregs[arg_idx];
 
-    if (exp->te_size <= 8) {
-        param_reg.temp_size = exp->te_size;
-        var src = munch_exp(state, exp);
-        char* s = NULL;
-        Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
-        emit(state, assm_move(s, param_reg, src));
+        if (exp->te_size <= 8) {
+            param_reg.temp_size = exp->te_size;
+            var src = munch_exp(state, exp);
+            char* s = NULL;
+            Asprintf(&s, "mov%s `s0, `d0\n", suff(exp));
+            emit(state, assm_move(s, param_reg, src));
 
-        return temp_list_cons(
-                param_reg,
-                munch_args(state, arg_idx + 1, exp->te_list)
-                );
-    } else if (exp->te_size <= 16) {
-        param_reg.temp_size = word_size;
-        assert(arg_idx + 1 < NELEMS(argregs));
-        var param_reg2 = argregs[arg_idx + 1];
-        param_reg2.temp_size = exp->te_size - word_size;
+            return temp_list_cons(
+                    param_reg,
+                    munch_args(state, arg_idx + 1, exp->te_list)
+                    );
+        } else if (exp->te_size <= 16) {
+            param_reg.temp_size = word_size;
+            assert(arg_idx + 1 < NELEMS(argregs));
+            var param_reg2 = argregs[arg_idx + 1];
+            param_reg2.temp_size = exp->te_size - word_size;
 
-        munch_exp(state, exp);
-        // TODO: change munch to return a list of temps
-        assert(!"TODO: larger arguments");
+            munch_exp(state, exp);
+            // TODO: change munch to return a list of temps
+            assert(!"TODO: larger arguments");
 
-        return temp_list_cons(
-                param_reg,
-                temp_list_cons(
-                    param_reg2,
-                    munch_args(state, arg_idx + 2, exp->te_list)));
+            return temp_list_cons(
+                    param_reg,
+                    temp_list_cons(
+                        param_reg2,
+                        munch_args(state, arg_idx + 2, exp->te_list)));
+        } else {
+            assert(0 && "go away large arguments");
+        }
     } else {
-        assert(0 && "go away large arguments");
+        /*
+         * Remaining Arguments must be passed on the stack
+         */
+        return munch_stack_args(state, exp);
     }
 }
 
@@ -856,8 +908,8 @@ assm_instr_t* x86_64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
     for (int i = 0; i < NELEMS(callee_saves); i++) {
         src_list = temp_list_cons(callee_saves[i], src_list);
     }
-    src_list = temp_list_cons(special_regs[2], src_list); // sp =rsp
-    src_list = temp_list_cons(special_regs[3], src_list); // fp =rbp
+    src_list = temp_list_cons(SP, src_list); // sp =rsp
+    src_list = temp_list_cons(FP, src_list); // fp =rbp
     temp_t ret0 = frame->acf_target->tgt_ret0;
     ret0.temp_size = word_size;
     src_list = temp_list_cons(ret0, src_list); // rax
