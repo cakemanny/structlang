@@ -584,6 +584,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             temp_t r = new_temp_for_exp(state.temp_state, exp);
             char* s = NULL;
             Asprintf(&s, "leaq	%s(%%rip), `d0\n", exp->te_name);
+            emit(state, assm_oper(s, temp_list(r), NULL, NULL));
             return r;
         }
         case TREE_EXP_CALL:
@@ -1069,7 +1070,9 @@ emit_data_segment(
                 char buf[512];
                 fmt_snprint_escaped(buf, 512, frag->fr_string);
                 A(".asciz", "%s", buf);
-                // TODO output .size ?
+                A(".size", "%s, %zu", frag->fr_label,
+                        // +1 for the terminating null
+                        strlen(frag->fr_string) + 1);
                 break;
             }
             case FR_FRAME_MAP:
