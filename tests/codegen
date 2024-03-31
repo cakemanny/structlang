@@ -1,29 +1,18 @@
 #!/bin/sh
-
-args=`getopt vx $*`
-if [ $? -ne 0 ]; then
-    echo "usage: $0 [-vx]"
-    exit 2
-fi
-set -- $args
+# shellcheck disable=SC2086
 
 verbose=
 xfail=
-while :; do
-    case "$1" in
-        -v)
-            verbose=1
-            shift
-            ;;
-        -x)
-            xfail=1
-            shift
-            ;;
-        --)
-            shift; break
-            ;;
+while getopts vx arg
+do
+    case "$arg" in
+        v)  verbose=1 ;;
+        x)  xfail=1 ;;
+        ?)  echo "usage: $0 [-vx]"
+            exit 2 ;;
     esac
 done
+shift $((OPTIND - 1))
 
 BUILD_DIR="$(dirname "$0")/../build/debug"
 test -x "$BUILD_DIR/structlangc" || exit 1

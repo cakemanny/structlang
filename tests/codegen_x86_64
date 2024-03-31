@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2086,SC2181
 
 # This script is used in order to test the x86_64 linux backend
 # from an arm64 mac.
@@ -10,25 +11,16 @@ if [ "$(uname)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]; then
     exit 1
 fi
 
-args=`getopt v $*`
-if [ $? -ne 0 ]; then
-    echo "usage: $0 [-v]"
-    exit 2
-fi
-set -- $args
-
 verbose=
-while :; do
-    case "$1" in
-        -v)
-            verbose=1
-            shift
-            ;;
-        --)
-            shift; break
-            ;;
+while getopts v arg
+do
+    case "$arg" in
+        v)  verbose=1 ;;
+        ?)  echo "usage: $0 [-vx]"
+            exit 2 ;;
     esac
 done
+shift $((OPTIND - 1))
 
 SCRIPT_DIR=$(dirname "$0")
 BUILD_DIR="$SCRIPT_DIR/../build/debug"
@@ -54,9 +46,11 @@ LDLIBS="$RTO"
 
 tmp_d=$(mktemp -d) || exit 1
 echo "$tmp_d"
+# shellcheck disable=SC2064  # immediate expansion wanted
 trap "rm -rf ${tmp_d}" EXIT
 
 container_id=$(docker run --detach --rm --platform=linux/amd64 -v "$tmp_d:/app" -w /app debian:latest sh -c 'sleep 60')
+# shellcheck disable=SC2064  # immediate expansion wanted
 trap "docker stop -t 0 $container_id; rm -rf ${tmp_d}" EXIT
 
 expect () {
