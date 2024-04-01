@@ -1,5 +1,6 @@
 # Based on https://spin.atomicobject.com/2016/08/26/makefile-c-projects/
 TARGET_EXEC ?= structlangc
+TEST_EXEC ?= structlangc.test
 TARGET_LIB ?= libstructlang.a
 RUNTIME_LIB ?= libslruntime.a
 
@@ -19,7 +20,10 @@ OBJEX := $(GEN:%=$(BUILD_DIR)/src/%.o)
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o) $(OBJEX)
 DEPS := $(OBJS:.o=.d)
 COMPILE_DB_PARTS := $(addsuffix .json,$(OBJS))
-MAINS := $(BUILD_DIR)/src/main.o
+
+MAINS := $(BUILD_DIR)/./src/main.c.o
+LIB_OBJS := $(filter-out $(MAINS),$(OBJS))
+
 
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_DIRS += $(SRC_DIRS:%=$(BUILD_DIR)/%)
@@ -51,7 +55,10 @@ endif
 RUSTC=rustc
 
 .PHONY: all lib gen runtime
-all: gen lib $(BUILD_DIR)/$(TARGET_EXEC) $(BUILD_DIR)/compile_commands.json runtime
+all: gen lib \
+	$(BUILD_DIR)/$(TARGET_EXEC) \
+	$(BUILD_DIR)/$(TEST_EXEC) \
+	$(BUILD_DIR)/compile_commands.json runtime
 
 lib: gen $(BUILD_DIR)/$(TARGET_LIB)
 
@@ -59,10 +66,11 @@ gen: $(BUILD_DIR)/src/grammar.tab.h
 
 runtime: $(BUILD_DIR)/$(RUNTIME_LIB)
 
-$(BUILD_DIR)/$(TARGET_LIB): $(filter-out $(MAINS),$(OBJS))
+$(BUILD_DIR)/$(TARGET_LIB): $(LIB_OBJS)
 	$(AR) rcs $@ $^
 
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(BUILD_DIR)/libgraph.a
+$(BUILD_DIR)/$(TARGET_EXEC) \
+$(BUILD_DIR)/$(TEST_EXEC): $(OBJS) $(BUILD_DIR)/libgraph.a
 	$(CC) $(OBJS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/$(RUNTIME_LIB): runtime/runtime.c
@@ -117,8 +125,12 @@ endif
 
 MKDIR_P ?= mkdir -p
 
+.PHONY: check
+check: gen $(BUILD_DIR)/$(TEST_EXEC)
+	$(BUILD_DIR)/$(TEST_EXEC)
+
 .PHONY: test
-test:
+test: check
 	./tests/parsing
 	./tests/semantics
 	./tests/activation

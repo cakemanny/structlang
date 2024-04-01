@@ -206,6 +206,7 @@ void** Table_toArray(T table, void *end)
 
     assert(table);
     array = malloc((2 * table->length + 1) * sizeof *array);
+    assert(array);
     for (i = 0; i < table->size; i++) {
         p = table->buckets + i;
         if (p->key) {

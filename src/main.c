@@ -49,8 +49,21 @@ debug options:\n\
     exit(exit_code);
 }
 
+bool
+is_test_binary(const char* prog_name)
+{
+    const char* suffix = strrchr(prog_name, '.');
+    return suffix != NULL && (strcmp(suffix, ".test") == 0);
+}
+
+extern int test_main(int argc, char* argv[]);
+
 int main(int argc, char* argv[])
 {
+    if (is_test_binary(argv[0])) {
+        exit(test_main(argc, argv));
+    }
+
     bool parse_only = 0;
     bool stop_after_type_checking = 0;
     bool stop_after_rewrites = 0;
