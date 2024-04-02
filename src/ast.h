@@ -6,6 +6,7 @@
 #include <stdio.h> // FILE*
 #include <stdbool.h>
 #include "symbols.h"
+#include "interfaces/arena.h"
 
 typedef struct sl_expr_t sl_expr_t;
 typedef struct sl_decl_t sl_decl_t;
@@ -184,5 +185,13 @@ int dl_func_num_params(sl_decl_t* func_decl) __attribute__((pure));
 // TODO
 //unsigned long ty_hash(sl_type_t* type);
 int ty_cmp(sl_type_t* t1, sl_type_t* t2) __attribute__((nonnull(1, 2)));
+
+
+sl_decl_t* parse_file(Arena_T arena, const char* filename);
+
+extern int yyparse();
+void yyerror(const char* msg);
+void parse_set_root(sl_decl_t* decl);
+
 
 #endif /* __AST_H__ */

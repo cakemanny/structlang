@@ -243,6 +243,99 @@ stm tree_stm_append(stm hd, stm to_append)
     return hd;
 }
 
+void tree_typ_free(tree_typ_t** ptyp)
+{
+    return; // XXX Seems the types might be shared ... :(
+
+    tree_typ_t* next;
+    for (; *ptyp; *ptyp = next) {
+        next = (*ptyp)->tt_list;
+
+        switch ((*ptyp)->tt_tag) {
+        case TREE_TYPE_INT:
+        case TREE_TYPE_BOOL:
+        case TREE_TYPE_VOID:
+            break;
+        case TREE_TYPE_PTR:
+            tree_typ_free(&(*ptyp)->tt_pointee);
+            break;
+        case TREE_TYPE_PTR_DIFF:
+            break;
+        case TREE_TYPE_STRUCT:
+            tree_typ_free(&(*ptyp)->tt_fields);
+            break;
+        }
+        free(*ptyp);
+    }
+}
+
+void tree_exp_free(tree_exp_t** pexp)
+{
+    return; // XXX also shared, e.g. when creating temps
+
+    exp next;
+    for (; *pexp; *pexp = next) {
+        next = (*pexp)->te_list;
+
+        switch ((*pexp)->te_tag) {
+            case TREE_EXP_CONST:
+            case TREE_EXP_NAME:
+            case TREE_EXP_TEMP:
+                break;
+            case TREE_EXP_BINOP:
+                tree_exp_free(&(*pexp)->te_lhs);
+                tree_exp_free(&(*pexp)->te_rhs);
+                break;
+            case TREE_EXP_MEM:
+                tree_exp_free(&(*pexp)->te_mem_addr);
+                break;
+            case TREE_EXP_CALL:
+                tree_exp_free(&(*pexp)->te_func);
+                tree_exp_free(&(*pexp)->te_args);
+                break;
+            case TREE_EXP_ESEQ:
+                tree_stm_free(&(*pexp)->te_eseq_stm);
+                tree_exp_free(&(*pexp)->te_eseq_exp);
+                break;
+        }
+        tree_typ_free(&(*pexp)->te_type);
+        free(*pexp);
+    }
+}
+
+void tree_stm_free(tree_stm_t** pstm)
+{
+    tree_stm_t* next;
+    for (; *pstm; *pstm = next) {
+        next = (*pstm)->tst_list;
+
+        switch ((*pstm)->tst_tag) {
+            case TREE_STM_MOVE:
+                tree_exp_free(&(*pstm)->tst_move_dst);
+                tree_exp_free(&(*pstm)->tst_move_exp);
+                break;
+            case TREE_STM_EXP:
+                tree_exp_free(&(*pstm)->tst_exp);
+                break;
+            case TREE_STM_JUMP:
+                tree_exp_free(&(*pstm)->tst_jump_dst);
+                free((*pstm)->tst_jump_labels);
+                (*pstm)->tst_jump_labels = NULL;
+                break;
+            case TREE_STM_CJUMP:
+                tree_exp_free(&(*pstm)->tst_cjump_lhs);
+                tree_exp_free(&(*pstm)->tst_cjump_rhs);
+                break;
+            case TREE_STM_SEQ:
+                tree_stm_free(&(*pstm)->tst_seq_s1);
+                tree_stm_free(&(*pstm)->tst_seq_s2);
+                break;
+            case TREE_STM_LABEL:
+                // label not owned by us
+                break;
+        }
+    }
+}
 
 void tree_exp_print(FILE* out, const tree_exp_t* e)
 {

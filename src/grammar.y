@@ -4,13 +4,7 @@
 #include <stdlib.h>
 #include "ast.h"
 
-extern int yylex();
-extern int yylineno;
-extern FILE* yyin;
-
-static void yyerror(const char* msg);
-
-static sl_decl_t* parse_tree_root;
+extern int yylex(); // defined by the flex lexer.
 
 #define YYERROR_VERBOSE
 
@@ -98,7 +92,7 @@ static sl_decl_t* parse_tree_root;
 %%
 
 program:
-        declaration_list { parse_tree_root = $$ = $1; }
+        declaration_list { parse_set_root($$ = $1); }
     ;
 
 declaration_list:
@@ -276,45 +270,3 @@ expr_list:
     |   expr_list ',' expr  { $$ = ex_append($1, $3); }
     ;
 %%
-
-int yywrap()
-{
-    return 1;
-}
-
-// FIXME: it's bad practise to prefix non-yacc/bison names with yy
-static const char* yyfilename;
-
-static void yyerror(const char* msg)
-{
-    const char* fn;
-    if (yyin == stdin) {
-        fn = "<stdin>";
-    } else {
-        fn = yyfilename;
-    }
-
-    fprintf(stderr, "%s:%d: error: %s\n", fn, yylineno, msg);
-    extern const char* yytext;
-    fprintf(stderr, "	yytext = %s\n", yytext);
-}
-
-sl_decl_t* parse_file(const char* filename)
-{
-    if (strcmp(filename, "-") == 0) {
-        yyin = stdin; // default anyway
-    } else {
-        yyin = fopen(filename, "r");
-        if (!yyin) {
-            perror(filename);
-            return NULL;
-        }
-        yyfilename = filename;
-    }
-    parse_tree_root = NULL;
-    // TODO: check meaning of yyparse return value
-    yyparse();
-    yyfilename = NULL;
-    return parse_tree_root;
-}
-

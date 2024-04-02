@@ -31,6 +31,7 @@ void* Arena_calloc(T arena, long count, long nbytes, const char* file, int line)
     __attribute__((malloc))
     __attribute__((alloc_size(2, 3)))
     __attribute__((returns_nonnull));
+
 /*
  * Clears out the arena, leaving it empty but ready to use again.
  */

@@ -93,9 +93,7 @@ static const temp_t arm64_caller_saves[] = {
  * calldefs should contain any registers that a called function
  * will or is allowed to trash
  */
-static temp_list_t* calldefs = NULL;
-
-static void init_calldefs()
+static temp_list_t* calldefs()
 {
     temp_list_t* c = NULL;
 
@@ -113,7 +111,7 @@ static void init_calldefs()
         c = temp_list_cons(t, c);
     }
 
-    calldefs = c;
+    return c;
 }
 
 static char* strdupchk(const char* s1)
@@ -438,9 +436,8 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             if (func->te_tag == TREE_EXP_NAME) {
                 char* s = NULL;
                 Asprintf(&s, "bl	_%s\n", func->te_name);
-                assert(calldefs);
                 emit(state, assm_oper(
-                            s, calldefs, munch_args(state, 0, args), NULL));
+                            s, calldefs(), munch_args(state, 0, args), NULL));
             } else {
                 tree_printf(stderr, ">>> %E\n", exp);
                 assert(!"TODO: TREE_EXP_CALL");
@@ -669,9 +666,6 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
 assm_instr_t* /* list */
 arm64_codegen(temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm)
 {
-    if (!calldefs) {
-        init_calldefs();
-    }
     assm_instr_t* result = NULL;
     sl_fragment_t* ptr_map_fragments = NULL;
     codegen_state_t codegen_state = {

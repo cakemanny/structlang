@@ -4,15 +4,20 @@
 #include <string.h> // memset
 #include <assert.h> // assert
 #include "ast.h"
-#include "mem.h"
+#include "interfaces/arena.h"
 #include "grammar.tab.h"
+
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 /* Line number from flex lexer */
 extern int yylineno;
 
+Arena_T ast_arena = NULL; // The current arena for allocating nodes
+
+
 static sl_decl_t* dl_alloc(int tag)
 {
-    sl_decl_t* node = xmalloc(sizeof *node);
+    sl_decl_t* node = Alloc(ast_arena, sizeof *node);
 
     node->dl_tag = tag;
     node->dl_line = yylineno;
@@ -67,7 +72,7 @@ sl_decl_t* dl_append(sl_decl_t* dln, sl_decl_t* to_append)
 
 static sl_type_t* ty_alloc(int tag)
 {
-    sl_type_t* node = xmalloc(sizeof *node);
+    sl_type_t* node = Alloc(ast_arena, sizeof *node);
 
     node->ty_tag = tag;
     node->ty_size = -1;
@@ -98,7 +103,7 @@ sl_type_t* ty_type_func()
 
 static sl_expr_t* ex_alloc(int tag)
 {
-    sl_expr_t* node = xmalloc(sizeof *node);
+    sl_expr_t* node = Alloc(ast_arena, sizeof *node);
 
     node->ex_tag = tag;
     node->ex_line = yylineno;
@@ -523,4 +528,73 @@ int ty_cmp(sl_type_t* t1, sl_type_t* t2)
         case SL_TYPE_FUNC:
             return 1; // FIXME
     }
+}
+
+/*
+ * Defined by the flex lexer
+ */
+extern FILE* yyin;
+
+static sl_decl_t* parse_tree_root;
+
+/*
+ * Tells flex that once it reaches EOF, that there's no new yyin.
+ * i.e. it's over.
+ */
+int yywrap()
+{
+    return 1;
+}
+
+static const char* yyfilename;
+
+void yyerror(const char* msg)
+{
+    const char* fn;
+    if (yyin == stdin) {
+        fn = "<stdin>";
+    } else {
+        fn = yyfilename;
+    }
+
+    fprintf(stderr, "%s:%d: error: %s\n", fn, yylineno, msg);
+    extern const char* yytext;
+    fprintf(stderr, "	yytext = %s\n", yytext);
+}
+
+/*
+ * parse_file is not reentrant
+ */
+sl_decl_t* parse_file(Arena_T arena, const char* filename)
+{
+    sl_decl_t* result = NULL;
+    ast_arena = arena;
+
+    if (strcmp(filename, "-") == 0) {
+        yyin = stdin; // default anyway
+    } else {
+        yyin = fopen(filename, "r");
+        if (!yyin) {
+            perror(filename);
+            return NULL;
+        }
+        yyfilename = filename;
+    }
+
+    if (yyparse() == 0) {
+        result = parse_tree_root;
+    }
+
+    // Restore state
+    yyfilename = NULL;
+    parse_tree_root = NULL;
+    // ast_arena = NULL; // This will break shit
+
+    return result;
+}
+
+void
+parse_set_root(sl_decl_t* decl)
+{
+    parse_tree_root = decl;
 }

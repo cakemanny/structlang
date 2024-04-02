@@ -19,9 +19,6 @@
 
 #define var __auto_type
 
-// grammar.y
-extern sl_decl_t* parse_file(const char* filename);
-
 static void print_usage_and_exit(int exit_code) __attribute__((noreturn));
 static void print_usage_and_exit(int exit_code)
 {
@@ -158,7 +155,8 @@ int main(int argc, char* argv[])
         }
     }
 
-    sl_decl_t* program = parse_file(inarg);
+    Arena_T ast_arena = Arena_new();
+    sl_decl_t* program = parse_file(ast_arena, inarg);
     if (!program) {
         return 1;
     }
@@ -207,12 +205,18 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    sl_fragment_t* fragments = translate_program(temp_state, program, frames);
+    Arena_T frag_arena = Arena_new();
+    sl_fragment_t* fragments =
+        translate_program(frag_arena, temp_state, program, frames);
     // ^ after this we can free up the ast structures
     if (!fragments) {
         fprintf(stderr, "internal error: failed to translate into trees\n");
         return 1;
     }
+    // Our AST in now converting into the Tree IR.
+    program = NULL;
+    Arena_dispose(&ast_arena);
+    frames = NULL; // now owned by fragments.
 
     if (stop_after_translation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
@@ -337,7 +341,8 @@ int main(int argc, char* argv[])
     Table_free(&label_to_spill_liveness);
     Table_free(&label_to_cs_bitmap);
 
-
+    Arena_dispose(&frag_arena);
+    sl_fragment_free_list(&fragments);
     // end of program... maybe
     temp_state_free(&temp_state);
 }

@@ -13,7 +13,8 @@
  * frame information and a function body - a statement in the tree IR
  */
 sl_fragment_t* translate_program(
-        temp_state_t* temp_state, const sl_decl_t* program, ac_frame_t* frames);
+        Arena_T, temp_state_t* temp_state,
+        const sl_decl_t* program, ac_frame_t* frames);
 
 /*
  * convert a structlang type into a tree language type

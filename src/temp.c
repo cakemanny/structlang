@@ -96,7 +96,6 @@ temp_list_t* temp_list_concat(temp_list_t* lead, temp_list_t* tail)
 
 void temp_list_free(temp_list_t** ptemp_list)
 {
-    assert(ptemp_list);
     while (*ptemp_list) {
         __auto_type to_free = *ptemp_list;
         *ptemp_list = (*ptemp_list)->tmp_list;

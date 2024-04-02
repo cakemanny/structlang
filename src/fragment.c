@@ -41,6 +41,32 @@ sl_fragment_t* sl_frame_map_fragment(ac_frame_map_t* map, sl_sym_t ret_label)
     return x;
 }
 
+void sl_fragment_free(sl_fragment_t** pfrag)
+{
+    var frag = *pfrag;
+    switch (frag->fr_tag) {
+        case FR_CODE:
+            tree_stm_free(&frag->fr_body);
+            ac_frame_free(&frag->fr_frame);
+            break;
+        case FR_STRING:
+            // free(frag->fr_string); // already on some arena
+            break;
+        case FR_FRAME_MAP:
+            ac_frame_map_free(&frag->fr_map);
+            break;
+    }
+}
+
+void sl_fragment_free_list(sl_fragment_t** pfrag)
+{
+    while (*pfrag) {
+        var to_free = *pfrag;
+        *pfrag = to_free->fr_list;
+        sl_fragment_free(&to_free);
+    }
+}
+
 sl_fragment_t* fr_append(sl_fragment_t* hd, sl_fragment_t* to_append)
 {
     if (!hd)

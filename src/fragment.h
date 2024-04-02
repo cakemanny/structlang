@@ -34,6 +34,9 @@ sl_fragment_t* sl_code_fragment(tree_stm_t* body, ac_frame_t* frame);
 sl_fragment_t* sl_string_fragment(sl_sym_t label, const char* string);
 sl_fragment_t* sl_frame_map_fragment(ac_frame_map_t* map, sl_sym_t ret_label);
 
+void sl_fragment_free(sl_fragment_t** pfrag);
+void sl_fragment_free_list(sl_fragment_t** pfrag);
+
 sl_fragment_t* fr_append(sl_fragment_t* hd, sl_fragment_t* to_append);
 
 void fr_string_print(FILE* out, const sl_fragment_t* frag);

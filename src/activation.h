@@ -88,7 +88,8 @@ size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);
  * The memory belongs to the caller and must be freed once the caller
  * is done with it.
  */
-char* ac_record_descriptor_for_type(const sl_decl_t* program, sl_type_t* type);
+char* ac_record_descriptor_for_type(
+        Arena_T arena, const sl_decl_t* program, sl_type_t* type);
 
 
 typedef struct ac_frame_map_t {
@@ -107,13 +108,15 @@ typedef struct ac_frame_map_t {
     uint64_t* acfm_args; // Bitmap of ptrs in arg space of frame
     uint64_t* acfm_locals; // Bitmap of ptrs in the space allocated for locals
     uint64_t* acfm_spills; // Bitmap indicating inherited ptr dispositions.
-    ac_frame_t* acfm_frame; // The frame being mapped.
+    ac_frame_t* acfm_frame; // The frame being mapped. (not owned)
 } ac_frame_map_t;
 
 /*
  *
  */
 ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars);
+
+void ac_frame_map_free(ac_frame_map_t** pfm);
 
 extern const size_t ac_word_size;
 
@@ -124,6 +127,7 @@ struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame, temp_t t);
 void ac_extend_frame_map_for_spills(
         ac_frame_map_t* frame_map, temp_list_t* spill_live_outs,
         Table_T allocation);
+
 
 /*
  * Ensures that at least required_bytes have been added to the

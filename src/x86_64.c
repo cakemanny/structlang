@@ -95,9 +95,7 @@ static const char* registers_64bit[] = {
  * calldefs should contain any registers that a called function
  * will or is allowed to trash
  */
-static temp_list_t* calldefs = NULL;
-
-static void init_calldefs()
+static temp_list_t* calldefs()
 {
     temp_list_t* c = NULL;
 
@@ -116,7 +114,7 @@ static void init_calldefs()
         c = temp_list_cons(t, c);
     }
 
-    calldefs = c;
+    return c;
 }
 
 static char* strdupchk(const char* s1)
@@ -596,17 +594,15 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             if (func->te_tag == TREE_EXP_NAME) {
                 char* s = NULL;
                 Asprintf(&s, "call %s\n", func->te_name);
-                assert(calldefs);
                 emit(state, assm_oper(
-                            s, calldefs, munch_args(state, 0, args), NULL));
+                            s, calldefs(), munch_args(state, 0, args), NULL));
             }
             // indirect call
             else {
                 char* s = strdupchk("callq *`s0\n");
 
-                assert(calldefs);
                 emit(state, assm_oper(s,
-                            calldefs,
+                            calldefs(),
                             temp_list_cons(Munch_exp(func),
                                 munch_args(state, 0, args)),
                             NULL));
@@ -806,17 +802,15 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
             if (func->te_tag == TREE_EXP_NAME) {
                 char* s = NULL;
                 Asprintf(&s, "call %s\n", func->te_name);
-                assert(calldefs);
                 emit(state, assm_oper(
-                            s, calldefs, munch_args(state, 0, args), NULL));
+                            s, calldefs(), munch_args(state, 0, args), NULL));
             }
             // indirect call
             else {
                 char* s = strdupchk("callq *`s0\n");
 
-                assert(calldefs);
                 emit(state, assm_oper(s,
-                            calldefs,
+                            calldefs(),
                             temp_list_cons(Munch_exp(func),
                                 munch_args(state, 0, args)),
                             NULL));
@@ -918,9 +912,6 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
 assm_instr_t* x86_64_codegen(
         temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm)
 {
-    if (!calldefs) {
-        init_calldefs();
-    }
     assm_instr_t* result = NULL;
     codegen_state_t codegen_state = {
         .ilist = &result,

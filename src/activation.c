@@ -294,13 +294,14 @@ static void ptr_map_for_type(
 }
 
 
-char* ac_record_descriptor_for_type(const sl_decl_t* program, sl_type_t* type)
+char* ac_record_descriptor_for_type(
+        Arena_T arena, const sl_decl_t* program, sl_type_t* type)
 {
     size_t size = size_of_type(program, type);
 
     unsigned long nwords = num_words(size);
     // +1 for the null terminator
-    char* buf = xmalloc(nwords + 1);
+    char* buf = Arena_alloc(arena, nwords + 1, __FILE__, __LINE__);
 
     // for now we just reuse the ptr map logic
     uint64_t* ptr_map = xmalloc(BitsetBytes(nwords));
@@ -312,6 +313,7 @@ char* ac_record_descriptor_for_type(const sl_decl_t* program, sl_type_t* type)
             buf[i] = 'n';
         }
     }
+    free(ptr_map);
     return buf;
 }
 
@@ -657,6 +659,23 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
         }
     }
     return frame_map;
+}
+
+void ac_frame_map_free(ac_frame_map_t** pfm)
+{
+    var fm = *pfm;
+    if (fm->acfm_args)
+        free(fm->acfm_args);
+    if (fm->acfm_locals)
+        free(fm->acfm_locals);
+    if (fm->acfm_spills)
+        free(fm->acfm_spills);
+    fm->acfm_args = fm->acfm_locals = fm->acfm_spills = NULL;
+
+    fm->acfm_frame = NULL; // not owned by us, so we don't free
+
+    free(fm);
+    *pfm = NULL;
 }
 
 /*

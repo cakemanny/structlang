@@ -175,6 +175,10 @@ tree_stm_t* tree_stm_label(sl_sym_t label);
 
 tree_stm_t* tree_stm_append(tree_stm_t* hd, tree_stm_t* to_append);
 
+void tree_typ_free(tree_typ_t** ptyp);
+void tree_exp_free(tree_exp_t** pexp);
+void tree_stm_free(tree_stm_t** pstm);
+
 #include <stdio.h>
 /* print tree expression */
 void tree_printf(FILE* out, const char* fmt, ...);

@@ -47,7 +47,7 @@ extern const target_t target_x86_64;
 #elif defined(__x86_64__)
 #  define TARGET_DEFAULT target_x86_64
 #else
-#  warning "No target for platform: defaulting to arm64"
+//#  warning "No target for platform: defaulting to arm64"
 #  define TARGET_DEFAULT target_arm64
 #endif
 

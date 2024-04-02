@@ -4,6 +4,7 @@
 #include <string.h>
 #include "mem.h" // xmalloc
 #include "grammar.tab.h"
+#include "arena_util.h"
 
 #define EX_LIST_IT(it, head) sl_expr_t* it = (head); it; it = it->ex_list
 #define var __auto_type
@@ -15,6 +16,8 @@ typedef struct translate_info_t {
     sl_sym_t function_end_label;
     bool is_end_label_used;
     sl_fragment_t* string_fragments;
+    Arena_T ret_arena;
+    Arena_T scratch_arena;
 } translate_info_t;
 
 struct translate_exp_t;
@@ -546,6 +549,9 @@ static sl_sym_t label_for_descriptor(
 
     sl_sym_t descriptor_label = temp_newlabel(info->temp_state);
 
+    // move from scratch
+    descriptor = strdup_arena(info->ret_arena, descriptor);
+
     info->string_fragments =
         fr_append(info->string_fragments,
                 sl_string_fragment(descriptor_label, descriptor));
@@ -562,8 +568,8 @@ static translate_exp_t* translate_expr_new(
 
     sl_type_t* struct_type = expr->ex_type->ty_pointee;
 
-    char* descriptor =
-        ac_record_descriptor_for_type(info->program, struct_type);
+    char* descriptor = ac_record_descriptor_for_type(
+            info->scratch_arena, info->program, struct_type);
 
     var arg_exp = tree_exp_name(label_for_descriptor(info, descriptor));
     arg_exp->te_size = 8; // FIXME: pass in the target
@@ -973,13 +979,18 @@ static tree_stm_t* translate_decl(
     }
 }
 
-
-sl_fragment_t* translate_program(
-        temp_state_t* temp_state, const sl_decl_t* program, ac_frame_t* frames)
+// TODO: change this to return the code and data fragments separately.
+sl_fragment_t*
+translate_program(
+        Arena_T arena, temp_state_t* temp_state,
+        const sl_decl_t* program, ac_frame_t* frames)
 {
     // return some sort of list of functions, with each carrying a reference
     // to the activation record, and to the IR representation
-    translate_info_t info = { .temp_state = temp_state, .program = program };
+    translate_info_t info = {
+        .temp_state = temp_state, .program = program, .ret_arena = arena,
+        .scratch_arena = Arena_new(),
+    };
 
     sl_fragment_t* result = NULL;
 
@@ -1000,6 +1011,8 @@ sl_fragment_t* translate_program(
     assert(!f);
 
     result = fr_append(result, info.string_fragments);
+
+    Arena_dispose(&info.scratch_arena);
 
     return result;
 }
