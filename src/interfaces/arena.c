@@ -4,20 +4,29 @@
 #include <stdlib.h> // malloc, abort
 #include "arena.h"
 
+#if defined(__arm64__) && !defined(NDEBUG)
+#define USE_ZONES 1
+#include <malloc/malloc.h>
+#else
+#define USE_ZONES 0
+#endif
+
 #define T Arena_T
 
 // <macros>
 #define unlikely(x)    __builtin_expect(!!(x), 0)
-#ifdef NDEBUG
-#  define THRESHOLD 0
-#else
-#  define THRESHOLD 10
-#endif // NDEBUG
+#define THRESHOLD 10
+
+#define fatal(msg) do { perror(msg); abort(); } while (0)
 
 struct Arena {
+#if USE_ZONES
+    malloc_zone_t* zone;
+#else
     T prev;
     char* avail;
     char* limit;
+#endif // USE_ZONES
 };
 
 union align {
@@ -38,19 +47,28 @@ union header {
 };
 
 
+#if ! USE_ZONES
 static T freechunks;
 static int nfree;
+#endif
 
 
 T Arena_new()
 {
+
     T arena = malloc(sizeof *arena);
     if (unlikely(!arena)) {
-        perror("out of memory");
-        abort();
+        fatal("out of memory");
     }
+#if USE_ZONES
+    arena->zone = malloc_create_zone(0, 0);
+    if (unlikely(!arena->zone)) {
+        fatal("malloc_create_zone");
+    }
+#else
     arena->prev = NULL;
     arena->limit = arena->avail = NULL;
+#endif // USE_ZONES
     return arena;
 }
 
@@ -58,7 +76,11 @@ void
 Arena_dispose(T* ap)
 {
     assert(ap && *ap);
+#if USE_ZONES
+    malloc_destroy_zone((*ap)->zone);
+#else
     Arena_free(*ap);
+#endif
     free(*ap);
     *ap = NULL;
 }
@@ -69,6 +91,13 @@ Arena_alloc(T arena, long nbytes, const char* file, int line)
 {
     assert(arena);
     assert(nbytes > 0);
+#if USE_ZONES
+    void* ptr = malloc_zone_calloc(arena->zone, 1, nbytes);
+    if (unlikely(!ptr)) {
+        fatal("out of memory");
+    }
+    return ptr;
+#else
     // <round up to alignment boundary>
     nbytes = ((nbytes + alignment - 1) / alignment) * alignment;
     while (nbytes > arena->limit - arena->avail) {
@@ -84,8 +113,7 @@ Arena_alloc(T arena, long nbytes, const char* file, int line)
             long m = sizeof (union header) + nbytes + 10*1024;
             ptr = malloc(m);
             if (unlikely(!ptr)) {
-                perror("out of memory");
-                abort();
+                fatal("out of memory");
             }
             limit = (char*)ptr + m;
         }
@@ -98,6 +126,7 @@ Arena_alloc(T arena, long nbytes, const char* file, int line)
     memset(arena->avail, 0, nbytes);
     arena->avail += nbytes;
     return arena->avail - nbytes;
+#endif // USE_ZONES
 }
 
 void*
@@ -112,6 +141,14 @@ void
 Arena_free(T arena)
 {
     assert(arena);
+#if USE_ZONES
+    // doesn't exist with zones
+    malloc_destroy_zone(arena->zone);
+    arena->zone = malloc_create_zone(0, 0);
+    if (unlikely(!arena->zone)) {
+        fatal("malloc_create_zone");
+    }
+#else
     while (arena->prev) {
         struct Arena tmp = *arena->prev;
         if (nfree < THRESHOLD) {
@@ -126,11 +163,12 @@ Arena_free(T arena)
     }
     assert(arena->limit == NULL);
     assert(arena->avail == NULL);
+#endif // USE_ZONES
 }
 
 #undef T
 
-#include "test_harness.h"
+#include "../test_harness.h"
 
 void
 test_Arena()
@@ -154,7 +192,7 @@ test_Arena()
     char* buf2 = Arena_alloc(a, bufsize, __FILE__, __LINE__);
 
     for (int i = 0; i < bufsize; i++) {
-        assert(buf[i] == '\0');
+        assert(buf2[i] == '\0');
     }
 
     strcpy(buf2, test_str);
@@ -164,7 +202,8 @@ test_Arena()
     assert(a == NULL);
 
     // This should fail spectacularly. ... but doesn't :(
-    assert(strcmp(test_str, buf2) == 0);
+    // except with libgmalloc
+    // assert(strcmp(test_str, buf2) == 0);
 }
 
 static void register_tests() __attribute__((constructor));
