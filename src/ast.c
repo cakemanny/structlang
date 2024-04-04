@@ -70,9 +70,9 @@ sl_decl_t* dl_append(sl_decl_t* dln, sl_decl_t* to_append)
     return dln;
 }
 
-static sl_type_t* ty_alloc(int tag)
+static sl_type_t* ty_alloc(Arena_T a, int tag)
 {
-    sl_type_t* node = Alloc(ast_arena, sizeof *node);
+    sl_type_t* node = Alloc(a, sizeof *node);
 
     node->ty_tag = tag;
     node->ty_size = -1;
@@ -82,23 +82,23 @@ static sl_type_t* ty_alloc(int tag)
     return node;
 }
 
-sl_type_t* ty_type_name(sl_sym_t name)
+sl_type_t* ty_type_name(Arena_T a, sl_sym_t name)
 {
-    sl_type_t* node = ty_alloc(SL_TYPE_NAME);
+    sl_type_t* node = ty_alloc(a, SL_TYPE_NAME);
     node->ty_name = name;
     return node;
 }
 
-sl_type_t* ty_type_pointer(sl_type_t* pointee)
+sl_type_t* ty_type_pointer(Arena_T a, sl_type_t* pointee)
 {
-    sl_type_t* node = ty_alloc(SL_TYPE_PTR);
+    sl_type_t* node = ty_alloc(a, SL_TYPE_PTR);
     node->ty_pointee = pointee;
     return node;
 }
 
-sl_type_t* ty_type_func()
+sl_type_t* ty_type_func(Arena_T a)
 {
-    return ty_alloc(SL_TYPE_FUNC);
+    return ty_alloc(a, SL_TYPE_FUNC);
 }
 
 static sl_expr_t* ex_alloc(int tag)
@@ -535,8 +535,6 @@ int ty_cmp(sl_type_t* t1, sl_type_t* t2)
  */
 extern FILE* yyin;
 
-static sl_decl_t* parse_tree_root;
-
 /*
  * Tells flex that once it reaches EOF, that there's no new yyin.
  * i.e. it's over.
@@ -546,18 +544,10 @@ int yywrap()
     return 1;
 }
 
-static const char* yyfilename;
 
-void yyerror(const char* msg)
+void yyerror(sl_parse_param_t* pp, const char* msg)
 {
-    const char* fn;
-    if (yyin == stdin) {
-        fn = "<stdin>";
-    } else {
-        fn = yyfilename;
-    }
-
-    fprintf(stderr, "%s:%d: error: %s\n", fn, yylineno, msg);
+    fprintf(stderr, "%s:%d: error: %s\n", pp->slpp_filename, yylineno, msg);
     extern const char* yytext;
     fprintf(stderr, "	yytext = %s\n", yytext);
 }
@@ -569,32 +559,38 @@ sl_decl_t* parse_file(Arena_T arena, const char* filename)
 {
     sl_decl_t* result = NULL;
     ast_arena = arena;
+    sl_parse_param_t parse_param = {
+        .slpp_filename = NULL,
+        .slpp_arena = arena,
+        .slpp_root = NULL,
+    };
+
+    FILE* old_yyin = yyin;
 
     if (strcmp(filename, "-") == 0) {
         yyin = stdin; // default anyway
+        parse_param.slpp_filename = "<stdin>";
     } else {
         yyin = fopen(filename, "r");
         if (!yyin) {
             perror(filename);
-            return NULL;
+            goto cleanup;
         }
-        yyfilename = filename;
+        parse_param.slpp_filename = filename;
     }
 
-    if (yyparse() == 0) {
-        result = parse_tree_root;
+
+    if (yyparse(&parse_param) == 0) {
+        result = parse_param.slpp_root;
     }
 
+cleanup:
     // Restore state
-    yyfilename = NULL;
-    parse_tree_root = NULL;
-    // ast_arena = NULL; // This will break shit
+    ast_arena = NULL; // This will break shit
+    if (yyin != NULL && yyin != stdin) {
+        fclose(yyin);
+    }
+    yyin = old_yyin;
 
     return result;
-}
-
-void
-parse_set_root(sl_decl_t* decl)
-{
-    parse_tree_root = decl;
 }

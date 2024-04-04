@@ -57,7 +57,8 @@ static bool may_define_temps(canon_info_t* info, tree_stm_t* s, tree_exp_t* e)
             return false;
         case TREE_EXP_TEMP:
             // non-fp machine registers are easily clobbered by calls.
-            if (temp_is_machine(e->te_temp) && e->te_temp.temp_id != info->target->tgt_fp.temp_id) {
+            if (temp_is_machine(e->te_temp)
+                    && e->te_temp.temp_id != info->target->tgt_fp.temp_id) {
                 return true;
             }
             switch (s->tst_tag) {

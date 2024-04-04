@@ -8,6 +8,8 @@ extern int yylex(); // defined by the flex lexer.
 
 #define YYERROR_VERBOSE
 
+#define ast_arena (parse_param->slpp_arena)
+
 %}
 
 %union {
@@ -89,10 +91,12 @@ extern int yylex(); // defined by the flex lexer.
 %type <l_expr> member_expr primary_expr
 %type <l_expr> conditional_expr if_expr
 
+%parse-param {sl_parse_param_t* parse_param}
+
 %%
 
 program:
-        declaration_list { parse_set_root($$ = $1); }
+        declaration_list { parse_param->slpp_root = $$ = $1; }
     ;
 
 declaration_list:
@@ -132,8 +136,8 @@ param:
     ;
 
 type_expr:
-        SL_TOK_IDENT    { $$ = ty_type_name($1); }
-    |   '*' type_expr   { $$ = ty_type_pointer($2); }
+        SL_TOK_IDENT    { $$ = ty_type_name(ast_arena, $1); }
+    |   '*' type_expr   { $$ = ty_type_pointer(ast_arena, $2); }
     ;
 
 func_decl:

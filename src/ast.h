@@ -148,9 +148,9 @@ sl_decl_t* dl_func(sl_sym_t name, sl_decl_t* params, sl_type_t* ret_type, sl_exp
 sl_decl_t* dl_param(sl_sym_t name, sl_type_t* type);
 sl_decl_t* dl_append(sl_decl_t* dln, sl_decl_t* to_append);
 
-sl_type_t* ty_type_name(sl_sym_t name);
-sl_type_t* ty_type_pointer(sl_type_t* pointee);
-sl_type_t* ty_type_func();
+sl_type_t* ty_type_name(Arena_T, sl_sym_t name);
+sl_type_t* ty_type_pointer(Arena_T, sl_type_t* pointee);
+sl_type_t* ty_type_func(Arena_T);
 
 sl_expr_t* ex_append(sl_expr_t* exn, sl_expr_t* to_append);
 sl_expr_t* sl_expr_int(int value);
@@ -189,9 +189,14 @@ int ty_cmp(sl_type_t* t1, sl_type_t* t2) __attribute__((nonnull(1, 2)));
 
 sl_decl_t* parse_file(Arena_T arena, const char* filename);
 
-extern int yyparse();
-void yyerror(const char* msg);
-void parse_set_root(sl_decl_t* decl);
+typedef struct {
+    const char* slpp_filename;  /* name of file being parsed */
+    Arena_T slpp_arena;
+    sl_decl_t* slpp_root; /* the result of the parse */
+} sl_parse_param_t;
+
+extern int yyparse(sl_parse_param_t*);
+void yyerror(sl_parse_param_t*, const char* msg);
 
 
 #endif /* __AST_H__ */

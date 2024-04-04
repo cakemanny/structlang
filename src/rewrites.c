@@ -9,6 +9,8 @@
 #define DL_LIST_IT(it, head) sl_decl_t* it = (head); it; it = it->dl_list
 #define var __auto_type
 
+extern Arena_T ast_arena;
+
 typedef struct rewrite_info_t {
     sl_decl_t* program;
     int next_temp_id; // different to the temps in temp.h
@@ -88,7 +90,6 @@ static void rewrite_decompose_equal_expr(rewrite_info_t* info, sl_expr_t* expr)
                     expr->ex_op = head->ex_op;
                     expr->ex_left = head->ex_left;
                     expr->ex_right = head->ex_right;
-                    // TODO: free head?
                 }
             }
             recur(expr->ex_left);
@@ -160,12 +161,14 @@ static void rewrite_decompose_equal_decl(rewrite_info_t* info, sl_decl_t* decl)
  * Turn
  *  x == y into x.a == y.a && x.b == y.b
  */
-void rewrite_decompose_equal(sl_decl_t* program)
+void rewrite_decompose_equal(Arena_T arena, sl_decl_t* program)
 {
+    ast_arena = arena;
     rewrite_info_t info = { .program = program };
     for (DL_LIST_IT(decl, program)) {
         if (decl->dl_tag == SL_DECL_FUNC) {
             rewrite_decompose_equal_decl(&info, decl);
         }
     }
+    ast_arena = NULL;
 }

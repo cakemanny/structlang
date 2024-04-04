@@ -169,7 +169,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    int sem_result = sem_verify_and_type_program(inarg, program);
+    int sem_result = sem_verify_and_type_program(ast_arena, inarg, program);
     if (sem_result < 0) {
         fprintf(stderr, "%d errors\n", -sem_result);
         return 1;
@@ -182,7 +182,7 @@ int main(int argc, char* argv[])
 
     // make some small transformations that make it easier to transform the
     // program into the lower level language
-    rewrite_decompose_equal(program);
+    rewrite_decompose_equal(ast_arena, program);
 
     if (stop_after_rewrites) {
         for (sl_decl_t* decl = program; decl; decl = decl->dl_list) {
@@ -213,7 +213,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "internal error: failed to translate into trees\n");
         return 1;
     }
-    // Our AST in now converting into the Tree IR.
+    // Our AST is now converted into the Tree IR.
     program = NULL;
     Arena_dispose(&ast_arena);
     frames = NULL; // now owned by fragments.

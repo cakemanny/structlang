@@ -402,7 +402,8 @@ static int verify_expr_new(sem_info_t* info, sl_expr_t* expr)
         return result - 1;
     }
 
-    expr->ex_type = ty_type_pointer(ty_type_name(struct_decl->dl_name));
+    expr->ex_type = ty_type_pointer(
+            info->si_arena, ty_type_name(info->si_arena, struct_decl->dl_name));
     // stash reference to struct for later stages
     expr->ex_type->ty_pointee->ty_decl = struct_decl;
 
@@ -551,7 +552,8 @@ static int verify_expr_addrof(sem_info_t* info, sl_expr_t* expr)
         result -= 1;
     }
 
-    expr->ex_type = ty_type_pointer(expr->ex_addrof_arg->ex_type);
+    expr->ex_type = ty_type_pointer(
+            info->si_arena, expr->ex_addrof_arg->ex_type);
     return result;
 }
 
@@ -800,10 +802,13 @@ static int verify_decl(sem_info_t* sem_info, sl_decl_t* decl)
     assert(0 && "verify_decl missing case");
 }
 
-int sem_verify_and_type_program(const char* filename, sl_decl_t* program)
+int
+sem_verify_and_type_program(
+        Arena_T arena, const char* filename, sl_decl_t* program)
 {
     int result = 0;
     sem_info_t sem_info = {
+        .si_arena = arena,
         .si_program = program,
         .si_filename = (strcmp(filename, "-") == 0) ? "<stdin>" : filename,
         .si_root_scope = scope_new(),
@@ -812,9 +817,9 @@ int sem_verify_and_type_program(const char* filename, sl_decl_t* program)
     sem_info.si_current_scope = sem_info.si_root_scope;
 
     // Add builtin types to sem_info
-    sem_info.si_builtin_types.int_type = ty_type_name(symbol("int"));
-    sem_info.si_builtin_types.bool_type = ty_type_name(symbol("bool"));
-    sem_info.si_builtin_types.void_type = ty_type_name(symbol("void"));
+    sem_info.si_builtin_types.int_type = ty_type_name(arena, symbol("int"));
+    sem_info.si_builtin_types.bool_type = ty_type_name(arena, symbol("bool"));
+    sem_info.si_builtin_types.void_type = ty_type_name(arena, symbol("void"));
 
     // Add names to root scope
     for (sl_decl_t* decl = program; decl; decl = decl->dl_list) {
@@ -832,7 +837,7 @@ int sem_verify_and_type_program(const char* filename, sl_decl_t* program)
 
             decl->dl_var_id = sem_info.si_next_var_id++;
             if (declare_in_current_scope(
-                        &sem_info, decl->dl_name, ty_type_func(), decl->dl_var_id) < 0) {
+                        &sem_info, decl->dl_name, ty_type_func(arena), decl->dl_var_id) < 0) {
                 elprintf("second declaration of function '%s' in module",
                         &sem_info, decl->dl_line, decl->dl_name);
                 result -= 1;

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include "ast.h"
 #include "interfaces/table.h"
+#include "interfaces/arena.h"
 
 typedef struct scope_t {
     Table_T sc_bindings;
@@ -16,6 +17,7 @@ typedef struct scope_entry_t {
 } scope_entry_t;
 
 typedef struct sem_info_t {
+    Arena_T     si_arena;
     sl_decl_t*  si_program;
     const char* si_filename;
     scope_t*    si_root_scope;
@@ -30,7 +32,8 @@ typedef struct sem_info_t {
     } si_builtin_types;
 } sem_info_t;
 
-int sem_verify_and_type_program(const char* filename, sl_decl_t* program);
+int sem_verify_and_type_program(
+        Arena_T arena, const char* filename, sl_decl_t* program);
 bool sem_is_lvalue(const sl_expr_t* expr);
 
 #endif /* __SEMANTICS_H__ */
