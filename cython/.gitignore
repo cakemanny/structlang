@@ -1,4 +1,0 @@
-venv/
-*.c
-__pycache__/
-*.so
