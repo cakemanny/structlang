@@ -11,6 +11,7 @@ static const bool debug = 0;
 typedef struct canon_info_t {
     temp_state_t* temp_state;
     const target_t* target;
+    Arena_T arena;
 } canon_info_t;
 
 typedef struct canon_stm_exp_pair_t {
@@ -134,7 +135,8 @@ static canon_stm_exp_pair_t
     canon_stm_exp_pair_t result = {};
     if (es == NULL) {
         // TODO: should be size zero
-        result.cnp_stm = tree_stm_exp(tree_exp_const(0, ac_word_size, tree_typ_void()));
+        result.cnp_stm = tree_stm_exp(
+                tree_exp_const(0, ac_word_size, tree_typ_void(info->arena)));
         result.cnp_exp = NULL; // just being explicit
         return result;
     }
@@ -523,11 +525,11 @@ static void bb_append_block(
     *final_node = block;
 }
 
-static tree_stm_t* unconditional_jump(sl_sym_t dst)
+static tree_stm_t* unconditional_jump(Arena_T a, sl_sym_t dst)
 {
     sl_sym_t* labels = xmalloc(1 * sizeof *labels);
     labels[0] = dst;
-    return tree_stm_jump(tree_exp_name(dst), 1, labels);
+    return tree_stm_jump(tree_exp_name(a, dst), 1, labels);
 }
 
 /**
@@ -536,7 +538,7 @@ static tree_stm_t* unconditional_jump(sl_sym_t dst)
  */
 /* stm list -> (stm list list * label) */
 static basic_blocks_t basic_blocks(
-        temp_state_t* temp_state, tree_stm_t* stmts)
+        Arena_T arena, temp_state_t* temp_state, tree_stm_t* stmts)
 {
     sl_sym_t done = temp_newlabel(temp_state);
 
@@ -581,7 +583,7 @@ static basic_blocks_t basic_blocks(
         if (stmts == NULL || stmts->tst_tag == TREE_STM_LABEL) {
             if (s->tst_tag != TREE_STM_JUMP && s->tst_tag != TREE_STM_CJUMP) {
                 var j = unconditional_jump(
-                    stmts ? stmts->tst_label : done
+                    arena, stmts ? stmts->tst_label : done
                 );
                 curr_block->bb_stmts =
                     tree_stm_append(curr_block->bb_stmts, j);
@@ -736,7 +738,7 @@ static tree_relop_t invert_relop(tree_relop_t op)
  * CJUMP(<
  */
 static void put_falses_after_cjumps(
-        temp_state_t* temp_state, tree_stm_t* result)
+        Arena_T arena, temp_state_t* temp_state, tree_stm_t* result)
 {
     for (var s = result; s->tst_list; s = s->tst_list) {
         var s1 = s->tst_list;
@@ -766,7 +768,7 @@ static void put_falses_after_cjumps(
                         f0);
                 s->tst_list->tst_list = tree_stm_label(f0);
                 s->tst_list->tst_list->tst_list =
-                    unconditional_jump(s1->tst_cjump_false);
+                    unconditional_jump(arena, s1->tst_cjump_false);
                 s->tst_list->tst_list->tst_list->tst_list = s2;
             }
         }
@@ -774,7 +776,7 @@ static void put_falses_after_cjumps(
 }
 
 static tree_stm_t* trace_schedule(
-        temp_state_t* temp_state, basic_blocks_t blocks)
+        Arena_T arena, temp_state_t* temp_state, basic_blocks_t blocks)
 {
     // if the block is in the table it's not marked
     Table_T table = Table_new(0, NULL, NULL);
@@ -880,7 +882,7 @@ static tree_stm_t* trace_schedule(
     }
 
     // rewrite cjumps so that their false label follows
-    put_falses_after_cjumps(temp_state, result);
+    put_falses_after_cjumps(arena, temp_state, result);
 
     return result;
 }
@@ -970,12 +972,15 @@ static void verify_basic_blocks(basic_blocks_t blocks, const char* check)
     assert(err == 0);
 }
 
-sl_fragment_t* canonicalise_tree(
-        const target_t* target, temp_state_t* temp_state, sl_fragment_t* fragments)
+sl_fragment_t*
+canonicalise_tree(
+        Arena_T arena, const target_t* target, temp_state_t* temp_state,
+        sl_fragment_t* fragments)
 {
     canon_info_t info = {
         .temp_state = temp_state,
         .target = target,
+        .arena = arena,
     };
 
     for (var frag = fragments; frag; frag = frag->fr_list) {
@@ -986,10 +991,10 @@ sl_fragment_t* canonicalise_tree(
                 verify_statements(frag->fr_body, "post-linearise");
 
                 basic_blocks_t blocks =
-                    basic_blocks(temp_state, frag->fr_body);
+                    basic_blocks(arena, temp_state, frag->fr_body);
                 verify_basic_blocks(blocks, "post-basic_blocks");
 
-                frag->fr_body = trace_schedule(temp_state, blocks);
+                frag->fr_body = trace_schedule(arena, temp_state, blocks);
                 verify_statements(frag->fr_body, "post-trace_schedule");
                 break;
             }

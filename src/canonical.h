@@ -5,7 +5,8 @@
 #include "fragment.h"
 
 sl_fragment_t* canonicalise_tree(
-        const target_t* target, temp_state_t* temp_state, sl_fragment_t* fragments);
+        Arena_T, const target_t* target, temp_state_t* temp_state,
+        sl_fragment_t* fragments);
 
 
 #endif /* __CANONICAL_H__ */

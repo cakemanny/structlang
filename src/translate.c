@@ -24,7 +24,7 @@ struct translate_exp_t;
 typedef struct translate_exp_t translate_exp_t;
 
 typedef struct label_bifunc_t {
-    tree_stm_t* (*lbf_fn)(sl_sym_t, sl_sym_t, void* cl);
+    tree_stm_t* (*lbf_fn)(Arena_T, sl_sym_t, sl_sym_t, void* cl);
     void* lbf_cl;
 } label_bifunc_t;
 
@@ -55,16 +55,16 @@ static int round_up_size(int size, int multiple)
 
 /* Just a helper function, does not allocate */
 static label_bifunc_t label_bifunc(
-        tree_stm_t* (*fn)(sl_sym_t, sl_sym_t, void* cl),
+        tree_stm_t* (*fn)(Arena_T, sl_sym_t, sl_sym_t, void* cl),
         void* cl)
 {
     label_bifunc_t bifunc = { .lbf_fn = fn, .lbf_cl = cl };
     return bifunc;
 }
 
-static tree_stm_t* lbf_call(label_bifunc_t lbf, sl_sym_t t, sl_sym_t f)
+static tree_stm_t* lbf_call(label_bifunc_t lbf, Arena_T a, sl_sym_t t, sl_sym_t f)
 {
-    return lbf.lbf_fn(t, f, lbf.lbf_cl);
+    return lbf.lbf_fn(a, t, f, lbf.lbf_cl);
 }
 
 static translate_exp_t* translate_ex(tree_exp_t* e)
@@ -91,8 +91,10 @@ static translate_exp_t* translate_cx(label_bifunc_t genstm)
     return result;
 }
 
-static tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
+static tree_exp_t* translate_un_ex(translate_info_t* info, translate_exp_t* ex)
 {
+    temp_state_t* ts = info->temp_state;
+    Arena_T arena = info->ret_arena;
     tree_exp_t* ret;
     switch (ex->tr_exp_tag) {
         case TR_EXP_EX:
@@ -100,7 +102,7 @@ static tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
             break;
         case TR_EXP_NX:
             ret = tree_exp_eseq(ex->tr_exp_nx,
-                    tree_exp_const(0, ac_word_size, tree_typ_void()));
+                    tree_exp_const(0, ac_word_size, tree_typ_void(arena)));
             break;
         case TR_EXP_CX:
         {
@@ -114,20 +116,20 @@ static tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
                     tree_stm_seq(
                     tree_stm_seq(
                         tree_stm_move(
-                            tree_exp_temp(r, bool_size, tree_typ_bool()),
-                            tree_exp_const(1, bool_size, tree_typ_bool()))
+                            tree_exp_temp(r, bool_size, tree_typ_bool(arena)),
+                            tree_exp_const(1, bool_size, tree_typ_bool(arena)))
                         ,
-                        lbf_call(ex->tr_exp_cx, t, f) /* genstm */
+                        lbf_call(ex->tr_exp_cx, arena, t, f) /* genstm */
                         ),
                         tree_stm_label(f)
                         ),
                         tree_stm_move(
-                            tree_exp_temp(r, bool_size, tree_typ_bool()),
-                            tree_exp_const(0, bool_size, tree_typ_bool()))
+                            tree_exp_temp(r, bool_size, tree_typ_bool(arena)),
+                            tree_exp_const(0, bool_size, tree_typ_bool(arena)))
                         ),
                         tree_stm_label(t)
                         ),
-                        tree_exp_temp(r, bool_size, tree_typ_bool())
+                        tree_exp_temp(r, bool_size, tree_typ_bool(arena))
                         );
             break;
         }
@@ -136,8 +138,10 @@ static tree_exp_t* translate_un_ex(temp_state_t* ts, translate_exp_t* ex)
     return ret;
 }
 
-static tree_stm_t* translate_un_nx(temp_state_t* ts, translate_exp_t* ex)
+static tree_stm_t* translate_un_nx(translate_info_t* info, translate_exp_t* ex)
 {
+    temp_state_t* ts = info->temp_state;
+    Arena_T arena = info->ret_arena;
     tree_stm_t* ret;
     switch (ex->tr_exp_tag) {
         case TR_EXP_EX:
@@ -153,7 +157,7 @@ static tree_stm_t* translate_un_nx(temp_state_t* ts, translate_exp_t* ex)
             // maybe we need a post-label no-op?
             sl_sym_t dst = temp_newlabel(ts);
             ret = tree_stm_seq(
-                lbf_call(ex->tr_exp_cx, dst, dst), /* genstm */
+                lbf_call(ex->tr_exp_cx, arena, dst, dst), /* genstm */
                 tree_stm_label(dst)
             );
             break;
@@ -163,24 +167,24 @@ static tree_stm_t* translate_un_nx(temp_state_t* ts, translate_exp_t* ex)
     return ret;
 }
 
-static tree_stm_t* unconditional_jump(sl_sym_t dst)
+static tree_stm_t* unconditional_jump(Arena_T a, sl_sym_t dst)
 {
     sl_sym_t* labels = xmalloc(1 * sizeof *labels);
     labels[0] = dst;
-    return tree_stm_jump(tree_exp_name(dst), 1, labels);
+    return tree_stm_jump(tree_exp_name(a, dst), 1, labels);
 }
 
-static tree_stm_t* always_true(sl_sym_t t, sl_sym_t f, void* cl)
+static tree_stm_t* always_true(Arena_T a, sl_sym_t t, sl_sym_t f, void* cl)
 {
-    return unconditional_jump(t);
+    return unconditional_jump(a, t);
 }
 
-static tree_stm_t* always_false(sl_sym_t t, sl_sym_t f, void* cl)
+static tree_stm_t* always_false(Arena_T a, sl_sym_t t, sl_sym_t f, void* cl)
 {
-    return unconditional_jump(f);
+    return unconditional_jump(a, f);
 }
 
-static tree_stm_t* jump_not_zero(sl_sym_t t, sl_sym_t f, void* cl)
+static tree_stm_t* jump_not_zero(Arena_T a, sl_sym_t t, sl_sym_t f, void* cl)
 {
     var rhs = (tree_exp_t*)cl;
     return tree_stm_cjump(
@@ -255,20 +259,21 @@ static tree_typ_t* find_translated(
     return NULL;
 }
 
-static tree_typ_t* translate_type0(
-        const sl_decl_t* program, const sl_type_t* type,
-        const struct translated_type *translated)
+static tree_typ_t*
+translate_type0(
+        Arena_T arena, const sl_decl_t* program,
+        const sl_type_t* type, const struct translated_type *translated)
 {
     switch (type->ty_tag) {
         case SL_TYPE_NAME:
             if (type->ty_name == symbol("int")) {
-                return tree_typ_int();
+                return tree_typ_int(arena);
             }
             if (type->ty_name == symbol("bool")) {
-                return tree_typ_bool();
+                return tree_typ_bool(arena);
             }
             if (type->ty_name == symbol("void")) {
-                return tree_typ_void();
+                return tree_typ_void(arena);
             }
 
             /*
@@ -280,7 +285,7 @@ static tree_typ_t* translate_type0(
             if (found) {
                 return found;
             }
-            tree_typ_t* result = tree_typ_struct(NULL);
+            tree_typ_t* result = tree_typ_struct(arena, NULL);
             const struct translated_type already_translated = {
                 .name = type->ty_name,
                 .type = result,
@@ -293,7 +298,7 @@ static tree_typ_t* translate_type0(
             tree_typ_t* fields = NULL;
             for (const sl_decl_t* field = decl->dl_params; field;
                     field = field->dl_list) {
-                var translated_field = translate_type0(
+                var translated_field = translate_type0(arena,
                         program, field->dl_type, &already_translated);
                 fields = tree_typ_append(fields, translated_field);
             }
@@ -301,16 +306,19 @@ static tree_typ_t* translate_type0(
             result->tt_fields = fields;
             return result;
         case SL_TYPE_PTR:
-            return tree_typ_ptr(translate_type0(program, type->ty_pointee, translated));
+            return tree_typ_ptr(arena,
+                    translate_type0(arena, program, type->ty_pointee, translated));
         case SL_TYPE_ARRAY:
         case SL_TYPE_FUNC:
             assert(!"not implemented");
     }
 }
 
-tree_typ_t* translate_type(const sl_decl_t* program, const sl_type_t* type)
+tree_typ_t*
+translate_type(
+        Arena_T arena, const sl_decl_t* program, const sl_type_t* type)
 {
-    return translate_type0(program, type, NULL);
+    return translate_type0(arena, program, type, NULL);
 }
 
 
@@ -321,6 +329,7 @@ static translate_exp_t* translate_expr(
 static tree_exp_t* translate_var_mem_ref_expr(
         translate_info_t* info, ac_frame_t* frame, int var_id, sl_type_t* type)
 {
+    Arena_T arena = info->ret_arena;
     struct ac_frame_var* frame_var = NULL;
     for (frame_var = frame->ac_frame_vars; frame_var;
             frame_var = frame_var->acf_list) {
@@ -332,20 +341,25 @@ static tree_exp_t* translate_var_mem_ref_expr(
 
     if (frame_var->acf_tag == ACF_ACCESS_REG) {
         return tree_exp_temp(frame_var->acf_reg, frame_var->acf_size,
-                translate_type(info->program, type));
+                translate_type(info->ret_arena, info->program, type));
     }
     assert(frame_var->acf_tag == ACF_ACCESS_FRAME);
 
     tree_exp_t* result = tree_exp_mem(
         (frame_var->acf_offset == 0)
-        ? tree_exp_temp(frame->acf_target->tgt_fp, ac_word_size, tree_typ_ptr(tree_typ_void())) // rbp
+        ? tree_exp_temp(
+            frame->acf_target->tgt_fp, ac_word_size,
+            tree_typ_ptr(arena, tree_typ_void(arena)))
         : tree_exp_binop(
             TREE_BINOP_PLUS,
-            tree_exp_temp(frame->acf_target->tgt_fp, ac_word_size, tree_typ_ptr(tree_typ_void())), // rbp
-            tree_exp_const(frame_var->acf_offset, ac_word_size, tree_typ_ptr_diff())
+            tree_exp_temp(
+                frame->acf_target->tgt_fp, ac_word_size,
+                tree_typ_ptr(arena, tree_typ_void(arena))),
+            tree_exp_const(
+                frame_var->acf_offset, ac_word_size, tree_typ_ptr_diff(arena))
         ),
         frame_var->acf_size,
-        translate_type(info->program, type)
+        translate_type(info->ret_arena, info->program, type)
     );
     return result;
 }
@@ -362,7 +376,9 @@ static translate_exp_t* translate_expr_int(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
     tree_exp_t* result = tree_exp_const(
-            expr->ex_value, size_of_type(info->program, expr->ex_type), tree_typ_int());
+            expr->ex_value,
+            size_of_type(info->program, expr->ex_type),
+            tree_typ_int(info->ret_arena));
     return translate_ex(result);
 }
 
@@ -370,7 +386,9 @@ static translate_exp_t* translate_expr_bool(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
     tree_exp_t* result = tree_exp_const(
-            expr->ex_value, size_of_type(info->program, expr->ex_type), tree_typ_bool());
+            expr->ex_value,
+            size_of_type(info->program, expr->ex_type),
+            tree_typ_bool(info->ret_arena));
     return translate_ex(result);
 }
 
@@ -378,7 +396,8 @@ static translate_exp_t* translate_expr_void(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
     /* TODO: or shoud this have 0 size? */
-    return translate_ex(tree_exp_const(0, ac_word_size, tree_typ_void()));
+    return translate_ex(
+            tree_exp_const(0, ac_word_size, tree_typ_void(info->ret_arena)));
 }
 
 
@@ -388,21 +407,21 @@ struct logical_and_or_cl {
     tree_exp_t* rhe;
 };
 
-static tree_stm_t* logical_or(sl_sym_t t, sl_sym_t f, void* cl) {
+static tree_stm_t* logical_or(Arena_T a, sl_sym_t t, sl_sym_t f, void* cl) {
     struct logical_and_or_cl* uncl = (struct logical_and_or_cl*) cl;
     var z = temp_newlabel(uncl->ts);
-    var result = jump_not_zero(t, z, uncl->lhe);
+    var result = jump_not_zero(a, t, z, uncl->lhe);
     result = tree_stm_seq(result, tree_stm_label(z));
-    result = tree_stm_seq(result, jump_not_zero(t, f, uncl->rhe));
+    result = tree_stm_seq(result, jump_not_zero(a, t, f, uncl->rhe));
     return result;
 }
 
-static tree_stm_t* logical_and(sl_sym_t t, sl_sym_t f, void* cl) {
+static tree_stm_t* logical_and(Arena_T a, sl_sym_t t, sl_sym_t f, void* cl) {
     struct logical_and_or_cl* uncl = (struct logical_and_or_cl*) cl;
     var z = temp_newlabel(uncl->ts);
-    var result = jump_not_zero(z, f, uncl->lhe);
+    var result = jump_not_zero(a, z, f, uncl->lhe);
     result = tree_stm_seq(result, tree_stm_label(z));
-    result = tree_stm_seq(result, jump_not_zero(t, f, uncl->rhe));
+    result = tree_stm_seq(result, jump_not_zero(a, t, f, uncl->rhe));
     return result;
 }
 
@@ -414,7 +433,7 @@ struct compare_and_jump_cl {
     tree_exp_t* rhe;
 };
 
-static tree_stm_t* compare_and_jump(sl_sym_t t, sl_sym_t f, void* cl)
+static tree_stm_t* compare_and_jump(Arena_T a, sl_sym_t t, sl_sym_t f, void* cl)
 {
     struct compare_and_jump_cl *uncl = (struct compare_and_jump_cl*) cl;
     return tree_stm_cjump(uncl->relop, uncl->lhe, uncl->rhe, t, f);
@@ -427,8 +446,8 @@ static translate_exp_t* translate_expr_binop(
     translate_exp_t* lhs = translate_expr(info, frame, expr->ex_left);
     translate_exp_t* rhs = translate_expr(info, frame, expr->ex_right);
 
-    tree_exp_t* lhe = translate_un_ex(info->temp_state, lhs); lhs = NULL;
-    tree_exp_t* rhe = translate_un_ex(info->temp_state, rhs); rhs = NULL;
+    tree_exp_t* lhe = translate_un_ex(info, lhs); lhs = NULL;
+    tree_exp_t* rhe = translate_un_ex(info, rhs); rhs = NULL;
 
     // break out of here and compose some branches
     switch (expr->ex_op) {
@@ -521,7 +540,7 @@ static translate_exp_t* translate_expr_let(
     // basically, this is an assignment
     // translate the init expr as the right hand side
     translate_exp_t* rhs = translate_expr(info, frame, expr->ex_init);
-    tree_exp_t* rhe = translate_un_ex(info->temp_state, rhs); rhs = NULL;
+    tree_exp_t* rhe = translate_un_ex(info, rhs); rhs = NULL;
 
 
     // MAYBE we need a SIZE for our MOVE instruction?
@@ -571,16 +590,19 @@ static translate_exp_t* translate_expr_new(
     char* descriptor = ac_record_descriptor_for_type(
             info->scratch_arena, info->program, struct_type);
 
-    var arg_exp = tree_exp_name(label_for_descriptor(info, descriptor));
+    var arg_exp = tree_exp_name(
+            info->ret_arena, label_for_descriptor(info, descriptor));
     arg_exp->te_size = 8; // FIXME: pass in the target
 
     tree_stm_t* assign = tree_stm_move(
-            tree_exp_temp(r, r.temp_size, translate_type(info->program, expr->ex_type)),
+            tree_exp_temp(
+                r, r.temp_size,
+                translate_type(info->ret_arena, info->program, expr->ex_type)),
             tree_exp_call(
-                tree_exp_name("sl_alloc_des"),
+                tree_exp_name(info->ret_arena, "sl_alloc_des"),
                 arg_exp,
                 ac_word_size,
-                translate_type(info->program, expr->ex_type),
+                translate_type(info->ret_arena, info->program, expr->ex_type),
                 ac_calculate_ptr_maps(frame, expr->ex_new_defd_vars)
             )
     );
@@ -600,16 +622,24 @@ static translate_exp_t* translate_expr_new(
         tree_stm_t* init = tree_stm_move(
                 tree_exp_mem(
                     (offset == 0)
-                    ? tree_exp_temp(r, r.temp_size, translate_type(info->program, expr->ex_type))
+                    ? tree_exp_temp(
+                        r, r.temp_size,
+                        translate_type(
+                            info->ret_arena, info->program, expr->ex_type))
                     : tree_exp_binop(
                         TREE_BINOP_PLUS,
-                        tree_exp_temp(r, r.temp_size, translate_type(info->program, expr->ex_type)),
-                        tree_exp_const(offset, ac_word_size, tree_typ_ptr_diff())
+                        tree_exp_temp(
+                            r, r.temp_size,
+                            translate_type(
+                                info->ret_arena, info->program, expr->ex_type)),
+                        tree_exp_const(
+                            offset, ac_word_size,
+                            tree_typ_ptr_diff(info->ret_arena))
                     ),
                     arg_size,
-                    translate_type(info->program, arg->ex_type)
+                    translate_type(info->ret_arena, info->program, arg->ex_type)
                 ),
-                translate_un_ex(info->temp_state, init_exp)
+                translate_un_ex(info, init_exp)
         );
         offset += arg_size;
 
@@ -621,7 +651,9 @@ static translate_exp_t* translate_expr_new(
 
     tree_exp_t* result = tree_exp_eseq(
             init_seq,
-            tree_exp_temp(r, r.temp_size, translate_type(info->program, expr->ex_type))
+            tree_exp_temp(
+                r, r.temp_size,
+                translate_type(info->ret_arena, info->program, expr->ex_type))
     );
     return translate_ex(result);
 }
@@ -629,6 +661,7 @@ static translate_exp_t* translate_expr_new(
 static translate_exp_t* translate_expr_call(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
+    Arena_T arena = info->ret_arena;
     // TODO: if return type size is greater than 16 want to insert
     // temp binding with copy, and then pass as reference parameter
     assert(size_of_type(info->program, expr->ex_type) <= 2 * ac_word_size);
@@ -637,16 +670,16 @@ static translate_exp_t* translate_expr_call(
 
     for (EX_LIST_IT(fnarg, expr->ex_fn_args)) {
         var arg_ex = translate_expr(info, frame, fnarg);
-        var arg = translate_un_ex(info->temp_state, arg_ex);
+        var arg = translate_un_ex(info, arg_ex);
 
         translated_args = tree_exp_append(translated_args, arg);
     }
 
     tree_exp_t* result = tree_exp_call(
-        tree_exp_name(expr->ex_fn_name),
+        tree_exp_name(arena, expr->ex_fn_name),
         translated_args,
         size_of_type(info->program, expr->ex_type),
-        translate_type(info->program, expr->ex_type),
+        translate_type(arena, info->program, expr->ex_type),
         ac_calculate_ptr_maps(frame, expr->ex_fn_defd_vars)
     );
     return translate_ex(result);
@@ -687,14 +720,15 @@ static translate_exp_t* translate_expr_return(
      * of the function... where the eiplogue is emitted?
      */
 
-    tree_stm_t* result = unconditional_jump(info->function_end_label);
+    Arena_T arena = info->ret_arena;
+    tree_stm_t* result = unconditional_jump(arena, info->function_end_label);
     info->is_end_label_used = 1;
 
     if (expr->ex_ret_arg) {
         size_t ret_type_size = size_of_type(
                 info->program, expr->ex_ret_arg->ex_type);
         var arg_ex = translate_expr(info, frame, expr->ex_ret_arg);
-        var arg = translate_un_ex(info->temp_state, arg_ex);
+        var arg = translate_un_ex(info, arg_ex);
 
         assert(arg->te_size == ret_type_size);
         var move_stmt = assign_return(frame, arg);
@@ -710,7 +744,8 @@ static translate_exp_t* translate_expr_break(
     /*
      * jump to the end label of the currently enclosing loop
      */
-    tree_stm_t* result = unconditional_jump(info->current_loop_end);
+    tree_stm_t* result = unconditional_jump(
+            info->ret_arena, info->current_loop_end);
     return translate_nx(result);
 }
 
@@ -736,7 +771,7 @@ static translate_exp_t* translate_expr_loop(
 
     for (EX_LIST_IT(stmt, expr->ex_loop_body)) {
         tree_stm_t* s = translate_un_nx(
-                info->temp_state, translate_expr(info, frame, stmt));
+                info, translate_expr(info, frame, stmt));
 
         translated_stmts = tree_stm_seq(translated_stmts, s);
     }
@@ -753,12 +788,14 @@ static translate_exp_t* translate_expr_deref(
 {
     var arg_ex = translate_expr(info, frame, expr->ex_deref_arg);
     tree_exp_t* arg =
-        translate_un_ex(info->temp_state, arg_ex);
+        translate_un_ex(info, arg_ex);
 
     size_t size = size_of_type(info->program, expr->ex_deref_arg->ex_type);
     assert(size > 0);
     assert(size != -1);
-    tree_typ_t* type = translate_type(info->program, expr->ex_deref_arg->ex_type);
+    tree_typ_t* type =
+        translate_type(
+                info->ret_arena, info->program, expr->ex_deref_arg->ex_type);
 
     tree_exp_t* result = tree_exp_mem(arg, size, type);
     return translate_ex(result);
@@ -769,7 +806,7 @@ static translate_exp_t* translate_expr_addrof(
 {
     var arg_ex = translate_expr(info, frame, expr->ex_addrof_arg);
     tree_exp_t* arg =
-        translate_un_ex(info->temp_state, arg_ex);
+        translate_un_ex(info, arg_ex);
 
     /*
      * 3 cases (until we add array subscript)
@@ -801,7 +838,8 @@ static translate_exp_t* translate_expr_member(
         offset = round_up_size(offset, member_alignment);
 
         if (mem->dl_name == expr->ex_member) {
-            member_type = translate_type(info->program, mem->dl_type);
+            member_type =
+                translate_type(info->ret_arena, info->program, mem->dl_type);
             break;
         }
 
@@ -817,7 +855,7 @@ static translate_exp_t* translate_expr_member(
     // TODO: think about reg vars
 
     var base_ref_ex = translate_expr(info, frame, expr->ex_composite);
-    tree_exp_t* base_ref = translate_un_ex(info->temp_state, base_ref_ex);
+    tree_exp_t* base_ref = translate_un_ex(info, base_ref_ex);
 
     // The common case. The struct is in memory e.g. the stack or the heap
     if (base_ref->te_tag == TREE_EXP_MEM) {
@@ -829,7 +867,9 @@ static translate_exp_t* translate_expr_member(
                 : tree_exp_binop(
                     TREE_BINOP_PLUS,
                     base_addr,
-                    tree_exp_const(offset, ac_word_size, tree_typ_ptr_diff())
+                    tree_exp_const(
+                        offset, ac_word_size,
+                        tree_typ_ptr_diff(info->ret_arena))
                     ),
                 member_size,
                 member_type
@@ -872,32 +912,34 @@ static translate_exp_t* translate_expr_member(
 static translate_exp_t* translate_expr_if(
         translate_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
+    Arena_T arena = info->ret_arena;
     // TODO: consider some special cases
     var condition = translate_un_cx(
             translate_expr(info, frame, expr->ex_if_cond));
     var cons = translate_un_ex(
-            info->temp_state, translate_expr(info, frame, expr->ex_if_cons));
+            info, translate_expr(info, frame, expr->ex_if_cons));
     var alt = translate_un_ex(
-            info->temp_state, translate_expr(info, frame, expr->ex_if_alt));
+            info, translate_expr(info, frame, expr->ex_if_alt));
     sl_sym_t tlabel = temp_newlabel(info->temp_state);
     sl_sym_t flabel = temp_newlabel(info->temp_state);
     sl_sym_t join = temp_newlabel(info->temp_state);
 
     size_t cons_sz = size_of_type(info->program, expr->ex_if_cons->ex_type);
-    tree_typ_t* cons_ty = translate_type(info->program, expr->ex_if_cons->ex_type);
+    tree_typ_t* cons_ty =
+        translate_type(info->ret_arena, info->program, expr->ex_if_cons->ex_type);
     temp_t r = temp_newtemp(info->temp_state, cons_sz, tree_dispo_from_type(cons_ty));
     tree_exp_t* r_exp = tree_exp_temp(r, cons_sz, cons_ty);
 
     // TODO: What about the void if/else expressions?
     // in those, we don't need this r_exp thing
 
-    var res = lbf_call(condition, tlabel, flabel);
+    var res = lbf_call(condition, arena, tlabel, flabel);
     res = tree_stm_seq(res, tree_stm_label(tlabel));
     res = tree_stm_seq(res, tree_stm_move(r_exp, cons));
-    res = tree_stm_seq(res, unconditional_jump(join));
+    res = tree_stm_seq(res, unconditional_jump(arena, join));
     res = tree_stm_seq(res, tree_stm_label(flabel));
     res = tree_stm_seq(res, tree_stm_move(r_exp, alt));
-    res = tree_stm_seq(res, unconditional_jump(join));
+    res = tree_stm_seq(res, unconditional_jump(arena, join));
     res = tree_stm_seq(res, tree_stm_label(join));
     return translate_ex(tree_exp_eseq(res, r_exp));
 }
@@ -951,7 +993,7 @@ static tree_stm_t* translate_decl(
     translate_exp_t* last_expr = NULL;
     for (sl_expr_t* e = decl->dl_body; e; e = e->ex_list) {
         if (last_expr) {
-            var stmt = translate_un_nx(info->temp_state, last_expr);
+            var stmt = translate_un_nx(info, last_expr);
             if (!stmts) {
                 stmts = stmt;
             } else {
@@ -962,8 +1004,8 @@ static tree_stm_t* translate_decl(
     }
 
     var result_exp = (stmts)
-        ? tree_exp_eseq(stmts, translate_un_ex(info->temp_state, last_expr))
-        : translate_un_ex(info->temp_state, last_expr);
+        ? tree_exp_eseq(stmts, translate_un_ex(info, last_expr))
+        : translate_un_ex(info, last_expr);
     last_expr = NULL;
 
     var return_assignment = assign_return(frame, result_exp);

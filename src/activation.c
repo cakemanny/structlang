@@ -445,9 +445,10 @@ static temp_t assign_temporary_for_reg(
     return temp;
 }
 
-static void calculate_activation_record_decl_func(
-        temp_state_t* temp_state, sl_decl_t* program, ac_frame_t* frame,
-        sl_decl_t* decl)
+static void
+calculate_activation_record_decl_func(
+        Arena_T frag_arena, temp_state_t* temp_state, sl_decl_t* program,
+        ac_frame_t* frame, sl_decl_t* decl)
 {
     assert(decl->dl_tag == SL_DECL_FUNC);
     if (ac_debug) {
@@ -509,7 +510,7 @@ static void calculate_activation_record_decl_func(
             v->acf_reg = assign_temporary_for_reg(temp_state, frame,
                     target->arg_registers.elems[frame->acf_next_arg_reg++],
                     size, ptr_disp_of_type(type),
-                    translate_type(program, type));
+                    translate_type(frag_arena, program, type));
         } else {
             // Add formal parameter
             v->acf_tag = ACF_ACCESS_FRAME;
@@ -530,8 +531,10 @@ static void calculate_activation_record_decl_func(
 }
 
 
-ac_frame_t* calculate_activation_records(
-        const target_t* target, temp_state_t* temp_state, sl_decl_t* program)
+ac_frame_t*
+calculate_activation_records(
+        Arena_T frag_arena, const target_t* target, temp_state_t* temp_state,
+        sl_decl_t* program)
 {
     if (ac_debug) {
         fprintf(stderr, "calculating activation records\n");
@@ -543,7 +546,8 @@ ac_frame_t* calculate_activation_records(
     for (sl_decl_t* d = program; d; d = d->dl_list) {
         if (d->dl_tag == SL_DECL_FUNC) {
             ac_frame_t* f = ac_frame_new(d->dl_name, target, temp_map);
-            calculate_activation_record_decl_func(temp_state, program, f, d);
+            calculate_activation_record_decl_func(
+                    frag_arena, temp_state, program, f, d);
             frame_list = ac_frame_append_frame(frame_list, f);
         }
     }

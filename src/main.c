@@ -192,9 +192,10 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    Arena_T frag_arena = Arena_new();
     temp_state_t* temp_state = temp_state_new();
     ac_frame_t* frames =
-        calculate_activation_records(target, temp_state, program);
+        calculate_activation_records(frag_arena, target, temp_state, program);
     if(!frames) {
         // TODO: consider a module with only struct definitions?
         fprintf(stderr, "internal error: failed to calculate frames\n");
@@ -205,7 +206,6 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    Arena_T frag_arena = Arena_new();
     sl_fragment_t* fragments =
         translate_program(frag_arena, temp_state, program, frames);
     // ^ after this we can free up the ast structures
@@ -232,7 +232,7 @@ int main(int argc, char* argv[])
     }
 
     sl_fragment_t* canonical_frags =
-        canonicalise_tree(target, temp_state, fragments);
+        canonicalise_tree(frag_arena, target, temp_state, fragments);
     if(!canonical_frags) {
         fprintf(stderr, "internal error: failed to canonicalise trees\n");
         return 1;

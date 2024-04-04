@@ -19,6 +19,6 @@ sl_fragment_t* translate_program(
 /*
  * convert a structlang type into a tree language type
  */
-tree_typ_t* translate_type(const sl_decl_t* program, const sl_type_t* type);
+tree_typ_t* translate_type(Arena_T, const sl_decl_t* program, const sl_type_t* type);
 
 #endif /* __TRANSLATE_H__ */

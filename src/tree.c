@@ -5,16 +5,17 @@
 #include <stdarg.h> // va_start, va_arg, va_end
 
 #define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 typedef tree_exp_t* exp;
 typedef tree_stm_t* stm;
 
 
-static tree_typ_t* tree_typ_new(int tag)
+static tree_typ_t* tree_typ_new(Arena_T a, int tag)
 {
     assert(tag > 0);
     assert(tag <= TREE_TYPE_STRUCT);
-    tree_typ_t* t = xmalloc(sizeof *t);
+    tree_typ_t* t = Alloc(a, sizeof *t);
     t->tt_tag = tag;
     return t;
 }
@@ -28,36 +29,36 @@ static tree_typ_t base_types[] = {
 };
 */
 
-tree_typ_t* tree_typ_int()
+tree_typ_t* tree_typ_int(Arena_T a)
 {
-    return tree_typ_new(TREE_TYPE_INT);
+    return tree_typ_new(a, TREE_TYPE_INT);
 }
 
-tree_typ_t* tree_typ_bool()
+tree_typ_t* tree_typ_bool(Arena_T a)
 {
-    return tree_typ_new(TREE_TYPE_BOOL);
+    return tree_typ_new(a, TREE_TYPE_BOOL);
 }
 
-tree_typ_t* tree_typ_void()
+tree_typ_t* tree_typ_void(Arena_T a)
 {
-    return tree_typ_new(TREE_TYPE_VOID);
+    return tree_typ_new(a, TREE_TYPE_VOID);
 }
 
-tree_typ_t* tree_typ_ptr(tree_typ_t* pointee)
+tree_typ_t* tree_typ_ptr(Arena_T a, tree_typ_t* pointee)
 {
-    var t = tree_typ_new(TREE_TYPE_PTR);
+    var t = tree_typ_new(a, TREE_TYPE_PTR);
     t->tt_pointee = pointee;
     return t;
 }
 
-tree_typ_t* tree_typ_ptr_diff()
+tree_typ_t* tree_typ_ptr_diff(Arena_T a)
 {
-    return tree_typ_new(TREE_TYPE_PTR_DIFF);
+    return tree_typ_new(a, TREE_TYPE_PTR_DIFF);
 }
 
-tree_typ_t* tree_typ_struct(tree_typ_t* fields)
+tree_typ_t* tree_typ_struct(Arena_T a, tree_typ_t* fields)
 {
-    var t = tree_typ_new(TREE_TYPE_STRUCT);
+    var t = tree_typ_new(a, TREE_TYPE_STRUCT);
     t->tt_fields = fields;
     return t;
 }
@@ -90,7 +91,7 @@ exp tree_exp_const(int value, size_t size, tree_typ_t* type)
     return e;
 }
 
-exp tree_exp_name(sl_sym_t name)
+exp tree_exp_name(Arena_T a, sl_sym_t name)
 {
     exp e = tree_exp_new(TREE_EXP_NAME);
     e->te_name = name;
@@ -98,7 +99,7 @@ exp tree_exp_name(sl_sym_t name)
 
     // could be a string, or maybe some code :shrug:
     // but it's not too important
-    e->te_type = tree_typ_ptr(tree_typ_void());
+    e->te_type = tree_typ_ptr(a, tree_typ_void(a));
     return e;
 }
 

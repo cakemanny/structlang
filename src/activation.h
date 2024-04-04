@@ -63,7 +63,7 @@ void ac_frame_free(ac_frame_t** pframe);
 int ac_frame_words(const ac_frame_t* frame);
 
 ac_frame_t* calculate_activation_records(
-        const target_t*, temp_state_t*, sl_decl_t* program);
+        Arena_T frag_arena, const target_t*, temp_state_t*, sl_decl_t* program);
 size_t size_of_type(const sl_decl_t* program, sl_type_t* type);
 size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);
 
@@ -84,9 +84,6 @@ size_t alignment_of_type(const sl_decl_t* program, sl_type_t* type);
  * so the second character becomes 'p' and then d does not take a whole
  * word of space, but due to alignment criteria it uses up a non-pointer
  * word, and thus the final character is 'n'.
- *
- * The memory belongs to the caller and must be freed once the caller
- * is done with it.
  */
 char* ac_record_descriptor_for_type(
         Arena_T arena, const sl_decl_t* program, sl_type_t* type);

@@ -1,6 +1,7 @@
 #ifndef __TREE_H__
 #define __TREE_H__
 
+#include "interfaces/arena.h"
 #include "symbols.h" // sl_sym_t
 #include "temp.h" // temp_t
 #include <stddef.h> // size_t
@@ -135,18 +136,18 @@ struct tree_stm_t {
 };
 
 
-tree_typ_t* tree_typ_int();
-tree_typ_t* tree_typ_bool();
-tree_typ_t* tree_typ_void();
-tree_typ_t* tree_typ_ptr(tree_typ_t* pointee);
-tree_typ_t* tree_typ_ptr_diff();
-tree_typ_t* tree_typ_struct(tree_typ_t* fields /* list */);
+tree_typ_t* tree_typ_int(Arena_T);
+tree_typ_t* tree_typ_bool(Arena_T);
+tree_typ_t* tree_typ_void(Arena_T);
+tree_typ_t* tree_typ_ptr(Arena_T, tree_typ_t* pointee);
+tree_typ_t* tree_typ_ptr_diff(Arena_T);
+tree_typ_t* tree_typ_struct(Arena_T, tree_typ_t* fields /* list */);
 tree_typ_t* tree_typ_append(tree_typ_t* hd, tree_typ_t* to_append);
 
 /* the integer constant _value_ */
 tree_exp_t* tree_exp_const(int value, size_t size, tree_typ_t* type);
 /* symbolic constant _name_ corresonding to an assembly label */
-tree_exp_t* tree_exp_name(sl_sym_t name);
+tree_exp_t* tree_exp_name(Arena_T, sl_sym_t name);
 /* a temp in the abstract machine, similar to a register, but infinitely many*/
 tree_exp_t* tree_exp_temp(temp_t temp, size_t size, tree_typ_t* type);
 /* evaluate lhs, rhs, and then apply op */
