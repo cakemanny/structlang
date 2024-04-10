@@ -139,6 +139,7 @@ void reserve_outgoing_arg_space(ac_frame_t* frame, size_t required_bytes);
  * and ergh, some other bits
  */
 tree_stm_t* proc_entry_exit_1(
-        temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* body);
+        Arena_T frag_arena, temp_state_t* temp_state, ac_frame_t* frame,
+        tree_stm_t* body);
 
 #endif /* __ACTIVATION_H__ */

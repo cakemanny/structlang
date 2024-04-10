@@ -44,6 +44,12 @@ Two bitmaps, one for arguments, another for locals.
 
  */
 
+typedef struct act_info_t {
+    const sl_decl_t* program;
+    temp_state_t* temp_state;
+    Arena_T frag_arena; // for permanent tree_ allocations
+} act_info_t;
+
 // __builtin_debugtrap();
 bool ac_debug = 0;
 
@@ -319,30 +325,30 @@ char* ac_record_descriptor_for_type(
 
 
 static void calculate_activation_record_expr(
-        const sl_decl_t* program, ac_frame_t* frame, sl_expr_t* expr)
+        act_info_t* info, ac_frame_t* frame, sl_expr_t* expr)
 {
 #define EX_LIST_IT(it, head) sl_expr_t* it = (head); it; it = it->ex_list
-#define recur(e) calculate_activation_record_expr(program, frame, e)
+#define recur(e) calculate_activation_record_expr(info, frame, e)
     switch (expr->ex_tag)
     {
         /* interesting case */
         case SL_EXPR_LET:
         {
             recur(expr->ex_init);
-            size_t size = size_of_type(program, expr->ex_type_ann);
+            size_t size = size_of_type(info->program, expr->ex_type_ann);
             assert(size > 0 && "zero-size let-bound variable");
             struct ac_frame_var* v = xmalloc(sizeof *v);
             v->acf_tag = ACF_ACCESS_FRAME;
             v->acf_varname = expr->ex_name;
             v->acf_size = size;
-            v->acf_alignment = alignment_of_type(program, expr->ex_type_ann);
+            v->acf_alignment = alignment_of_type(info->program, expr->ex_type_ann);
             v->acf_var_id = expr->ex_let_id;
             v->acf_offset = frame->acf_last_local_offset - size;
             while ((v->acf_offset % v->acf_alignment) != 0)
                 v->acf_offset--;
             v->acf_is_formal = false;
             v->acf_ptr_map = xmalloc(BitsetBytes(num_words(size)));
-            ptr_map_for_type(program, expr->ex_type_ann, v->acf_ptr_map, 0);
+            ptr_map_for_type(info->program, expr->ex_type_ann, v->acf_ptr_map, 0);
             v->acf_spilled.temp_id = -1;
             v->acf_stored.temp_id = -1;
 
@@ -424,18 +430,18 @@ static int num_padding_words(const ac_frame_t* frame) {
 /*
  * function arguments are moved from the machine register into a temporary
  * so that the register is free to perform any duties it needs to (e.g. being
- * an argument to an function called by this function.).
+ * an argument to a function called by this function.).
  */
 static temp_t assign_temporary_for_reg(
-        temp_state_t* temp_state, ac_frame_t* frame, temp_t reg, size_t size,
+        act_info_t* info, ac_frame_t* frame, temp_t reg, size_t size,
         temp_ptr_disposition_t ptr_dispo, tree_typ_t* type)
 {
     temp_t param_reg = reg;
     param_reg.temp_size = size;
-    temp_t temp = temp_newtemp(temp_state, size, ptr_dispo);
+    temp_t temp = temp_newtemp(info->temp_state, size, ptr_dispo);
     var move = tree_stm_move(
-            tree_exp_temp(temp, size, type), // <- dest
-            tree_exp_temp(param_reg, size, type)); // <- src
+            tree_exp_temp(temp, size, type, info->frag_arena), // <- dest
+            tree_exp_temp(param_reg, size, type, info->frag_arena)); // <- src
 
     if (frame->acf_arg_moves == NULL) {
         frame->acf_arg_moves = move;
@@ -447,8 +453,7 @@ static temp_t assign_temporary_for_reg(
 
 static void
 calculate_activation_record_decl_func(
-        Arena_T frag_arena, temp_state_t* temp_state, sl_decl_t* program,
-        ac_frame_t* frame, sl_decl_t* decl)
+        act_info_t* info, ac_frame_t* frame, sl_decl_t* decl)
 {
     assert(decl->dl_tag == SL_DECL_FUNC);
     if (ac_debug) {
@@ -458,7 +463,7 @@ calculate_activation_record_decl_func(
 
     // space for return type
     sl_type_t* ret_type = decl->dl_type;
-    size_t ret_type_size = size_of_type(program, ret_type);
+    size_t ret_type_size = size_of_type(info->program, ret_type);
 
     if (ret_type_size <= 8) {
         // result goes into RAX
@@ -481,7 +486,7 @@ calculate_activation_record_decl_func(
         v->acf_reg.temp_size = target->word_size;
         v->acf_is_formal = true; // ... not really though ...
         v->acf_ptr_map = xmalloc(BitsetBytes(num_words(ret_type_size)));
-        ptr_map_for_type(program, ret_type, v->acf_ptr_map, 0);
+        ptr_map_for_type(info->program, ret_type, v->acf_ptr_map, 0);
         v->acf_spilled.temp_id = -1;
         v->acf_stored.temp_id = -1;
 
@@ -490,27 +495,27 @@ calculate_activation_record_decl_func(
 
     for (sl_decl_t* p = decl->dl_params; p; p = p->dl_list) {
         sl_type_t* type = p->dl_type;
-        size_t size = size_of_type(program, type);
+        size_t size = size_of_type(info->program, type);
         assert(size > 0 && "zero-size parameter");
 
         struct ac_frame_var* v = xmalloc(sizeof *v);
         v->acf_varname = p->dl_name;
         v->acf_size = size;
-        v->acf_alignment = alignment_of_type(program, type);
+        v->acf_alignment = alignment_of_type(info->program, type);
         v->acf_var_id = p->dl_var_id;
         v->acf_is_formal = true;
         v->acf_ptr_map = xmalloc(BitsetBytes(num_words(size)));
-        ptr_map_for_type(program, type, v->acf_ptr_map, 0);
+        ptr_map_for_type(info->program, type, v->acf_ptr_map, 0);
         v->acf_spilled.temp_id = -1;
         v->acf_stored.temp_id = -1;
 
         if (size <= 8 && frame->acf_next_arg_reg < target->arg_registers.length) {
             // passed in register
             v->acf_tag = ACF_ACCESS_REG;
-            v->acf_reg = assign_temporary_for_reg(temp_state, frame,
+            v->acf_reg = assign_temporary_for_reg(info, frame,
                     target->arg_registers.elems[frame->acf_next_arg_reg++],
                     size, ptr_disp_of_type(type),
-                    translate_type(frag_arena, program, type));
+                    translate_type(info->frag_arena, info->program, type));
         } else {
             // Add formal parameter
             v->acf_tag = ACF_ACCESS_FRAME;
@@ -526,7 +531,7 @@ calculate_activation_record_decl_func(
     for (sl_expr_t* e = decl->dl_body; e; e = e->ex_list) {
         // Add space for locals
         // And maybe temporaries
-        calculate_activation_record_expr(program, frame, e);
+        calculate_activation_record_expr(info, frame, e);
     }
 }
 
@@ -546,8 +551,12 @@ calculate_activation_records(
     for (sl_decl_t* d = program; d; d = d->dl_list) {
         if (d->dl_tag == SL_DECL_FUNC) {
             ac_frame_t* f = ac_frame_new(d->dl_name, target, temp_map);
-            calculate_activation_record_decl_func(
-                    frag_arena, temp_state, program, f, d);
+            act_info_t info = {
+                .program = program,
+                .temp_state = temp_state,
+                .frag_arena = frag_arena,
+            };
+            calculate_activation_record_decl_func(&info, f, d);
             frame_list = ac_frame_append_frame(frame_list, f);
         }
     }
@@ -909,7 +918,8 @@ void reserve_outgoing_arg_space(ac_frame_t* frame, size_t required_bytes)
 }
 
 tree_stm_t* proc_entry_exit_1(
-        temp_state_t* temp_state, ac_frame_t* frame, tree_stm_t* body)
+        Arena_T frag_arena, temp_state_t* temp_state, ac_frame_t* frame,
+        tree_stm_t* body)
 {
     // 1. we have to move each incoming register parameter to where it
     // is seen from in the function
@@ -940,16 +950,20 @@ tree_stm_t* proc_entry_exit_1(
     tree_stm_t* saves = NULL;
     for (int i = 0; i < num_callee_saves; i++) {
         // TODO: maybe use a type that will be resolved later
-        var dst_access = tree_exp_temp(temps_for_callee_saves[i], word_size, NULL);
-        var src_access = tree_exp_temp(target->callee_saves.elems[i], word_size, NULL);
+        var dst_access = tree_exp_temp(
+                temps_for_callee_saves[i], word_size, NULL, frag_arena);
+        var src_access = tree_exp_temp(
+                target->callee_saves.elems[i], word_size, NULL, frag_arena);
         var move = tree_stm_move(dst_access, src_access);
         saves = (saves) ? tree_stm_seq(saves, move) : move;
     }
 
     tree_stm_t* restores = NULL;
     for (int i = 0; i < num_callee_saves; i++) {
-        var dst_access = tree_exp_temp(target->callee_saves.elems[i], word_size, NULL);
-        var src_access = tree_exp_temp(temps_for_callee_saves[i], word_size, NULL);
+        var dst_access = tree_exp_temp(
+                target->callee_saves.elems[i], word_size, NULL, frag_arena);
+        var src_access = tree_exp_temp(
+                temps_for_callee_saves[i], word_size, NULL, frag_arena);
         var move = tree_stm_move(dst_access, src_access);
         restores = (restores) ? tree_stm_seq(restores, move) : move;
     }

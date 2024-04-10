@@ -11,7 +11,7 @@ typedef tree_exp_t* exp;
 typedef tree_stm_t* stm;
 
 
-static tree_typ_t* tree_typ_new(Arena_T a, int tag)
+static tree_typ_t* tree_typ_new(int tag, Arena_T a)
 {
     assert(tag > 0);
     assert(tag <= TREE_TYPE_STRUCT);
@@ -31,34 +31,34 @@ static tree_typ_t base_types[] = {
 
 tree_typ_t* tree_typ_int(Arena_T a)
 {
-    return tree_typ_new(a, TREE_TYPE_INT);
+    return tree_typ_new(TREE_TYPE_INT, a);
 }
 
 tree_typ_t* tree_typ_bool(Arena_T a)
 {
-    return tree_typ_new(a, TREE_TYPE_BOOL);
+    return tree_typ_new(TREE_TYPE_BOOL, a);
 }
 
 tree_typ_t* tree_typ_void(Arena_T a)
 {
-    return tree_typ_new(a, TREE_TYPE_VOID);
+    return tree_typ_new(TREE_TYPE_VOID, a);
 }
 
-tree_typ_t* tree_typ_ptr(Arena_T a, tree_typ_t* pointee)
+tree_typ_t* tree_typ_ptr(tree_typ_t* pointee, Arena_T a)
 {
-    var t = tree_typ_new(a, TREE_TYPE_PTR);
+    var t = tree_typ_new(TREE_TYPE_PTR, a);
     t->tt_pointee = pointee;
     return t;
 }
 
 tree_typ_t* tree_typ_ptr_diff(Arena_T a)
 {
-    return tree_typ_new(a, TREE_TYPE_PTR_DIFF);
+    return tree_typ_new(TREE_TYPE_PTR_DIFF, a);
 }
 
-tree_typ_t* tree_typ_struct(Arena_T a, tree_typ_t* fields)
+tree_typ_t* tree_typ_struct(tree_typ_t* fields, Arena_T a)
 {
-    var t = tree_typ_new(a, TREE_TYPE_STRUCT);
+    var t = tree_typ_new(TREE_TYPE_STRUCT, a);
     t->tt_fields = fields;
     return t;
 }
@@ -73,39 +73,39 @@ tree_typ_t* tree_typ_append(tree_typ_t* hd, tree_typ_t* to_append)
 }
 
 
-static exp tree_exp_new(int tag)
+static exp tree_exp_new(int tag, Arena_T a)
 {
     assert(tag > 0);
     assert(tag <= TREE_EXP_ESEQ);
-    exp e = xmalloc(sizeof *e);
+    exp e = Alloc(a, sizeof *e);
     e->te_tag = tag;
     return e;
 }
 
-exp tree_exp_const(int value, size_t size, tree_typ_t* type)
+exp tree_exp_const(int value, size_t size, tree_typ_t* type, Arena_T a)
 {
-    exp e = tree_exp_new(TREE_EXP_CONST);
+    exp e = tree_exp_new(TREE_EXP_CONST, a);
     e->te_const = value;
     e->te_size = size;
     e->te_type = type;
     return e;
 }
 
-exp tree_exp_name(Arena_T a, sl_sym_t name)
+exp tree_exp_name(sl_sym_t name, Arena_T a)
 {
-    exp e = tree_exp_new(TREE_EXP_NAME);
+    exp e = tree_exp_new(TREE_EXP_NAME, a);
     e->te_name = name;
     // FIXME: e->te_size = ??? word size?
 
     // could be a string, or maybe some code :shrug:
     // but it's not too important
-    e->te_type = tree_typ_ptr(a, tree_typ_void(a));
+    e->te_type = tree_typ_ptr(tree_typ_void(a), a);
     return e;
 }
 
-exp tree_exp_temp(temp_t temp, size_t size, tree_typ_t* type)
+exp tree_exp_temp(temp_t temp, size_t size, tree_typ_t* type, Arena_T a)
 {
-    exp e = tree_exp_new(TREE_EXP_TEMP);
+    exp e = tree_exp_new(TREE_EXP_TEMP, a);
     e->te_temp = temp;
     assert(size == temp.temp_size);
     e->te_size = size;
@@ -113,9 +113,9 @@ exp tree_exp_temp(temp_t temp, size_t size, tree_typ_t* type)
     return e;
 }
 
-exp tree_exp_binop(tree_binop_t op, exp lhs, exp rhs)
+exp tree_exp_binop(tree_binop_t op, exp lhs, exp rhs, Arena_T a)
 {
-    exp e = tree_exp_new(TREE_EXP_BINOP);
+    exp e = tree_exp_new(TREE_EXP_BINOP, a);
     e->te_binop = op;
     e->te_lhs = lhs;
     e->te_rhs = rhs;
@@ -129,9 +129,9 @@ exp tree_exp_binop(tree_binop_t op, exp lhs, exp rhs)
     return e;
 }
 
-exp tree_exp_mem(exp addr, size_t size, tree_typ_t* type)
+exp tree_exp_mem(exp addr, size_t size, tree_typ_t* type, Arena_T a)
 {
-    exp e = tree_exp_new(TREE_EXP_MEM);
+    exp e = tree_exp_new(TREE_EXP_MEM, a);
     e->te_mem_addr = addr;
     e->te_size = size;
     e->te_type = type;
@@ -139,10 +139,10 @@ exp tree_exp_mem(exp addr, size_t size, tree_typ_t* type)
 }
 
 exp tree_exp_call(exp func, exp args, size_t size, tree_typ_t* type,
-        void* ptr_map)
+        void* ptr_map, Arena_T a)
 {
     assert(size);
-    exp e = tree_exp_new(TREE_EXP_CALL);
+    exp e = tree_exp_new(TREE_EXP_CALL, a);
     e->te_func = func;
     e->te_args = args;
     e->te_size = size;
@@ -151,9 +151,9 @@ exp tree_exp_call(exp func, exp args, size_t size, tree_typ_t* type,
     return e;
 }
 
-exp tree_exp_eseq(stm s, exp e)
+exp tree_exp_eseq(stm s, exp e, Arena_T a)
 {
-    exp e_ = tree_exp_new(TREE_EXP_ESEQ);
+    exp e_ = tree_exp_new(TREE_EXP_ESEQ, a);
     e_->te_eseq_stm = s;
     e_->te_eseq_exp = e;
     e_->te_size = e->te_size;

@@ -133,18 +133,20 @@ static canon_stm_exp_pair_t
     reorder(canon_info_t* info, tree_exp_t* es /*exp list*/)
 {
     canon_stm_exp_pair_t result = {};
+    Arena_T ar = info->arena;
     if (es == NULL) {
         // TODO: should be size zero
         result.cnp_stm = tree_stm_exp(
-                tree_exp_const(0, ac_word_size, tree_typ_void(info->arena)));
+                tree_exp_const(0, ac_word_size, tree_typ_void(ar), ar));
         result.cnp_exp = NULL; // just being explicit
         return result;
     }
     if (es->te_tag == TREE_EXP_CALL) {
         var t = temp_newtemp(info->temp_state, es->te_size, tree_dispo_from_type(es->te_type));
         var new_head = tree_exp_eseq(
-                tree_stm_move(tree_exp_temp(t, es->te_size, es->te_type), es),
-                tree_exp_temp(t, es->te_size, es->te_type)
+                tree_stm_move(tree_exp_temp(t, es->te_size, es->te_type, ar), es),
+                tree_exp_temp(t, es->te_size, es->te_type, ar),
+                ar
                 );
         new_head->te_list = es->te_list;
         return reorder(info, new_head);
@@ -174,9 +176,9 @@ static canon_stm_exp_pair_t
         var t = temp_newtemp(info->temp_state, e->te_size, tree_dispo_from_type(e->te_type));
         result.cnp_stm = seq(seq(
                     stms,
-                    tree_stm_move(tree_exp_temp(t, e->te_size, e->te_type),  e)),
+                    tree_stm_move(tree_exp_temp(t, e->te_size, e->te_type, ar),  e)),
                 stms2);
-        result.cnp_exp = tree_exp_temp(t, e->te_size, e->te_type);
+        result.cnp_exp = tree_exp_temp(t, e->te_size, e->te_type, ar);
         result.cnp_exp->te_list = el;
         return result;
     }
@@ -185,21 +187,21 @@ static canon_stm_exp_pair_t
 
 /* exp list -> exp */
 typedef struct build_exp_func_t {
-    tree_exp_t* (*bep_fn)(tree_exp_t*, void*);
+    tree_exp_t* (*bep_fn)(tree_exp_t*, void*, Arena_T);
     void* bep_cl;
 } build_exp_func_t;
 
 static build_exp_func_t bep_func(
-        tree_exp_t* (*fn)(tree_exp_t*, void*),
+        tree_exp_t* (*fn)(tree_exp_t*, void*, Arena_T),
         void* cl)
 {
     build_exp_func_t func = { .bep_fn = fn, .bep_cl = cl};
     return func;
 }
 
-static tree_exp_t* bep_call(build_exp_func_t bepf, tree_exp_t* el)
+static tree_exp_t* bep_call(build_exp_func_t bepf, tree_exp_t* el, Arena_T a)
 {
-    return bepf.bep_fn(el, bepf.bep_cl);
+    return bepf.bep_fn(el, bepf.bep_cl, a);
 }
 
 
@@ -209,7 +211,7 @@ static canon_stm_exp_pair_t reorder_exp(
     var stms_and_el2 = reorder(info, el);
     canon_stm_exp_pair_t result = {
         .cnp_stm = stms_and_el2.cnp_stm,
-        .cnp_exp = bep_call(build, stms_and_el2.cnp_exp),
+        .cnp_exp = bep_call(build, stms_and_el2.cnp_exp, info->arena),
     };
     return result;
 }
@@ -217,21 +219,21 @@ static canon_stm_exp_pair_t reorder_exp(
 
 /* exp list -> stm */
 typedef struct build_stm_func_t {
-    tree_stm_t* (*bsp_fn)(tree_exp_t*, void*);
+    tree_stm_t* (*bsp_fn)(tree_exp_t*, void*, Arena_T);
     void* bsp_cl;
 } build_stm_func_t;
 
 static build_stm_func_t bsp_func(
-        tree_stm_t* (*fn)(tree_exp_t*, void*),
+        tree_stm_t* (*fn)(tree_exp_t*, void*, Arena_T),
         void* cl)
 {
     build_stm_func_t func = { .bsp_fn = fn, .bsp_cl = cl};
     return func;
 }
 
-static tree_stm_t* bsp_call(build_stm_func_t bspf, tree_exp_t* el)
+static tree_stm_t* bsp_call(build_stm_func_t bspf, tree_exp_t* el, Arena_T a)
 {
-    return bspf.bsp_fn(el, bspf.bsp_cl);
+    return bspf.bsp_fn(el, bspf.bsp_cl, a);
 }
 
 
@@ -241,37 +243,37 @@ static tree_stm_t* /* list */ reorder_stm(
     var stms_and_el2 = reorder(info, el);
     var stms = stms_and_el2.cnp_stm;
     var el2 = stms_and_el2.cnp_exp;
-    return seq(stms, bsp_call(build, el2));
+    return seq(stms, bsp_call(build, el2, info->arena));
 }
 
 
-static tree_exp_t* rebuild_binop(tree_exp_t* el, void* cl)
+static tree_exp_t* rebuild_binop(tree_exp_t* el, void* cl, Arena_T a)
 {
     tree_binop_t* pop = cl;
     var rhs = el->te_list;
     var lhs = el;
     // don't leave lhs looking like a list
     lhs->te_list = NULL;
-    return tree_exp_binop(*pop, lhs, rhs);
+    return tree_exp_binop(*pop, lhs, rhs, a);
 }
 
-static tree_exp_t* rebuild_mem(tree_exp_t* el, void* cl)
+static tree_exp_t* rebuild_mem(tree_exp_t* el, void* cl, Arena_T a)
 {
     tree_exp_t* orig_e = cl;
-    return tree_exp_mem(el, orig_e->te_size, orig_e->te_type);
+    return tree_exp_mem(el, orig_e->te_size, orig_e->te_type, a);
 }
 
-static tree_exp_t* rebuild_call(tree_exp_t* el, void* cl)
+static tree_exp_t* rebuild_call(tree_exp_t* el, void* cl, Arena_T a)
 {
     var func = el;
     var args = el->te_list;
     // unlist the func
     func->te_list = NULL;
     tree_exp_t* e = cl;
-    return tree_exp_call(func, args, e->te_size, e->te_type, e->te_ptr_map);
+    return tree_exp_call(func, args, e->te_size, e->te_type, e->te_ptr_map, a);
 }
 
-static tree_exp_t* rebuild_exp_other(tree_exp_t* _el, void* cl)
+static tree_exp_t* rebuild_exp_other(tree_exp_t* _el, void* cl, Arena_T _a)
 {
     return (tree_exp_t*)cl;
 }
@@ -313,14 +315,14 @@ static canon_stm_exp_pair_t do_exp(canon_info_t* info, tree_exp_t* e)
     }
 }
 
-static tree_stm_t* rebuild_jump(tree_exp_t* el, void* cl)
+static tree_stm_t* rebuild_jump(tree_exp_t* el, void* cl, Arena_T a)
 {
     tree_stm_t* old_jump = cl;
     return tree_stm_jump(
             el, old_jump->tst_jump_num_labels, old_jump->tst_jump_labels);
 }
 
-static tree_stm_t* rebuild_cjump(tree_exp_t* el, void* cl)
+static tree_stm_t* rebuild_cjump(tree_exp_t* el, void* cl, Arena_T a)
 {
     tree_stm_t* old_cjump = cl;
     var rhs = el->te_list;
@@ -335,7 +337,7 @@ static tree_stm_t* rebuild_cjump(tree_exp_t* el, void* cl)
             old_cjump->tst_cjump_false);
 }
 
-static tree_stm_t* rebuild_move_temp_call(tree_exp_t* el, void* cl)
+static tree_stm_t* rebuild_move_temp_call(tree_exp_t* el, void* cl, Arena_T a)
 {
     struct {
         tree_exp_t* temp;
@@ -348,26 +350,28 @@ static tree_stm_t* rebuild_move_temp_call(tree_exp_t* el, void* cl)
     el = el->te_list;
     e->te_list = NULL;
     return tree_stm_move(
-            cl_->temp, tree_exp_call(e, el, cl_->call_size, cl_->result_type,
-                cl_->ptr_map));
+            cl_->temp,
+            tree_exp_call(e, el, cl_->call_size, cl_->result_type,
+                cl_->ptr_map, a));
 }
 
-static tree_stm_t* rebuild_move_temp(tree_exp_t* el, void* cl)
+static tree_stm_t* rebuild_move_temp(tree_exp_t* el, void* cl, Arena_T a)
 {
     tree_exp_t* temp = cl;
     return tree_stm_move(temp, el);
 }
 
-static tree_stm_t* rebuild_move_mem(tree_exp_t* el, void* cl)
+static tree_stm_t* rebuild_move_mem(tree_exp_t* el, void* cl, Arena_T a)
 {
     tree_exp_t* orig_dst = cl;
     var e = el;
     var b = el->te_list;
     e->te_list = NULL;
-    return tree_stm_move(tree_exp_mem(e, orig_dst->te_size, orig_dst->te_type), b);
+    return tree_stm_move(
+            tree_exp_mem(e, orig_dst->te_size, orig_dst->te_type, a), b);
 }
 
-static tree_stm_t* rebuild_exp_call(tree_exp_t* el, void* cl)
+static tree_stm_t* rebuild_exp_call(tree_exp_t* el, void* cl, Arena_T a)
 {
     struct {
         size_t call_size;
@@ -380,15 +384,15 @@ static tree_stm_t* rebuild_exp_call(tree_exp_t* el, void* cl)
     e->te_list = NULL;
     return tree_stm_exp(
             tree_exp_call(e, el, cl_->call_size, cl_->result_type,
-                cl_->ptr_map));
+                cl_->ptr_map, a));
 }
 
-static tree_stm_t* rebuild_exp(tree_exp_t* el, void* _cl)
+static tree_stm_t* rebuild_exp(tree_exp_t* el, void* _cl, Arena_T _a)
 {
     return tree_stm_exp(el);
 }
 
-static tree_stm_t* rebuild_stm_other(tree_exp_t* _el, void* cl)
+static tree_stm_t* rebuild_stm_other(tree_exp_t* _el, void* cl, Arena_T _a)
 {
     return (tree_stm_t*)cl;
 }
@@ -529,7 +533,7 @@ static tree_stm_t* unconditional_jump(Arena_T a, sl_sym_t dst)
 {
     sl_sym_t* labels = xmalloc(1 * sizeof *labels);
     labels[0] = dst;
-    return tree_stm_jump(tree_exp_name(a, dst), 1, labels);
+    return tree_stm_jump(tree_exp_name(dst, a), 1, labels);
 }
 
 /**

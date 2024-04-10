@@ -139,25 +139,25 @@ struct tree_stm_t {
 tree_typ_t* tree_typ_int(Arena_T);
 tree_typ_t* tree_typ_bool(Arena_T);
 tree_typ_t* tree_typ_void(Arena_T);
-tree_typ_t* tree_typ_ptr(Arena_T, tree_typ_t* pointee);
+tree_typ_t* tree_typ_ptr(tree_typ_t* pointee, Arena_T);
 tree_typ_t* tree_typ_ptr_diff(Arena_T);
-tree_typ_t* tree_typ_struct(Arena_T, tree_typ_t* fields /* list */);
+tree_typ_t* tree_typ_struct(tree_typ_t* fields /* list */, Arena_T);
 tree_typ_t* tree_typ_append(tree_typ_t* hd, tree_typ_t* to_append);
 
 /* the integer constant _value_ */
-tree_exp_t* tree_exp_const(int value, size_t size, tree_typ_t* type);
+tree_exp_t* tree_exp_const(int value, size_t size, tree_typ_t* type, Arena_T);
 /* symbolic constant _name_ corresonding to an assembly label */
-tree_exp_t* tree_exp_name(Arena_T, sl_sym_t name);
+tree_exp_t* tree_exp_name(sl_sym_t name, Arena_T);
 /* a temp in the abstract machine, similar to a register, but infinitely many*/
-tree_exp_t* tree_exp_temp(temp_t temp, size_t size, tree_typ_t* type);
+tree_exp_t* tree_exp_temp(temp_t temp, size_t size, tree_typ_t* type, Arena_T);
 /* evaluate lhs, rhs, and then apply op */
-tree_exp_t* tree_exp_binop(tree_binop_t op, tree_exp_t* lhs, tree_exp_t* rhs);
+tree_exp_t* tree_exp_binop(tree_binop_t op, tree_exp_t* lhs, tree_exp_t* rhs, Arena_T);
 /* the contents of size bytes of memory starting at address addr */
-tree_exp_t* tree_exp_mem(tree_exp_t* addr, size_t size, tree_typ_t* type);
+tree_exp_t* tree_exp_mem(tree_exp_t* addr, size_t size, tree_typ_t* type, Arena_T);
 /* evaluate func, then args (left-to-right), then apply func to args */
-tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args, size_t, tree_typ_t*, void*);
+tree_exp_t* tree_exp_call(tree_exp_t* func, tree_exp_t* args, size_t, tree_typ_t*, void*, Arena_T);
 /* eval s for side-effects then e for a result */
-tree_exp_t* tree_exp_eseq(tree_stm_t* s, tree_exp_t* e);
+tree_exp_t* tree_exp_eseq(tree_stm_t* s, tree_exp_t* e, Arena_T);
 
 tree_exp_t* tree_exp_append(tree_exp_t* hd, tree_exp_t* to_append);
 
