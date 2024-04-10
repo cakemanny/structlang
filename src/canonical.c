@@ -2,6 +2,7 @@
 #include "mem.h"
 #include <assert.h> /* assert */
 #include <stdbool.h> /* bool */
+#include "interfaces/arena.h"
 #include "interfaces/table.h"
 
 #define var __auto_type
@@ -37,7 +38,7 @@ static bool is_const(const target_t* target, tree_exp_t* e)
         || (e->te_tag == TREE_EXP_BINOP && is_const(target, e->te_lhs) && is_const(target, e->te_rhs));
 }
 
-static tree_stm_t* seq(tree_stm_t* s1, tree_stm_t* s2)
+static tree_stm_t* seq(tree_stm_t* s1, tree_stm_t* s2, Arena_T ar)
 {
     if (is_nop(s1)) {
         return s2;
@@ -45,7 +46,7 @@ static tree_stm_t* seq(tree_stm_t* s1, tree_stm_t* s2)
     if (is_nop(s2)) {
         return s1;
     }
-    return tree_stm_seq(s1, s2);
+    return tree_stm_seq(s1, s2, ar);
 }
 
 
@@ -137,14 +138,14 @@ static canon_stm_exp_pair_t
     if (es == NULL) {
         // TODO: should be size zero
         result.cnp_stm = tree_stm_exp(
-                tree_exp_const(0, ac_word_size, tree_typ_void(ar), ar));
+                tree_exp_const(0, ac_word_size, tree_typ_void(ar), ar), ar);
         result.cnp_exp = NULL; // just being explicit
         return result;
     }
     if (es->te_tag == TREE_EXP_CALL) {
         var t = temp_newtemp(info->temp_state, es->te_size, tree_dispo_from_type(es->te_type));
         var new_head = tree_exp_eseq(
-                tree_stm_move(tree_exp_temp(t, es->te_size, es->te_type, ar), es),
+                tree_stm_move(tree_exp_temp(t, es->te_size, es->te_type, ar), es, ar),
                 tree_exp_temp(t, es->te_size, es->te_type, ar),
                 ar
                 );
@@ -164,7 +165,7 @@ static canon_stm_exp_pair_t
     var el = stms2_and_el.cnp_exp;
 
     if (commute(info, stms2, e)) {
-        result.cnp_stm = seq(stms, stms2);
+        result.cnp_stm = seq(stms, stms2, ar);
         e->te_list = el;
         result.cnp_exp = e;
         return result;
@@ -176,8 +177,8 @@ static canon_stm_exp_pair_t
         var t = temp_newtemp(info->temp_state, e->te_size, tree_dispo_from_type(e->te_type));
         result.cnp_stm = seq(seq(
                     stms,
-                    tree_stm_move(tree_exp_temp(t, e->te_size, e->te_type, ar),  e)),
-                stms2);
+                    tree_stm_move(tree_exp_temp(t, e->te_size, e->te_type, ar),  e, ar), ar),
+                stms2, ar);
         result.cnp_exp = tree_exp_temp(t, e->te_size, e->te_type, ar);
         result.cnp_exp->te_list = el;
         return result;
@@ -243,7 +244,7 @@ static tree_stm_t* /* list */ reorder_stm(
     var stms_and_el2 = reorder(info, el);
     var stms = stms_and_el2.cnp_stm;
     var el2 = stms_and_el2.cnp_exp;
-    return seq(stms, bsp_call(build, el2, info->arena));
+    return seq(stms, bsp_call(build, el2, info->arena), info->arena);
 }
 
 
@@ -301,7 +302,7 @@ static canon_stm_exp_pair_t do_exp(canon_info_t* info, tree_exp_t* e)
             var stms2 = stms2_and_e3.cnp_stm;
             var e3 = stms2_and_e3.cnp_exp;
             return (canon_stm_exp_pair_t){
-                .cnp_stm = seq(stms, stms2),
+                .cnp_stm = seq(stms, stms2, info->arena),
                 .cnp_exp = e3
             };
         }
@@ -319,7 +320,7 @@ static tree_stm_t* rebuild_jump(tree_exp_t* el, void* cl, Arena_T a)
 {
     tree_stm_t* old_jump = cl;
     return tree_stm_jump(
-            el, old_jump->tst_jump_num_labels, old_jump->tst_jump_labels);
+            el, old_jump->tst_jump_num_labels, old_jump->tst_jump_labels, a);
 }
 
 static tree_stm_t* rebuild_cjump(tree_exp_t* el, void* cl, Arena_T a)
@@ -334,7 +335,7 @@ static tree_stm_t* rebuild_cjump(tree_exp_t* el, void* cl, Arena_T a)
             lhs,
             rhs,
             old_cjump->tst_cjump_true,
-            old_cjump->tst_cjump_false);
+            old_cjump->tst_cjump_false, a);
 }
 
 static tree_stm_t* rebuild_move_temp_call(tree_exp_t* el, void* cl, Arena_T a)
@@ -352,13 +353,13 @@ static tree_stm_t* rebuild_move_temp_call(tree_exp_t* el, void* cl, Arena_T a)
     return tree_stm_move(
             cl_->temp,
             tree_exp_call(e, el, cl_->call_size, cl_->result_type,
-                cl_->ptr_map, a));
+                cl_->ptr_map, a), a);
 }
 
 static tree_stm_t* rebuild_move_temp(tree_exp_t* el, void* cl, Arena_T a)
 {
     tree_exp_t* temp = cl;
-    return tree_stm_move(temp, el);
+    return tree_stm_move(temp, el, a);
 }
 
 static tree_stm_t* rebuild_move_mem(tree_exp_t* el, void* cl, Arena_T a)
@@ -368,7 +369,7 @@ static tree_stm_t* rebuild_move_mem(tree_exp_t* el, void* cl, Arena_T a)
     var b = el->te_list;
     e->te_list = NULL;
     return tree_stm_move(
-            tree_exp_mem(e, orig_dst->te_size, orig_dst->te_type, a), b);
+            tree_exp_mem(e, orig_dst->te_size, orig_dst->te_type, a), b, a);
 }
 
 static tree_stm_t* rebuild_exp_call(tree_exp_t* el, void* cl, Arena_T a)
@@ -384,12 +385,12 @@ static tree_stm_t* rebuild_exp_call(tree_exp_t* el, void* cl, Arena_T a)
     e->te_list = NULL;
     return tree_stm_exp(
             tree_exp_call(e, el, cl_->call_size, cl_->result_type,
-                cl_->ptr_map, a));
+                cl_->ptr_map, a), a);
 }
 
-static tree_stm_t* rebuild_exp(tree_exp_t* el, void* _cl, Arena_T _a)
+static tree_stm_t* rebuild_exp(tree_exp_t* el, void* _cl, Arena_T a)
 {
-    return tree_stm_exp(el);
+    return tree_stm_exp(el, a);
 }
 
 static tree_stm_t* rebuild_stm_other(tree_exp_t* _el, void* cl, Arena_T _a)
@@ -403,7 +404,7 @@ static tree_stm_t* do_stm(canon_info_t* info, tree_stm_t* s)
         case TREE_STM_SEQ:
             return seq(
                     do_stm(info, s->tst_seq_s1),
-                    do_stm(info, s->tst_seq_s2));
+                    do_stm(info, s->tst_seq_s2), info->arena);
         case TREE_STM_JUMP:
             return reorder_stm(
                     info, s->tst_jump_dst, bsp_func(rebuild_jump, s));
@@ -453,7 +454,9 @@ static tree_stm_t* do_stm(canon_info_t* info, tree_stm_t* s)
                 var as_seq = tree_stm_seq(
                         s->tst_move_dst->te_eseq_stm,
                         tree_stm_move(
-                            s->tst_move_dst->te_eseq_exp, s->tst_move_exp));
+                            s->tst_move_dst->te_eseq_exp, s->tst_move_exp,
+                            info->arena),
+                        info->arena);
                 return do_stm(info, as_seq);
             }
             // default case
@@ -529,11 +532,11 @@ static void bb_append_block(
     *final_node = block;
 }
 
-static tree_stm_t* unconditional_jump(Arena_T a, sl_sym_t dst)
+static tree_stm_t* unconditional_jump(sl_sym_t dst, Arena_T a)
 {
-    sl_sym_t* labels = xmalloc(1 * sizeof *labels);
+    sl_sym_t* labels = Arena_alloc(a, 1 * sizeof *labels, __FILE__, __LINE__);
     labels[0] = dst;
-    return tree_stm_jump(tree_exp_name(dst, a), 1, labels);
+    return tree_stm_jump(tree_exp_name(dst, a), 1, labels, a);
 }
 
 /**
@@ -551,7 +554,7 @@ static basic_blocks_t basic_blocks(
 
     if (stmts->tst_tag != TREE_STM_LABEL) {
         tree_stm_t* start_label =
-            tree_stm_label(temp_newlabel(temp_state));
+            tree_stm_label(temp_newlabel(temp_state), arena);
         start_label->tst_list = stmts;
         stmts = start_label;
     }
@@ -587,7 +590,7 @@ static basic_blocks_t basic_blocks(
         if (stmts == NULL || stmts->tst_tag == TREE_STM_LABEL) {
             if (s->tst_tag != TREE_STM_JUMP && s->tst_tag != TREE_STM_CJUMP) {
                 var j = unconditional_jump(
-                    arena, stmts ? stmts->tst_label : done
+                    stmts ? stmts->tst_label : done, arena
                 );
                 curr_block->bb_stmts =
                     tree_stm_append(curr_block->bb_stmts, j);
@@ -758,7 +761,8 @@ static void put_falses_after_cjumps(
                         s1->tst_cjump_lhs,
                         s1->tst_cjump_rhs,
                         s1->tst_cjump_false,
-                        s1->tst_cjump_true);
+                        s1->tst_cjump_true,
+                        arena);
                 s->tst_list->tst_list = s2;
                 // leak s1 ,lol
             } else { // neither the t or f label follows
@@ -769,10 +773,11 @@ static void put_falses_after_cjumps(
                         s1->tst_cjump_lhs,
                         s1->tst_cjump_rhs,
                         s1->tst_cjump_true,
-                        f0);
-                s->tst_list->tst_list = tree_stm_label(f0);
+                        f0,
+                        arena);
+                s->tst_list->tst_list = tree_stm_label(f0, arena);
                 s->tst_list->tst_list->tst_list =
-                    unconditional_jump(arena, s1->tst_cjump_false);
+                    unconditional_jump(s1->tst_cjump_false, arena);
                 s->tst_list->tst_list->tst_list->tst_list = s2;
             }
         }
@@ -852,7 +857,8 @@ static tree_stm_t* trace_schedule(
             }
         }
     }
-    stmts_in_order[num_statements - 1] = tree_stm_label(blocks.bb_end_label);
+    stmts_in_order[num_statements - 1] =
+        tree_stm_label(blocks.bb_end_label, arena);
 
     for (int i = 0; i < num_statements - 1; i++) {
         stmts_in_order[i]->tst_list = stmts_in_order[i+1];
@@ -860,6 +866,7 @@ static tree_stm_t* trace_schedule(
     stmts_in_order[num_statements - 1]->tst_list = NULL;
     tree_stm_t* result = stmts_in_order[0];
 
+    // TODO: replace this all with usage of a scratch arena
     // reclaim some of the memory here
     for (var ti = traces; ti;) {
         for (var bb = ti->tl_trace; bb; ) {

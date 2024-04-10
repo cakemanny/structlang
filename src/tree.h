@@ -162,23 +162,19 @@ tree_exp_t* tree_exp_eseq(tree_stm_t* s, tree_exp_t* e, Arena_T);
 tree_exp_t* tree_exp_append(tree_exp_t* hd, tree_exp_t* to_append);
 
 /* eval e and then move it into temp or mem reference */
-tree_stm_t* tree_stm_move(tree_exp_t* dst, tree_exp_t* e);
+tree_stm_t* tree_stm_move(tree_exp_t* dst, tree_exp_t* e, Arena_T);
 /* eval e and then discard the results */
-tree_stm_t* tree_stm_exp(tree_exp_t* e);
+tree_stm_t* tree_stm_exp(tree_exp_t* e, Arena_T);
 /* transfer control to address dst. common case is JUMP(NAME l, 1, [l]) */
-tree_stm_t* tree_stm_jump(tree_exp_t* dst, int num_labels, sl_sym_t* labels);
+tree_stm_t* tree_stm_jump(tree_exp_t* dst, int num_labels, sl_sym_t* labels, Arena_T);
 /* eval lhs, then rhs, then compare with op, then jump to jtrue or jfalse */
-tree_stm_t* tree_stm_cjump(tree_relop_t op, tree_exp_t* lhs, tree_exp_t* rhs, sl_sym_t jtrue, sl_sym_t jfalse);
+tree_stm_t* tree_stm_cjump(tree_relop_t op, tree_exp_t* lhs, tree_exp_t* rhs, sl_sym_t jtrue, sl_sym_t jfalse, Arena_T);
 /* s1 followed by s2 */
-tree_stm_t* tree_stm_seq(tree_stm_t* s1, tree_stm_t* s2);
+tree_stm_t* tree_stm_seq(tree_stm_t* s1, tree_stm_t* s2, Arena_T);
 /* define a label such that NAME(label) may be the target of jumps */
-tree_stm_t* tree_stm_label(sl_sym_t label);
+tree_stm_t* tree_stm_label(sl_sym_t label, Arena_T);
 
 tree_stm_t* tree_stm_append(tree_stm_t* hd, tree_stm_t* to_append);
-
-void tree_typ_free(tree_typ_t** ptyp);
-void tree_exp_free(tree_exp_t** pexp);
-void tree_stm_free(tree_stm_t** pstm);
 
 #include <stdio.h>
 /* print tree expression */

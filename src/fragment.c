@@ -46,7 +46,7 @@ void sl_fragment_free(sl_fragment_t** pfrag)
     var frag = *pfrag;
     switch (frag->fr_tag) {
         case FR_CODE:
-            tree_stm_free(&frag->fr_body);
+            //tree_stm_free(&frag->fr_body); // on frag_arena
             ac_frame_free(&frag->fr_frame);
             break;
         case FR_STRING:

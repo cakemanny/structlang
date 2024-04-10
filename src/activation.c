@@ -436,17 +436,18 @@ static temp_t assign_temporary_for_reg(
         act_info_t* info, ac_frame_t* frame, temp_t reg, size_t size,
         temp_ptr_disposition_t ptr_dispo, tree_typ_t* type)
 {
+    var ar = info->frag_arena;
     temp_t param_reg = reg;
     param_reg.temp_size = size;
     temp_t temp = temp_newtemp(info->temp_state, size, ptr_dispo);
     var move = tree_stm_move(
-            tree_exp_temp(temp, size, type, info->frag_arena), // <- dest
-            tree_exp_temp(param_reg, size, type, info->frag_arena)); // <- src
+            tree_exp_temp(temp, size, type, ar), // <- dest
+            tree_exp_temp(param_reg, size, type, ar), ar); // <- src
 
     if (frame->acf_arg_moves == NULL) {
         frame->acf_arg_moves = move;
     } else {
-        frame->acf_arg_moves = tree_stm_seq(frame->acf_arg_moves, move);
+        frame->acf_arg_moves = tree_stm_seq(frame->acf_arg_moves, move, ar);
     }
     return temp;
 }
@@ -931,9 +932,10 @@ tree_stm_t* proc_entry_exit_1(
     // temporaries.
 
     // 1. Move register args to temps
+    var ar = frag_arena;
 
     if (frame->acf_arg_moves) {
-        body = tree_stm_seq(frame->acf_arg_moves, body);
+        body = tree_stm_seq(frame->acf_arg_moves, body, ar);
         frame->acf_arg_moves = NULL; // frame no longer owns this stuff
     }
 
@@ -951,24 +953,24 @@ tree_stm_t* proc_entry_exit_1(
     for (int i = 0; i < num_callee_saves; i++) {
         // TODO: maybe use a type that will be resolved later
         var dst_access = tree_exp_temp(
-                temps_for_callee_saves[i], word_size, NULL, frag_arena);
+                temps_for_callee_saves[i], word_size, NULL, ar);
         var src_access = tree_exp_temp(
-                target->callee_saves.elems[i], word_size, NULL, frag_arena);
-        var move = tree_stm_move(dst_access, src_access);
-        saves = (saves) ? tree_stm_seq(saves, move) : move;
+                target->callee_saves.elems[i], word_size, NULL, ar);
+        var move = tree_stm_move(dst_access, src_access, ar);
+        saves = (saves) ? tree_stm_seq(saves, move, ar) : move;
     }
 
     tree_stm_t* restores = NULL;
     for (int i = 0; i < num_callee_saves; i++) {
         var dst_access = tree_exp_temp(
-                target->callee_saves.elems[i], word_size, NULL, frag_arena);
+                target->callee_saves.elems[i], word_size, NULL, ar);
         var src_access = tree_exp_temp(
-                temps_for_callee_saves[i], word_size, NULL, frag_arena);
-        var move = tree_stm_move(dst_access, src_access);
-        restores = (restores) ? tree_stm_seq(restores, move) : move;
+                temps_for_callee_saves[i], word_size, NULL, ar);
+        var move = tree_stm_move(dst_access, src_access, ar);
+        restores = (restores) ? tree_stm_seq(restores, move, ar) : move;
     }
 
-    body = tree_stm_seq(tree_stm_seq(saves, body), restores);
+    body = tree_stm_seq(tree_stm_seq(saves, body, ar), restores, ar);
 
     return body;
 }
