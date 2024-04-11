@@ -8,6 +8,7 @@
 
 // type infering declarations - requires -std=gnu11
 #define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 // used to define check types of our macros arguments
 static void check_int(int i) {}
@@ -186,7 +187,8 @@ static int* defined_vars(sem_info_t* info)
         total_vars += Table_length(scope->sc_bindings);
     }
 
-    int* const result = xmalloc((1 + total_vars) * sizeof *result);
+    int* const result =
+        Alloc(info->si_arena, (1 + total_vars) * sizeof *result);
     int* it = result;
 
     for (scope_t* scope = info->si_current_scope;

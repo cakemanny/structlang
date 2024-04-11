@@ -1026,7 +1026,11 @@ static unsigned hashtemp(const void* key)
 
 static Table_T arm64_temp_map()
 {
-    Table_T result = Table_new(0, cmptemp, hashtemp);
+    static Table_T result = NULL;
+    if (result)
+        return result;
+
+    result = Table_new(0, cmptemp, hashtemp);
     for (int i = 0; i < NELEMS(arm64_registers); i++) {
         Table_put(result,
                 &(arm64_temp_map_temps[i]),

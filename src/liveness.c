@@ -31,7 +31,7 @@ static temp_list_t* temp_list_sort(temp_list_t* tl, Arena_T);
 
 /*
  * This is a single set from our table. It points somewhere into the table.
- * It passed by value to avoid double indirection.
+ * It's passed by value to avoid double indirection.
  */
 typedef struct node_set2 {
     size_t len;
@@ -570,6 +570,13 @@ interference_graph(
     return result;
 }
 
+static void
+tnode_entry_free(const void* key, void** value, void* cl)
+{
+    lv_node_t* ig_node = *value;
+    lv_free_node(ig_node);
+}
+
 void
 lv_free_interference_and_flow_graph(
         struct igraph_and_table* igraph_and_live_outs,
@@ -580,9 +587,11 @@ lv_free_interference_and_flow_graph(
     Table_free(&igraph_and_live_outs->live_outs);
     lv_free_graph(igraph_and_live_outs->igraph->lvig_graph);
     igraph_and_live_outs->igraph->lvig_graph = NULL;
+    Table_map(igraph_and_live_outs->igraph->lvig_tnode, tnode_entry_free, NULL);
     Table_free(&igraph_and_live_outs->igraph->lvig_tnode);
     Table_free(&igraph_and_live_outs->igraph->lvig_gtemp);
     // lvig_moves: on an arena
+    free(igraph_and_live_outs->igraph); igraph_and_live_outs->igraph = NULL;
 
     // Free flow graph
     lv_free_graph(flow_and_nodes->flowgraph->lvfg_control);
@@ -591,6 +600,7 @@ lv_free_interference_and_flow_graph(
     Table_free(&flow_and_nodes->flowgraph->lvfg_def);
     Table_free(&flow_and_nodes->flowgraph->lvfg_use);
     Table_free(&flow_and_nodes->flowgraph->lvfg_ismove);
+    free(flow_and_nodes->flowgraph); flow_and_nodes->flowgraph = NULL;
 
     // free nodes from flow_and_nodes
     for (lv_node_list_t *n = flow_and_nodes->node_list, *next=NULL; n; n = next) {

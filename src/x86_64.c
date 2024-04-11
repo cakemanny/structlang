@@ -1194,7 +1194,11 @@ static unsigned hashtemp(const void* key)
 
 static Table_T x86_64_temp_map()
 {
-    Table_T result = Table_new(0, cmptemp, hashtemp);
+    static Table_T result = NULL;
+    if (result)
+        return result;
+
+    result = Table_new(0, cmptemp, hashtemp);
     for (int i = 0; i < NELEMS(x86_64_registers); i++) {
         Table_put(result,
                 &(x86_64_temp_map_temps[i]),
