@@ -1,15 +1,16 @@
 #include "fragment.h"
 #include <assert.h> /* assert */
-#include "mem.h" // xmalloc
 #include "format.h"
 
 #define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
-sl_fragment_t* sl_code_fragment(tree_stm_t* body, ac_frame_t* frame)
+sl_fragment_t*
+sl_code_fragment(tree_stm_t* body, ac_frame_t* frame, Arena_T ar)
 {
     assert(body);
     assert(frame);
-    sl_fragment_t* x = xmalloc(sizeof *x);
+    sl_fragment_t* x = Alloc(ar, sizeof *x);
     x->fr_tag = FR_CODE;
     x->fr_body = body;
     x->fr_frame = frame;
@@ -17,11 +18,12 @@ sl_fragment_t* sl_code_fragment(tree_stm_t* body, ac_frame_t* frame)
     return x;
 }
 
-sl_fragment_t* sl_string_fragment(sl_sym_t label, const char* string)
+sl_fragment_t*
+sl_string_fragment(sl_sym_t label, const char* string, Arena_T ar)
 {
     assert(label);
     assert(string);
-    sl_fragment_t* x = xmalloc(sizeof *x);
+    sl_fragment_t* x = Alloc(ar, sizeof *x);
     x->fr_tag = FR_STRING;
     x->fr_label = label;
     x->fr_string = string;
@@ -29,11 +31,12 @@ sl_fragment_t* sl_string_fragment(sl_sym_t label, const char* string)
     return x;
 }
 
-sl_fragment_t* sl_frame_map_fragment(ac_frame_map_t* map, sl_sym_t ret_label)
+sl_fragment_t*
+sl_frame_map_fragment(ac_frame_map_t* map, sl_sym_t ret_label, Arena_T ar)
 {
     assert(map);
     assert(ret_label);
-    sl_fragment_t* x = xmalloc(sizeof *x);
+    sl_fragment_t* x = Alloc(ar, sizeof *x);
     x->fr_tag = FR_FRAME_MAP;
     x->fr_map = map;
     x->fr_ret_label = ret_label;

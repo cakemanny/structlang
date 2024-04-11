@@ -12,13 +12,15 @@ typedef struct codegen_t {
      * language. It returns a list of instructions in the target architecture
      */
     assm_instr_t* /* list */
-    (*codegen)(Arena_T, temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm);
+    (*codegen)(Arena_T instr_arena, Arena_T frag_arena,
+            temp_state_t* temp_state, sl_fragment_t* fragment,
+            tree_stm_t* stm);
 
     /*
      * This sets our special registers e.g. the stack pointer and the callee-save
      * registers as live at the end of the function so the the register allocator
      * restores them before we exit.
-     * The arena to pass is the one passed to codegen
+     * The arena is instr_arena
      */
     assm_instr_t* /* list */
     (*proc_entry_exit_2)(ac_frame_t* frame, assm_instr_t* body, Arena_T);

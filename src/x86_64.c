@@ -19,7 +19,8 @@ typedef struct codegen_state_t {
     temp_state_t* temp_state;
     ac_frame_t* frame;
     /* */
-    Arena_T ret_arena;
+    Arena_T ret_arena; // for assm instructions
+    Arena_T frag_arena; // for fragments, frame stuff
 } codegen_state_t;
 
 /*
@@ -933,15 +934,16 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
 
 assm_instr_t*
 x86_64_codegen(
-        Arena_T arena, temp_state_t* temp_state, sl_fragment_t* fragment,
-        tree_stm_t* stm)
+        Arena_T instr_arena, Arena_T frag_arena, temp_state_t* temp_state,
+        sl_fragment_t* fragment, tree_stm_t* stm)
 {
     assm_instr_t* result = NULL;
     codegen_state_t codegen_state = {
         .ilist = &result,
         .temp_state = temp_state,
         .frame = fragment->fr_frame,
-        .ret_arena = arena,
+        .ret_arena = instr_arena,
+        .frag_arena = frag_arena,
     };
     munch_stm(codegen_state, stm);
     return assm_list_reverse(result);

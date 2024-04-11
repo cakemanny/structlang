@@ -8,6 +8,7 @@
 
 #define EX_LIST_IT(it, head) sl_expr_t* it = (head); it; it = it->ex_list
 #define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 typedef struct translate_info_t {
     const sl_decl_t* program;
@@ -17,7 +18,7 @@ typedef struct translate_info_t {
     bool is_end_label_used;
     sl_fragment_t* string_fragments;
     Arena_T ret_arena;
-    Arena_T scratch_arena;
+    Arena_T scratch;
 } translate_info_t;
 
 struct translate_exp_t;
@@ -170,7 +171,7 @@ static tree_stm_t* translate_un_nx(translate_info_t* info, translate_exp_t* ex)
 
 static tree_stm_t* unconditional_jump(sl_sym_t dst, Arena_T a)
 {
-    sl_sym_t* labels = Arena_alloc(a, 1 * sizeof *labels, __FILE__, __LINE__);
+    sl_sym_t* labels = Alloc(a, 1 * sizeof *labels);
     labels[0] = dst;
     return tree_stm_jump(tree_exp_name(dst, a), 1, labels, a);
 }
@@ -468,7 +469,7 @@ static translate_exp_t* translate_expr_binop(
                 //      CJUMP(!=, a, 0, t, z)
                 //  label z:
                 //      CJUMP(!=, b, 0, t, f)
-                struct logical_and_or_cl* cl = xmalloc(sizeof *cl);
+                struct logical_and_or_cl* cl = Alloc(info->scratch, sizeof *cl);
                 cl->ts = info->temp_state;
                 cl->lhe = lhe;
                 cl->rhe = rhe;
@@ -481,7 +482,7 @@ static translate_exp_t* translate_expr_binop(
                 //      CJUMP(!=, a, 0, z, f)
                 //  label z:
                 //      CJUMP(!=, b, 0, t, f)
-                struct logical_and_or_cl* cl = xmalloc(sizeof *cl);
+                struct logical_and_or_cl* cl = Alloc(info->scratch, sizeof *cl);
                 cl->ts = info->temp_state;
                 cl->lhe = lhe;
                 cl->rhe = rhe;
@@ -513,7 +514,7 @@ static translate_exp_t* translate_expr_binop(
     }
     if (relop != -1) {
         // break off here and do a cjump node
-        struct compare_and_jump_cl* cl = xmalloc(sizeof *cl);
+        struct compare_and_jump_cl* cl = Alloc(info->scratch, sizeof *cl);
         cl->relop = relop;
         cl->lhe = lhe;
         cl->rhe = rhe;
@@ -581,7 +582,8 @@ static sl_sym_t label_for_descriptor(
 
     info->string_fragments =
         fr_append(info->string_fragments,
-                sl_string_fragment(descriptor_label, descriptor));
+                sl_string_fragment(
+                    descriptor_label, descriptor, info->ret_arena));
     return descriptor_label;
 }
 
@@ -597,7 +599,7 @@ static translate_exp_t* translate_expr_new(
     sl_type_t* struct_type = expr->ex_type->ty_pointee;
 
     char* descriptor = ac_record_descriptor_for_type(
-            info->scratch_arena, info->program, struct_type);
+            info->scratch, info->program, struct_type);
 
     var arg_exp = tree_exp_name(label_for_descriptor(info, descriptor),ar);
     arg_exp->te_size = 8; // FIXME: pass in the target
@@ -1056,7 +1058,7 @@ translate_program(
     // to the activation record, and to the IR representation
     translate_info_t info = {
         .temp_state = temp_state, .program = program, .ret_arena = arena,
-        .scratch_arena = Arena_new(),
+        .scratch = Arena_new(),
     };
 
     sl_fragment_t* result = NULL;
@@ -1068,7 +1070,7 @@ translate_program(
         if (d->dl_tag == SL_DECL_FUNC) {
             var body = translate_decl(&info, f, d);
             body = proc_entry_exit_1(arena, temp_state, f, body);
-            var frag = sl_code_fragment(body, f);
+            var frag = sl_code_fragment(body, f, arena);
             result = fr_append(result, frag);
 
             // the next frame will be for the next function, so iter
@@ -1079,7 +1081,7 @@ translate_program(
 
     result = fr_append(result, info.string_fragments);
 
-    Arena_dispose(&info.scratch_arena);
+    Arena_dispose(&info.scratch);
 
     return result;
 }

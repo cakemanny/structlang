@@ -22,14 +22,13 @@
 
 #define fatal(msg) do { perror(msg); abort(); } while(0)
 
-#define unlikely(x)    __builtin_expect(!!(x), 0)
-
 typedef struct codegen_state_t {
     assm_instr_t** ilist;
     temp_state_t* temp_state;
     ac_frame_t* frame;
     sl_fragment_t** ptr_map_fragments;
     Arena_T ret_arena;
+    Arena_T frag_arena;
 } codegen_state_t;
 
 /*
@@ -133,7 +132,7 @@ static void emit(codegen_state_t state, assm_instr_t* new_instr)
 
 static void emit_ptr_map(codegen_state_t state, ac_frame_map_t* map, sl_sym_t ret_label)
 {
-    var new_frag = sl_frame_map_fragment(map, ret_label);
+    var new_frag = sl_frame_map_fragment(map, ret_label, state.frag_arena);
     new_frag->fr_list = *state.ptr_map_fragments;
     *state.ptr_map_fragments = new_frag;
 }
@@ -688,8 +687,8 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
  */
 assm_instr_t* /* list */
 arm64_codegen(
-        Arena_T arena, temp_state_t* temp_state, sl_fragment_t* fragment,
-        tree_stm_t* stm)
+        Arena_T arena, Arena_T frag_arena, temp_state_t* temp_state,
+        sl_fragment_t* fragment, tree_stm_t* stm)
 {
     assm_instr_t* result = NULL;
     sl_fragment_t* ptr_map_fragments = NULL;
@@ -699,6 +698,7 @@ arm64_codegen(
         .frame = fragment->fr_frame,
         .ptr_map_fragments = &ptr_map_fragments,
         .ret_arena = arena,
+        .frag_arena = frag_arena,
     };
     munch_stm(codegen_state, stm);
 

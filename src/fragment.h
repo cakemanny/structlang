@@ -2,6 +2,7 @@
 #define __FRAGMENT_H__
 // vim:ft=c:
 
+#include "interfaces/arena.h"
 #include "activation.h" /* ac_frame_t */
 #include "tree.h" /* tree_stm_t */
 
@@ -30,9 +31,10 @@ struct sl_fragment_t {
     sl_fragment_t* fr_list;
 };
 
-sl_fragment_t* sl_code_fragment(tree_stm_t* body, ac_frame_t* frame);
-sl_fragment_t* sl_string_fragment(sl_sym_t label, const char* string);
-sl_fragment_t* sl_frame_map_fragment(ac_frame_map_t* map, sl_sym_t ret_label);
+sl_fragment_t* sl_code_fragment(tree_stm_t* body, ac_frame_t* frame, Arena_T);
+sl_fragment_t* sl_string_fragment(sl_sym_t label, const char* string, Arena_T);
+sl_fragment_t* sl_frame_map_fragment(ac_frame_map_t* map, sl_sym_t ret_label,
+        Arena_T);
 
 void sl_fragment_free(sl_fragment_t** pfrag);
 void sl_fragment_free_list(sl_fragment_t** pfrag);

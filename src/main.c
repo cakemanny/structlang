@@ -273,7 +273,7 @@ int main(int argc, char* argv[])
             }
 
             assm_instr_t* instrs = target->tgt_backend->codegen(
-                    instr_loop_arena, temp_state, frag, s);
+                    instr_loop_arena, frag_arena, temp_state, frag, s);
             if (stop_after_instruction_selection) {
                 for (var i = instrs; i; i = i->ai_list) {
                     char buf[128];
@@ -348,8 +348,8 @@ instr_loop_cleanup:
     }
     Table_free(&label_to_cs_bitmap);
 
-    Arena_dispose(&frag_arena);
     sl_fragment_free_list(&fragments);
+    Arena_dispose(&frag_arena);
     // end of program... maybe
     temp_state_free(&temp_state);
 }
