@@ -182,7 +182,7 @@ instrs2graph(const assm_instr_t* instrs, Arena_T arena)
     const assm_instr_t* prev = NULL;
     for (var instr = instrs; instr; instr = instr->ai_list) {
         var node = lv_new_node(graph);
-        nodes = list_cons(node, nodes);
+        nodes = list_cons(node, nodes, arena);
 
         switch (instr->ai_tag) {
             case ASSM_INSTR_OPER:
@@ -316,18 +316,18 @@ static_assert(sizeof(lv_node_pair_t) == sizeof(struct list_t),
 static_assert(sizeof(lv_node_pair_list_t) == sizeof(struct list_t),
         "lv_node_pair_list_t size");
 
-lv_node_pair_t* lv_node_pair(lv_node_t* m, lv_node_t* n)
+lv_node_pair_t* lv_node_pair(lv_node_t* m, lv_node_t* n, Arena_T ar)
 {
     assert(m);
     assert(n);
-    return list_cons(m, n);
+    return list_cons(m, n, ar);
 }
 
 lv_node_pair_list_t* lv_node_pair_cons(
-        lv_node_pair_t* hd, lv_node_pair_list_t* tl)
+        lv_node_pair_t* hd, lv_node_pair_list_t* tl, Arena_T ar)
 {
     assert(hd);
-    return list_cons(hd, tl);
+    return list_cons(hd, tl, ar);
 }
 
 bool lv_node_pair_eq(const lv_node_pair_t* lhs, const lv_node_pair_t* rhs)
@@ -519,7 +519,8 @@ interference_graph(
 
                     lv_node_t* u_node = ig_get_node_by_idx(igraph, u_idx);
                     igraph->lvig_moves = lv_node_pair_cons(
-                            lv_node_pair(d_node, u_node), igraph->lvig_moves);
+                            lv_node_pair(d_node, u_node, arena),
+                            igraph->lvig_moves, arena);
 
                     for (int j = 0; j < out_ns.len; j++) {
                         if (IsBitSet(out_ns.bits, j)) {
@@ -575,11 +576,11 @@ lv_free_interference_and_flow_graph(
         struct flowgraph_and_node_list* flow_and_nodes)
 {
     // Free interference graph
-    // TODO: work out how to track which values in the live_outs to free
+    // values referenced by live_outs are on an arena
     Table_free(&igraph_and_live_outs->live_outs);
     Table_free(&igraph_and_live_outs->igraph->lvig_tnode);
     Table_free(&igraph_and_live_outs->igraph->lvig_gtemp);
-    // TODO: lvig_moves;
+    // lvig_moves: on an arena
 
     // Free flow graph
     lv_free_graph(flow_and_nodes->flowgraph->lvfg_control);
@@ -596,7 +597,7 @@ lv_free_interference_and_flow_graph(
 
         lv_free_node(n->nl_node); n->nl_node = NULL;
         n->nl_list = NULL;
-        free(n);
+        // we don't free n, as it was allocated on an arena
     }
     flow_and_nodes->node_list = NULL;
 

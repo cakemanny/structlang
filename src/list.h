@@ -1,6 +1,7 @@
 #ifndef __LIST_H__
 #define __LIST_H__
 // vim:ft=c:
+#include "interfaces/arena.h"
 
 // basically all of our list types are
 struct list_t {
@@ -13,7 +14,7 @@ struct list_t {
  * various list types
  */
 //struct list_t* list_cons(void* head, struct list_t* tail);
-void* list_cons(void* head, void* tail);
+void* list_cons(void* head, void* tail, Arena_T);
 
 void* list_reverse(void* list);
 

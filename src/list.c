@@ -1,9 +1,9 @@
 #include "list.h"
-#include "mem.h"
+#include <stdlib.h> // NULL
 
-void* list_cons(void* head, void* tail)
+void* list_cons(void* head, void* tail, Arena_T arena)
 {
-    struct list_t* node = xmalloc(sizeof *node);
+    struct list_t* node = Arena_alloc(arena, sizeof *node, __FILE__, __LINE__);
     node->head = head;
     node->tail = tail;
     return node;

@@ -91,9 +91,9 @@ typedef struct lv_node_pair_list_t {
     struct lv_node_pair_list_t* npl_list;
 } lv_node_pair_list_t;
 
-lv_node_pair_t* lv_node_pair(lv_node_t* m, lv_node_t* n);
+lv_node_pair_t* lv_node_pair(lv_node_t* m, lv_node_t* n, Arena_T);
 lv_node_pair_list_t* lv_node_pair_cons(
-        lv_node_pair_t* hd, lv_node_pair_list_t* tl);
+        lv_node_pair_t* hd, lv_node_pair_list_t* tl, Arena_T);
 bool lv_node_pair_eq(const lv_node_pair_t* lhs, const lv_node_pair_t* rhs);
 
 // an interference graph

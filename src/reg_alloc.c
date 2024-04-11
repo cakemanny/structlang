@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <string.h>
 #include "list.h"
-#include "mem.h"
 #include "codegen.h"
 
 #define var __auto_type
@@ -54,6 +53,8 @@ typedef struct reg_alloc_info_t {
 
     lv_flowgraph_t* flowgraph;
     lv_igraph_t* interference;
+
+    Arena_T scratch; // deallocated at end of ra_color
 
 } reg_alloc_info_t;
 
@@ -137,26 +138,6 @@ node_list_contains(const lv_node_list_t* haystack, const lv_node_t* node)
     return false;
 }
 
-
-static void
-node_list_free(lv_node_list_t** pnode_list)
-{
-    while (*pnode_list) {
-        var to_free = *pnode_list;
-        *pnode_list = (*pnode_list)->nl_list;
-        free(to_free);
-    }
-}
-
-static void
-node_pair_list_free(lv_node_pair_list_t** pnode_pair_list)
-{
-    while (*pnode_pair_list) {
-        var to_free = *pnode_pair_list;
-        *pnode_pair_list = (*pnode_pair_list)->npl_list;
-        free(to_free);
-    }
-}
 
 static bool
 node_pair_list_contains(const lv_node_pair_list_t* haystack, const lv_node_pair_t* node_pair)
@@ -558,7 +539,7 @@ add_edge_helper(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
     info->degree[u->lvn_idx] += 1;
 
     info->adj_list[u->lvn_idx] =
-        list_cons(v, info->adj_list[u->lvn_idx]);
+        list_cons(v, info->adj_list[u->lvn_idx], info->scratch);
 }
 
 static void
@@ -596,7 +577,7 @@ combine(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
     for (var m = info->move_list[v->lvn_idx]; m; m = m->npl_list) {
         info->move_list[u->lvn_idx] =
             list_cons(m->npl_node,
-                    info->move_list[u->lvn_idx]);
+                    info->move_list[u->lvn_idx], info->scratch);
     }
     enable_moves_node(info, v);
 
@@ -917,18 +898,21 @@ struct ra_color_result {
         .K = Table_length(initial_allocation),
         .flowgraph = flowgraph,
         .interference = interference,
+        .scratch = Arena_new(),
     };
+#define Salloc(nbytes) Arena_alloc(info.scratch, nbytes, __FILE__, __LINE__)
 
     var nodes = lv_nodes(interference->lvig_graph);
     var count_nodes = Table_length(interference->lvig_gtemp);
-    info.degree = xmalloc(count_nodes * sizeof *info.degree);
-    info.color = xmalloc(count_nodes * sizeof *info.color);
+    info.degree = Salloc(count_nodes * sizeof *info.degree);
+    info.color = Salloc(count_nodes * sizeof *info.color);
     // This is correct, since we are allocating an array of pointers
     // NOLINTNEXTLINE(bugprone-sizeof-expression)
-    info.adj_list = xmalloc(count_nodes * sizeof *info.adj_list);
+    info.adj_list = Salloc(count_nodes * sizeof *info.adj_list);
     // NOLINTNEXTLINE(bugprone-sizeof-expression)
-    info.move_list = xmalloc(count_nodes * sizeof *info.move_list);
+    info.move_list = Salloc(count_nodes * sizeof *info.move_list);
     info.alias = Table_new(0, cmpnode, hashnode);
+#undef Salloc
 
     for (var n = nodes; n; n = n->nl_list) {
         var node = n->nl_node;
@@ -937,10 +921,10 @@ struct ra_color_result {
 
         var is_precolored = !!Table_get(initial_allocation, t);
         if (is_precolored) {
-            info.precolored = list_cons(node, info.precolored);
+            info.precolored = list_cons(node, info.precolored, info.scratch);
             info.color[node->lvn_idx] = t->temp_id;
         } else {
-            info.initial = list_cons(node, info.initial);
+            info.initial = list_cons(node, info.initial, info.scratch);
 
             lv_node_list_t* adj = lv_adj(node);
             for (var s = adj; s; s = s->nl_list) {
@@ -965,10 +949,10 @@ struct ra_color_result {
         var node_pair = m->npl_node;
         info.move_list[node_pair->np_node0->lvn_idx] =
             list_cons(node_pair,
-                    info.move_list[node_pair->np_node0->lvn_idx]);
+                    info.move_list[node_pair->np_node0->lvn_idx], info.scratch);
         info.move_list[node_pair->np_node1->lvn_idx] =
             list_cons(node_pair,
-                    info.move_list[node_pair->np_node1->lvn_idx]);
+                    info.move_list[node_pair->np_node1->lvn_idx], info.scratch);
     }
 
     // It's a bit cheeky but we can use lvig_moves for our move worklist
@@ -1082,28 +1066,16 @@ struct ra_color_result {
     // TODO: move all the moves from the various worklists back to the
     // lvig_moves list
 
-    node_list_free(&info.spilled_nodes);
-    node_list_free(&info.colored_nodes);
-    node_list_free(&info.precolored);
     assert(info.initial == NULL);
     assert(info.simplify_worklist == NULL);
     assert(info.spill_worklist == NULL);
 
     // dealloc all adj_lists
-    for (int i = 0; i < count_nodes; i++) {
-        node_list_free(&(info.adj_list[i]));
-    }
-    free(info.adj_list); info.adj_list = NULL;
-    for (int i = 0; i < count_nodes; i++) {
-        node_pair_list_free(&(info.move_list[i]));
-    }
-    free(info.move_list); info.move_list = NULL;
     Table_free(&info.alias);
 
-    free(info.degree); info.degree = NULL;
-    free(info.color); info.color = NULL;
     lv_node_list_free(nodes);
 
+    Arena_dispose(&info.scratch);
     return result;
 }
 
