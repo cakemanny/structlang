@@ -1,6 +1,5 @@
 #define _GNU_SOURCE // linux: ask for asprintf in stdio.h
 #include "arm64.h"
-#include "mem.h"
 #include <assert.h>
 #include <stdio.h> // asprintf
 #include <stdlib.h> // abort
@@ -9,12 +8,14 @@
 #include "codegen.h"
 #include "fragment.h"
 #include "format.h" // fprint_str_escaped
+#include "arena_util.h"
 
 // Useful resources
 // - https://developer.arm.com/documentation/102374/0101/Overview?lang=en
 // - https://modexp.wordpress.com/2018/10/30/arm64-assembly/
 
 #define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 #define BitsetLen(len) (((len) + 63) / 64)
 #define NELEMS(A) ((sizeof A) / sizeof A[0])
@@ -23,14 +24,6 @@
 
 #define unlikely(x)    __builtin_expect(!!(x), 0)
 
-#define Asprintf(ret, format, ...) do { \
-    if (unlikely(asprintf(ret, format, ##__VA_ARGS__) < 0)) { \
-        perror("out of memory"); \
-        abort(); \
-    } \
-} while (0)
-
-
 typedef struct codegen_state_t {
     assm_instr_t** ilist;
     temp_state_t* temp_state;
@@ -38,6 +31,23 @@ typedef struct codegen_state_t {
     sl_fragment_t** ptr_map_fragments;
     Arena_T ret_arena;
 } codegen_state_t;
+
+/*
+ * For the common case that there is a codegen_state_t in scope called
+ * state, and that we want to return all emitted assm nodes
+ */
+#define Assm_oper(s, dst, src, jmp) \
+    assm_oper(s, dst, src, jmp, state.ret_arena)
+#define Assm_label(s, lbl) \
+    assm_label(s, lbl, state.ret_arena)
+#define Assm_move(s, dst, src) \
+    assm_move(s, dst, src, state.ret_arena)
+
+#define ret_alloc(state, size) \
+    Arena_alloc(state.ret_arena, size, __FILE__, __LINE__)
+
+#define Asprintf(ret, format, ...) \
+    asprintf_arena(state.ret_arena, ret, format, ##__VA_ARGS__)
 
 // pre-declarations
 static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp);
@@ -115,15 +125,6 @@ static temp_list_t* calldefs(Arena_T ar)
     return c;
 }
 
-static char* strdupchk(const char* s1)
-{
-    char* s = strdup(s1);
-    if (!s) {
-        fatal("out of memory");
-    }
-    return s;
-}
-
 static void emit(codegen_state_t state, assm_instr_t* new_instr)
 {
     new_instr->ai_list = *state.ilist;
@@ -180,17 +181,17 @@ static assm_instr_t*
 arm64_load_temp(struct ac_frame_var* v, temp_t temp, Arena_T ar)
 {
     char* s = NULL;
-    Asprintf(&s, "ldr%s	`d0, [`s0, #%d]	; unspill\n",
+    asprintf_arena(ar, &s, "ldr%s	`d0, [`s0, #%d]	; unspill\n",
             suff_from_size(v->acf_size), v->acf_offset);
     var src_list = temp_list(FP, ar);
-    return assm_oper(s, temp_list(temp, ar), src_list, NULL);
+    return assm_oper(s, temp_list(temp, ar), src_list, NULL, ar);
 }
 
 static assm_instr_t*
 arm64_store_temp(struct ac_frame_var* v, temp_t temp, Arena_T ar)
 {
     char* s = NULL;
-    Asprintf(&s, "str%s	`s0, [`s1, #%d]	; spill\n",
+    asprintf_arena(ar, &s, "str%s	`s0, [`s1, #%d]	; spill\n",
             suff_from_size(v->acf_size), v->acf_offset);
     var src_list =
         temp_list_cons(temp,
@@ -199,7 +200,8 @@ arm64_store_temp(struct ac_frame_var* v, temp_t temp, Arena_T ar)
             s,
             NULL, /* dst list */
             src_list,
-            NULL /* jump=None */);
+            NULL, /* jump=None */
+            ar);
 }
 
 
@@ -246,7 +248,7 @@ static temp_list_t* munch_stack_args(codegen_state_t state, tree_exp_t* exp)
         var src_list =
             temp_list_cons(src,
                     temp_list(SP));
-        emit(state, assm_oper(s, NULL, src_list, NULL));
+        emit(state, Assm_oper(s, NULL, src_list, NULL));
 
 
         size_t field_alignment =
@@ -284,7 +286,7 @@ static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* e
             var src = munch_exp(state, exp);
             char* s = NULL;
             Asprintf(&s, "mov	`d0, `s0\n");
-            emit(state, assm_move(s, param_reg, src));
+            emit(state, Assm_move(s, param_reg, src));
 
             return temp_list_cons(
                     param_reg,
@@ -347,7 +349,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                             suff(exp), addr->te_rhs->te_const);
                     var src_list = temp_list(Munch_exp(addr->te_lhs));
                     emit(state,
-                        assm_oper(s, temp_list(r), src_list, NULL));
+                        Assm_oper(s, temp_list(r), src_list, NULL));
                     return r;
                 }
                 // we could emit something if some of the other cases come
@@ -361,7 +363,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             Asprintf(&s, "ldr%s	`d0, [`s0]\n", suff(exp));
             var src_list = temp_list(Munch_exp(addr));
             emit(state,
-                 assm_oper(s, temp_list(r), src_list, NULL));
+                 Assm_oper(s, temp_list(r), src_list, NULL));
             return r;
         }
         case TREE_EXP_BINOP:
@@ -376,7 +378,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                             exp->te_rhs->te_const);
                     var src_list = temp_list(Munch_exp(exp->te_lhs));
                     emit(state,
-                            assm_oper(s, temp_list(r), src_list, NULL));
+                            Assm_oper(s, temp_list(r), src_list, NULL));
                     return r;
                 }
                 tree_printf(stderr, "$$$ %E\n", exp);
@@ -403,7 +405,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 temp_list_cons(Munch_exp(exp->te_lhs),
                         temp_list(Munch_exp(exp->te_rhs)));
             emit(state,
-                    assm_oper(s, temp_list(r), src_list, NULL));
+                    Assm_oper(s, temp_list(r), src_list, NULL));
             return r;
         }
         case TREE_EXP_CONST:
@@ -416,7 +418,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             } else {
                 Asprintf(&s, "ldr	`d0, =%d\n", exp->te_const);
             }
-            emit(state, assm_oper(s, temp_list(r), NULL, NULL));
+            emit(state, Assm_oper(s, temp_list(r), NULL, NULL));
             return r;
         }
         case TREE_EXP_TEMP:
@@ -433,12 +435,12 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             {
                 char* s = NULL;
                 Asprintf(&s, "adrp	`d0, %s@PAGE\n", exp->te_name);
-                emit(state, assm_oper(s, temp_list(r), NULL, NULL));
+                emit(state, Assm_oper(s, temp_list(r), NULL, NULL));
             }
             {
                 char* s = NULL;
                 Asprintf(&s, "add	`d0, `s0, %s@PAGEOFF\n", exp->te_name);
-                emit(state, assm_oper(s, temp_list(r), temp_list(r), NULL));
+                emit(state, Assm_oper(s, temp_list(r), temp_list(r), NULL));
             }
             return r;
         }
@@ -450,7 +452,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             if (func->te_tag == TREE_EXP_NAME) {
                 char* s = NULL;
                 Asprintf(&s, "bl	_%s\n", func->te_name);
-                emit(state, assm_oper(
+                emit(state, Assm_oper(
                             s, calldefs(state.ret_arena),
                             munch_args(state, 0, args), NULL));
             } else {
@@ -470,7 +472,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             sl_sym_t retaddr_label = temp_prefixedlabel(state.temp_state, "ret");
             char* s = NULL;
             Asprintf(&s, "%s:\n", retaddr_label);
-            emit(state, assm_label(s, retaddr_label));
+            emit(state, Assm_label(s, retaddr_label));
             emit_ptr_map(state, exp->te_ptr_map, retaddr_label);
 
             // And the result of the call will be in the first result register
@@ -531,7 +533,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                             temp_list_cons(Munch_exp(src),
                                 temp_list(Munch_exp(addr->te_lhs)));
                         emit(state,
-                            assm_oper(s, NULL, src_list, NULL));
+                            Assm_oper(s, NULL, src_list, NULL));
                         return;
                     }
                     tree_printf(stderr, "$$$ %S\n", stm);
@@ -544,7 +546,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                     temp_list_cons(Munch_exp(src),
                             temp_list(Munch_exp(addr)));
                 emit(state,
-                        assm_oper(s,
+                        Assm_oper(s,
                             NULL, src_list, NULL));
             } else if (dst->te_tag == TREE_EXP_TEMP) {
                 // temp is already handled here, and call is
@@ -560,7 +562,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                 char* s = NULL;
                 Asprintf(&s, "mov	`d0, `s0\n");
                 emit(state,
-                        assm_move(s,
+                        Assm_move(s,
                             dst->te_temp,
                             src_t));
             } else {
@@ -573,7 +575,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
         {
             char* s = NULL;
             Asprintf(&s, "%s:\n", stm->tst_label);
-            emit(state, assm_label(s, stm->tst_label));
+            emit(state, Assm_label(s, stm->tst_label));
             break;
         }
         case TREE_STM_EXP:
@@ -590,7 +592,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
             var r = Munch_exp(stm->tst_exp);
             char* s = NULL;
             Asprintf(&s, "mov	`d0, `s0\n");
-            emit(state, assm_move(s, t, r));
+            emit(state, Assm_move(s, t, r));
             break;
         }
         case TREE_STM_CJUMP:
@@ -603,7 +605,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                     var src_list =
                         temp_list(Munch_exp(stm->tst_cjump_rhs));
 
-                    sl_sym_t* jump = xmalloc(3 * sizeof *jump);
+                    sl_sym_t* jump = ret_alloc(state, 3 * sizeof *jump);
                     jump[0] = stm->tst_cjump_true;
                     jump[1] = stm->tst_cjump_false;
 
@@ -614,7 +616,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                         assert(stm->tst_cjump_op == TREE_RELOP_NE);
                         Asprintf(&s, "cbnz    `s0, %s\n", stm->tst_cjump_true);
                     }
-                    emit(state, assm_oper(s, NULL, src_list, jump));
+                    emit(state, Assm_oper(s, NULL, src_list, jump));
                     return;
                 }
             }
@@ -631,10 +633,10 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                 var src_list = temp_list_cons(
                         Munch_exp(stm->tst_cjump_lhs),
                         temp_list(Munch_exp(stm->tst_cjump_rhs)));
-                emit(state, assm_oper(s, NULL, src_list, NULL));
+                emit(state, Assm_oper(s, NULL, src_list, NULL));
             }
 
-            sl_sym_t* jump = xmalloc(3 * sizeof *jump);
+            sl_sym_t* jump = ret_alloc(state, 3 * sizeof *jump);
             jump[0] = stm->tst_cjump_true;
             jump[1] = stm->tst_cjump_false;
 
@@ -655,7 +657,7 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
             }
             char* s = NULL;
             Asprintf(&s, "%s	%s\n", op, stm->tst_cjump_true);
-            emit(state, assm_oper(s, NULL, NULL, jump));
+            emit(state, Assm_oper(s, NULL, NULL, jump));
             break;
         }
         case TREE_STM_JUMP:
@@ -664,9 +666,9 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
             if (stm->tst_jump_num_labels == 1) {
                 char* s = NULL;
                 Asprintf(&s, "b	%s\n", stm->tst_jump_labels[0]);
-                sl_sym_t* jump = xmalloc(2 * sizeof *jump);
+                sl_sym_t* jump = ret_alloc(state, 2 * sizeof *jump);
                 jump[0] = stm->tst_jump_labels[0];
-                emit(state, assm_oper(s, NULL, NULL, jump));
+                emit(state, Assm_oper(s, NULL, NULL, jump));
             } else {
                 tree_printf(stderr, ">>> %S\n", stm);
                 assert(0 && "TODO: switch");
@@ -735,13 +737,14 @@ arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body, Arena_T ar)
 
     // A jump list end with a terminating null.
     // So this is just the terminating null only.
-    sl_sym_t* empty_jump_list = xmalloc(sizeof *empty_jump_list);
+    sl_sym_t* empty_jump_list = Alloc(ar, sizeof *empty_jump_list);
 
     var sink_instr = assm_oper(
-            strdupchk("\n"),
+            strdup_arena(ar, "\n"),
             NULL,
             src_list,
-            empty_jump_list);
+            empty_jump_list,
+            ar);
 
     // append sink instruction to body
     var b = body;
@@ -754,12 +757,12 @@ arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body, Arena_T ar)
 }
 
 static assm_fragment_t
-arm64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body)
+arm64_proc_entry_exit_3(ac_frame_t* frame, assm_instr_t* body, Arena_T ar)
 {
     const char* fn_label = frame->acf_name;
     int frame_size = ac_frame_words(frame)*word_size;
     char* prologue = NULL;
-    Asprintf(&prologue, "\
+    asprintf_arena(ar, &prologue, "\
 	.globl	_%s\n\
 	.p2align	2\n\
 _%s:\n\
@@ -774,7 +777,7 @@ _%s:\n\
             fn_label, fn_label, frame_size);
 
     char* epilogue = NULL;
-    Asprintf(&epilogue, "\
+    asprintf_arena(ar, &epilogue, "\
 	add	sp, sp, #%d\n\
 	ldp	x29, x30, [sp], #16\n\
 	ret\n\

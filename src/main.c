@@ -303,7 +303,7 @@ int main(int argc, char* argv[])
         }
 
         var final_fragment = target->tgt_backend->proc_entry_exit_3(
-                frag->fr_frame, body_instrs);
+                frag->fr_frame, body_instrs, instr_loop_arena);
 
         if (!emitted_header) {
             target->tgt_backend->emit_text_segment_header(out);
@@ -337,7 +337,6 @@ int main(int argc, char* argv[])
         // Free final fragment strings?
         Table_free(&instrs_and_allocation.ra_allocation);
 instr_loop_cleanup:
-        assm_free_list(&body_instrs);
         Table_free(&label_to_spill_liveness);
         Arena_free(instr_loop_arena);
     }

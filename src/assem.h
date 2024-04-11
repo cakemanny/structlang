@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 #include "temp.h"
+#include "interfaces/arena.h"
 #include "interfaces/table.h"
 #include "target.h"
 
@@ -34,14 +35,12 @@ struct assm_instr_t {
 };
 
 assm_instr_t* assm_oper(
-        char* assem, temp_list_t* dst, temp_list_t* src, sl_sym_t* jump);
+        char* assem, temp_list_t* dst, temp_list_t* src, sl_sym_t* jump,
+        Arena_T);
 
-assm_instr_t* assm_label(char* assem, sl_sym_t label);
+assm_instr_t* assm_label(char* assem, sl_sym_t label, Arena_T);
 
-assm_instr_t* assm_move(char* assem, temp_t dst, temp_t src);
-
-void assm_free(assm_instr_t** instr);
-void assm_free_list(assm_instr_t** pinstr);
+assm_instr_t* assm_move(char* assem, temp_t dst, temp_t src, Arena_T);
 
 /*
  * The caller provides an adequately sized buffer `out` of size `out_len`

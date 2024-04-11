@@ -1208,7 +1208,6 @@ remove_dead_moves(
                     *pinstr = instr->ai_list;
 
                     instr->ai_list = NULL;
-                    assm_free(&instr);
                     continue;
                 }
             }

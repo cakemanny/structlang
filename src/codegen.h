@@ -27,7 +27,7 @@ typedef struct codegen_t {
      * This adds a function prologue and epilogue.
      */
     assm_fragment_t
-    (*proc_entry_exit_3)(ac_frame_t* frame, assm_instr_t* body);
+    (*proc_entry_exit_3)(ac_frame_t* frame, assm_instr_t* body, Arena_T);
 
     assm_instr_t* (*load_temp)(struct ac_frame_var*, temp_t, Arena_T);
     assm_instr_t* (*store_temp)(struct ac_frame_var*, temp_t, Arena_T);

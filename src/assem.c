@@ -1,15 +1,19 @@
 #include <assert.h>
 #include <string.h>
+#include <stdlib.h> // free
+#include <stdio.h> // snprintf
 #include "assem.h"
-#include "mem.h"
 
 #define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 
-assm_instr_t* assm_oper(
-        char* assem, temp_list_t* dst, temp_list_t* src, sl_sym_t* jump)
+assm_instr_t*
+assm_oper(
+        char* assem, temp_list_t* dst, temp_list_t* src, sl_sym_t* jump,
+        Arena_T arena)
 {
-    assm_instr_t* instr = xmalloc(sizeof *instr);
+    assm_instr_t* instr = Alloc(arena, sizeof *instr);
     instr->ai_tag = ASSM_INSTR_OPER;
     instr->ai_assem = assem;
     instr->ai_oper_dst = dst;
@@ -18,51 +22,25 @@ assm_instr_t* assm_oper(
     return instr;
 }
 
-assm_instr_t* assm_label(char* assem, sl_sym_t label)
+assm_instr_t*
+assm_label(char* assem, sl_sym_t label, Arena_T arena)
 {
-    assm_instr_t* instr = xmalloc(sizeof *instr);
+    assm_instr_t* instr = Alloc(arena, sizeof *instr);
     instr->ai_tag = ASSM_INSTR_LABEL;
     instr->ai_assem = assem;
     instr->ai_label = label;
     return instr;
 }
 
-assm_instr_t* assm_move(char* assem, temp_t dst, temp_t src)
+assm_instr_t*
+assm_move(char* assem, temp_t dst, temp_t src, Arena_T arena)
 {
-    assm_instr_t* instr = xmalloc(sizeof *instr);
+    assm_instr_t* instr = Alloc(arena, sizeof *instr);
     instr->ai_tag = ASSM_INSTR_MOVE;
     instr->ai_assem = assem;
     instr->ai_move_dst = dst;
     instr->ai_move_src = src;
     return instr;
-}
-
-void assm_free(assm_instr_t** pinstr)
-{
-    assm_instr_t* instr = *pinstr;
-    free(instr->ai_assem);
-    switch (instr->ai_tag) {
-        case ASSM_INSTR_OPER:
-            temp_list_free(&instr->ai_oper_src);
-            temp_list_free(&instr->ai_oper_dst);
-            break;
-        case ASSM_INSTR_LABEL:
-            break;
-        case ASSM_INSTR_MOVE:
-            break;
-    }
-
-    free(*pinstr);
-    *pinstr = NULL;
-}
-
-void assm_free_list(assm_instr_t** pinstr)
-{
-    while (*pinstr) {
-        var to_free = *pinstr;
-        *pinstr = to_free->ai_list;
-        assm_free(&to_free);
-    }
 }
 
 static const char*
