@@ -1,6 +1,7 @@
 #ifndef __TEMP_H__
 #define __TEMP_H__
 
+#include "interfaces/arena.h"
 #include "symbols.h" // sl_sym_t
 #include <stdbool.h>
 
@@ -32,13 +33,15 @@ temp_t temp_newtemp(temp_state_t* ts, unsigned size, temp_ptr_disposition_t ptr_
 // char* temp_makestring(temp_state_t* ts,  int tempval);
 bool temp_is_machine(temp_t);
 
+void temp_copy(temp_t* dst, const temp_t* src);
+
 sl_sym_t temp_newlabel(temp_state_t* ts);
 sl_sym_t temp_namedlabel(temp_state_t* ts, const char* name);
 sl_sym_t temp_prefixedlabel(temp_state_t* ts, const char* name);
 
-temp_list_t* temp_list(temp_t temp);
-temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail);
-temp_list_t* temp_list_concat(temp_list_t* lead, temp_list_t* tail);
+temp_list_t* temp_list(temp_t temp, Arena_T);
+temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail, Arena_T);
+temp_list_t* temp_list_concat(temp_list_t* lead, temp_list_t* tail, Arena_T);
 void temp_list_free(temp_list_t** ptemp_list);
 
 #endif /* __TEMP_H__ */

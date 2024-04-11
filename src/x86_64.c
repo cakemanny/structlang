@@ -29,6 +29,8 @@ typedef struct codegen_state_t {
     assm_instr_t** ilist;
     temp_state_t* temp_state;
     ac_frame_t* frame;
+    /* */
+    Arena_T ret_arena;
 } codegen_state_t;
 
 // pre-declarations
@@ -95,23 +97,23 @@ static const char* registers_64bit[] = {
  * calldefs should contain any registers that a called function
  * will or is allowed to trash
  */
-static temp_list_t* calldefs()
+static temp_list_t* calldefs(Arena_T ar)
 {
     temp_list_t* c = NULL;
 
     for (int i = 0; i < NELEMS(caller_saves); i++) {
-        c = temp_list_cons(caller_saves[i], c);
+        c = temp_list_cons(caller_saves[i], c, ar);
     }
 
     // the return value registers
-    c = temp_list_cons(special_regs[0], c); // rax
+    c = temp_list_cons(special_regs[0], c, ar); // rax
     // -- the next line should be commented if we include it already in args
     // c = temp_list_cons(special_regs[1], c); // rdx
 
     for (int i = 0; i < NELEMS(argregs); i++) {
         temp_t t = argregs[i];
         t.temp_size = word_size;
-        c = temp_list_cons(t, c);
+        c = temp_list_cons(t, c, ar);
     }
 
     return c;
@@ -204,23 +206,25 @@ static const char* x86_64_register_for_size(const char* regname, size_t size)
     assert(!"unexpected register name");
 }
 
-static assm_instr_t* x86_64_load_temp(struct ac_frame_var* v, temp_t temp)
+static assm_instr_t*
+x86_64_load_temp(struct ac_frame_var* v, temp_t temp, Arena_T ar)
 {
     char* s = NULL;
     Asprintf(&s, "mov%s %d(`s0), `d0	# unspill\n",
             suff_from_size(v->acf_size), v->acf_offset);
-    var src_list = temp_list(FP);
-    return assm_oper(s, temp_list(temp), src_list, NULL);
+    var src_list = temp_list(FP, ar);
+    return assm_oper(s, temp_list(temp, ar), src_list, NULL);
 }
 
-static assm_instr_t* x86_64_store_temp(struct ac_frame_var* v, temp_t temp)
+static assm_instr_t*
+x86_64_store_temp(struct ac_frame_var* v, temp_t temp, Arena_T ar)
 {
     char* s = NULL;
     Asprintf(&s, "mov%s `s1, %d(`s0)	# spill\n",
             suff_from_size(v->acf_size), v->acf_offset);
     var src_list =
         temp_list_cons(FP,
-                temp_list(temp));
+                temp_list(temp, ar), ar);
     return assm_oper(
             s,
             NULL, /* dst list */
@@ -240,6 +244,8 @@ static int round_up_size(int size, int multiple)
 
 static temp_list_t* munch_stack_args(codegen_state_t state, tree_exp_t* exp)
 {
+#define temp_list(t) temp_list(t, state.ret_arena)
+#define temp_list_cons(h, t) temp_list_cons(h, t, state.ret_arena)
     // This will be wrong / broken!
 
     for (var e = exp; e; e = e->te_list) {
@@ -269,10 +275,14 @@ static temp_list_t* munch_stack_args(codegen_state_t state, tree_exp_t* exp)
     reserve_outgoing_arg_space(state.frame, total_size);
 
     return NULL;
+#undef temp_list
+#undef temp_list_cons
 }
 
 static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* exp)
 {
+#define temp_list(t) temp_list(t, state.ret_arena)
+#define temp_list_cons(h, t) temp_list_cons(h, t, state.ret_arena)
     if (exp == NULL) {
         // no more remaining arguments, return empty list
         return NULL;
@@ -316,6 +326,8 @@ static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* e
          */
         return munch_stack_args(state, exp);
     }
+#undef temp_list
+#undef temp_list_cons
 }
 
 /*
@@ -330,6 +342,9 @@ static temp_t new_temp_for_exp(temp_state_t* temp_state, tree_exp_t* exp)
 static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
 {
 #define Munch_exp(_exp) munch_exp(state, _exp)
+#define temp_list(t) temp_list(t, state.ret_arena)
+#define temp_list_cons(h, t) temp_list_cons(h, t, state.ret_arena)
+
     assert(exp->te_size <= 16);
     switch (exp->te_tag) {
         case TREE_EXP_MEM:
@@ -594,15 +609,17 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             if (func->te_tag == TREE_EXP_NAME) {
                 char* s = NULL;
                 Asprintf(&s, "call %s\n", func->te_name);
-                emit(state, assm_oper(
-                            s, calldefs(), munch_args(state, 0, args), NULL));
+                emit(state, assm_oper(s,
+                            calldefs(state.ret_arena),
+                            munch_args(state, 0, args),
+                            NULL));
             }
             // indirect call
             else {
                 char* s = strdupchk("callq *`s0\n");
 
                 emit(state, assm_oper(s,
-                            calldefs(),
+                            calldefs(state.ret_arena),
                             temp_list_cons(Munch_exp(func),
                                 munch_args(state, 0, args)),
                             NULL));
@@ -617,6 +634,8 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             assert(0 && "eseqs should no longer exist");
         }
     }
+#undef temp_list
+#undef temp_list_cons
 #undef Munch_exp
 }
 
@@ -627,6 +646,8 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
 {
 #define Munch_stm(_stm) munch_stm(state, _stm)
 #define Munch_exp(_exp) munch_exp(state, _exp)
+#define temp_list(t) temp_list(t, state.ret_arena)
+#define temp_list_cons(h, t) temp_list_cons(h, t, state.ret_arena)
 
     switch (stm->tst_tag) {
         case TREE_STM_SEQ:
@@ -802,15 +823,17 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
             if (func->te_tag == TREE_EXP_NAME) {
                 char* s = NULL;
                 Asprintf(&s, "call %s\n", func->te_name);
-                emit(state, assm_oper(
-                            s, calldefs(), munch_args(state, 0, args), NULL));
+                emit(state, assm_oper(s,
+                            calldefs(state.ret_arena),
+                            munch_args(state, 0, args),
+                            NULL));
             }
             // indirect call
             else {
                 char* s = strdupchk("callq *`s0\n");
 
                 emit(state, assm_oper(s,
-                            calldefs(),
+                            calldefs(state.ret_arena),
                             temp_list_cons(Munch_exp(func),
                                 munch_args(state, 0, args)),
                             NULL));
@@ -905,18 +928,23 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
             break;
         }
     }
+#undef temp_list
+#undef temp_list_cons
 #undef Munch_exp
 #undef Munch_stm
 }
 
-assm_instr_t* x86_64_codegen(
-        temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm)
+assm_instr_t*
+x86_64_codegen(
+        Arena_T arena, temp_state_t* temp_state, sl_fragment_t* fragment,
+        tree_stm_t* stm)
 {
     assm_instr_t* result = NULL;
     codegen_state_t codegen_state = {
         .ilist = &result,
         .temp_state = temp_state,
         .frame = fragment->fr_frame,
+        .ret_arena = arena,
     };
     munch_stm(codegen_state, stm);
     return assm_list_reverse(result);
@@ -927,20 +955,21 @@ assm_instr_t* x86_64_codegen(
  * proc_entry_exit_2 defines which temporaries i.e. registers are live-out
  * of the function
  */
-assm_instr_t* x86_64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
+static assm_instr_t*
+x86_64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body, Arena_T ar)
 {
     temp_list_t* src_list = NULL;
     for (int i = 0; i < NELEMS(callee_saves); i++) {
-        src_list = temp_list_cons(callee_saves[i], src_list);
+        src_list = temp_list_cons(callee_saves[i], src_list, ar);
     }
-    src_list = temp_list_cons(SP, src_list); // sp =rsp
-    src_list = temp_list_cons(FP, src_list); // fp =rbp
+    src_list = temp_list_cons(SP, src_list, ar); // sp =rsp
+    src_list = temp_list_cons(FP, src_list, ar); // fp =rbp
     temp_t ret0 = frame->acf_target->tgt_ret0;
     ret0.temp_size = word_size;
-    src_list = temp_list_cons(ret0, src_list); // rax
+    src_list = temp_list_cons(ret0, src_list, ar); // rax
     temp_t ret1 = frame->acf_target->tgt_ret1;
     ret1.temp_size = word_size;
-    src_list = temp_list_cons(ret1, src_list); // rdx
+    src_list = temp_list_cons(ret1, src_list, ar); // rdx
 
     sl_sym_t* empty_jump_list = xmalloc(sizeof *empty_jump_list);
 

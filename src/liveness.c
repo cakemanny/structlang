@@ -9,7 +9,7 @@
 
 #define var __auto_type
 
-static temp_list_t* temp_list_sort(temp_list_t* tl);
+static temp_list_t* temp_list_sort(temp_list_t* tl, Arena_T);
 
 /*
  * In order to have a fast, allocation free liveness analysis,
@@ -162,7 +162,8 @@ static unsigned hashnode(const void* key)
     return k->lvn_idx;
 }
 
-struct flowgraph_and_node_list instrs2graph(const assm_instr_t* instrs)
+struct flowgraph_and_node_list
+instrs2graph(const assm_instr_t* instrs, Arena_T arena)
 {
     lv_flowgraph_t* flow_graph = xmalloc(sizeof *flow_graph);
     var graph = flow_graph->lvfg_control = lv_new_graph();
@@ -190,10 +191,12 @@ struct flowgraph_and_node_list instrs2graph(const assm_instr_t* instrs)
                     lv_mk_edge(nodes->nl_list->nl_node, node);
                 }
                 if (instr->ai_oper_dst) {
-                    Table_put(def, node, temp_list_sort(instr->ai_oper_dst));
+                    Table_put(def, node,
+                            temp_list_sort(instr->ai_oper_dst, arena));
                 }
                 if (instr->ai_oper_src) {
-                    Table_put(use, node, temp_list_sort(instr->ai_oper_src));
+                    Table_put(use, node,
+                            temp_list_sort(instr->ai_oper_src, arena));
                 }
                 break;
             case ASSM_INSTR_LABEL:
@@ -214,8 +217,8 @@ struct flowgraph_and_node_list instrs2graph(const assm_instr_t* instrs)
                     lv_mk_edge(nodes->nl_list->nl_node, node);
                 }
 
-                Table_put(def, node, temp_list(instr->ai_move_dst));
-                Table_put(use, node, temp_list(instr->ai_move_src));
+                Table_put(def, node, temp_list(instr->ai_move_dst, arena));
+                Table_put(use, node, temp_list(instr->ai_move_src, arena));
                 Table_put(ismove, node, (void*)1);
                 break;
         }
@@ -238,7 +241,8 @@ struct flowgraph_and_node_list instrs2graph(const assm_instr_t* instrs)
     Table_free(&label_to_node);
 
     struct flowgraph_and_node_list result = {
-        flow_graph, nodes
+        .flowgraph = flow_graph,
+        .node_list = nodes,
     };
     return result;
 }
@@ -267,10 +271,11 @@ static_assert(sizeof(temp_list_t) == sizeof(struct list_t), "temp_list_t size");
 // may or may not return the same list
 // NB: Must not sort in place, since these lists are used in the formatting
 // of the operations when they are omitted
-static temp_list_t* temp_list_sort(temp_list_t* tl)
+static temp_list_t* temp_list_sort(temp_list_t* tl, Arena_T ar)
 {
     int len = list_length(tl);
     if (len < 2) {
+        // FIXME: don't we need to copy this?
         return tl;
     }
     temp_t temp_array[len];
@@ -283,7 +288,7 @@ static temp_list_t* temp_list_sort(temp_list_t* tl)
 
     temp_list_t* result = NULL;
     for (int i = len - 1; i >= 0; --i) {
-        result = temp_list_cons(temp_array[i], result);
+        result = temp_list_cons(temp_array[i], result, ar);
     }
     return result;
 }
@@ -351,8 +356,9 @@ static lv_node_t* ig_get_node_by_idx(lv_igraph_t* igraph, int i)
     return ig_get_node_for_temp(igraph, ptemp);
 }
 
-struct igraph_and_table interference_graph(
-        lv_flowgraph_t* flow, lv_node_list_t* nodes)
+struct igraph_and_table
+interference_graph(
+        lv_flowgraph_t* flow, lv_node_list_t* nodes, Arena_T arena)
 {
     // First ensure that there is an interference graph node for
     // each temporary
@@ -545,7 +551,7 @@ struct igraph_and_table interference_graph(
                 if (IsBitSet(out_ns.bits, j)) {
                     lv_node_t fake_node = {.lvn_graph=igraph->lvig_graph, .lvn_idx=j};
                     temp_t* ptemp = Table_get(igraph->lvig_gtemp, &fake_node);
-                    out_temps = temp_list_cons(*ptemp, out_temps);
+                    out_temps = temp_list_cons(*ptemp, out_temps, arena);
                 }
             }
             Table_put(live_outs, n->nl_node, out_temps);
@@ -606,19 +612,15 @@ char* lv_nodename(lv_node_t* node)
 }
 
 static temp_list_t*
-sorted_temps_for_nodes(lv_igraph_t* igraph, lv_node_list_t* nodes)
+sorted_temps_for_nodes(lv_igraph_t* igraph, lv_node_list_t* nodes, Arena_T ar)
 {
     temp_list_t* temps = NULL;
     for (var s = nodes; s; s = s->nl_list) {
         temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, s->nl_node);
         assert(temp_for_node);
-        temps = temp_list_cons(*temp_for_node, temps);
+        temps = temp_list_cons(*temp_for_node, temps, ar);
     }
-    temp_list_t* sorted_temps = temp_list_sort(temps);
-    if (sorted_temps != temps) {
-        temp_list_free(&temps);
-    }
-    return sorted_temps;
+    return temp_list_sort(temps, ar);
 }
 
 void igraph_show(FILE* out, lv_igraph_t* igraph)
@@ -627,7 +629,8 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
     fprintf(out, "# ---- Interference Graph ----\n");
 
     var nodes = lv_nodes(igraph->lvig_graph);
-    var sorted_temps = sorted_temps_for_nodes(igraph, nodes);
+    var scratch = Arena_new();
+    var sorted_temps = sorted_temps_for_nodes(igraph, nodes, scratch);
 
     for (var t = sorted_temps; t; t = t->tmp_list) {
 
@@ -636,16 +639,15 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
         var node = Table_get(igraph->lvig_tnode, &t->tmp_temp);
         lv_node_list_t* adj = lv_adj(node);
 
-        var sorted_temps = sorted_temps_for_nodes(igraph, adj);
+        var sorted_temps = sorted_temps_for_nodes(igraph, adj, scratch);
         for (var t = sorted_temps; t; t = t->tmp_list) {
             fprintf(out, "%d,", t->tmp_temp.temp_id);
         }
-        temp_list_free(&sorted_temps);
         lv_node_list_free(adj);
         fprintf(out, "]\n");
     }
     fprintf(out, "# ----------------------------\n");
-    temp_list_free(&sorted_temps);
+    Arena_dispose(&scratch);
     lv_node_list_free(nodes);
 
     fprintf(out, "# ----       Moves        ----\n");

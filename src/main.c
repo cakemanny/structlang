@@ -254,14 +254,16 @@ int main(int argc, char* argv[])
     }
 
     Table_T label_to_cs_bitmap = Table_new(0, NULL, NULL);
-    Table_T label_to_spill_liveness = Table_new(0, NULL, NULL);
     bool emitted_header = false;
+    var instr_loop_arena = Arena_new();
 
     for (var frag = fragments; frag; frag = frag->fr_list) {
         if (frag->fr_tag != FR_CODE) {
             // data is handled below
             continue;
         }
+        Table_T label_to_spill_liveness = Table_new(0, NULL, NULL);
+
         assm_instr_t* body_instrs = NULL;
         fprintf(out, "# %s\n", frag->fr_frame->acf_name); // TODO: remove
         for (var s = frag->fr_body; s; s = s->tst_list) {
@@ -270,8 +272,8 @@ int main(int argc, char* argv[])
                 tree_printf(out, "## %S\n", s);
             }
 
-            assm_instr_t* instrs =
-                target->tgt_backend->codegen(temp_state, frag, s);
+            assm_instr_t* instrs = target->tgt_backend->codegen(
+                    instr_loop_arena, temp_state, frag, s);
             if (stop_after_instruction_selection) {
                 for (var i = instrs; i; i = i->ai_list) {
                     char buf[128];
@@ -283,22 +285,25 @@ int main(int argc, char* argv[])
         }
         if (stop_after_instruction_selection) {
             fprintf(out, "\n");
-            continue;
+            goto instr_loop_cleanup; // continue
         }
         assert(body_instrs);
         body_instrs = target->tgt_backend->proc_entry_exit_2(
-                frag->fr_frame, body_instrs);
+                frag->fr_frame, body_instrs, instr_loop_arena);
+
 
         var instrs_and_allocation =
             ra_alloc(out, temp_state, body_instrs, frag->fr_frame,
                     stop_after_liveness_analysis, label_to_cs_bitmap,
-                    label_to_spill_liveness);
+                    label_to_spill_liveness, instr_loop_arena,
+                    instr_loop_arena, instr_loop_arena);
+        body_instrs = instrs_and_allocation.ra_instrs;
         if (stop_after_liveness_analysis) {
-            continue;
+            goto instr_loop_cleanup; // continue
         }
 
         var final_fragment = target->tgt_backend->proc_entry_exit_3(
-                frag->fr_frame, instrs_and_allocation.ra_instrs);
+                frag->fr_frame, body_instrs);
 
         if (!emitted_header) {
             target->tgt_backend->emit_text_segment_header(out);
@@ -331,14 +336,17 @@ int main(int argc, char* argv[])
 
         // Free final fragment strings?
         Table_free(&instrs_and_allocation.ra_allocation);
+instr_loop_cleanup:
         assm_free_list(&body_instrs);
+        Table_free(&label_to_spill_liveness);
+        Arena_free(instr_loop_arena);
     }
+    Arena_dispose(&instr_loop_arena);
 
     if (emitted_header) {
         target->tgt_backend->emit_data_segment(
                 out, fragments, label_to_cs_bitmap);
     }
-    Table_free(&label_to_spill_liveness);
     Table_free(&label_to_cs_bitmap);
 
     Arena_dispose(&frag_arena);

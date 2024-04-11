@@ -4,6 +4,9 @@
 #include <stdio.h> // snprintf
 #include <assert.h>
 
+#define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
+
 static const int start_temp = 100;
 
 struct temp_state {
@@ -44,6 +47,14 @@ bool temp_is_machine(temp_t t)
     return t.temp_id < start_temp;
 }
 
+void temp_copy(temp_t* dst, const temp_t* src)
+{
+    dst->temp_id = src->temp_id;
+    dst->temp_size = src->temp_size;
+    dst->temp_ptr_dispo = src->temp_ptr_dispo;
+}
+
+
 sl_sym_t temp_newlabel(temp_state_t* ts)
 {
     int label_id = ts->next_label++;
@@ -67,15 +78,15 @@ sl_sym_t temp_prefixedlabel(temp_state_t* ts, const char* prefix)
     return result;
 }
 
-temp_list_t* temp_list(temp_t temp)
+temp_list_t* temp_list(temp_t temp, Arena_T ar)
 {
-    return temp_list_cons(temp, NULL);
+    return temp_list_cons(temp, NULL, ar);
 }
 
-temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail)
+temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail, Arena_T arena)
 {
     assert(hd.temp_size != 0);
-    temp_list_t* list = xmalloc(sizeof *list);
+    temp_list_t* list = Alloc(arena, sizeof *list);
     list->tmp_temp = hd;
     list->tmp_list = tail;
     return list;
@@ -84,20 +95,21 @@ temp_list_t* temp_list_cons(temp_t hd, temp_list_t* tail)
 /*
  * This looks like it leaks the cells of the lead list
  */
-temp_list_t* temp_list_concat(temp_list_t* lead, temp_list_t* tail)
+temp_list_t*
+temp_list_concat(temp_list_t* lead, temp_list_t* tail, Arena_T ar)
 {
     if (lead == NULL) {
         return tail;
     }
     return temp_list_cons(
             lead->tmp_temp,
-            temp_list_concat(lead->tmp_list, tail));
+            temp_list_concat(lead->tmp_list, tail, ar), ar);
 }
 
 void temp_list_free(temp_list_t** ptemp_list)
 {
     while (*ptemp_list) {
-        __auto_type to_free = *ptemp_list;
+        var to_free = *ptemp_list;
         *ptemp_list = (*ptemp_list)->tmp_list;
         free(to_free);
     }

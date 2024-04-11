@@ -36,6 +36,7 @@ typedef struct codegen_state_t {
     temp_state_t* temp_state;
     ac_frame_t* frame;
     sl_fragment_t** ptr_map_fragments;
+    Arena_T ret_arena;
 } codegen_state_t;
 
 // pre-declarations
@@ -93,22 +94,22 @@ static const temp_t arm64_caller_saves[] = {
  * calldefs should contain any registers that a called function
  * will or is allowed to trash
  */
-static temp_list_t* calldefs()
+static temp_list_t* calldefs(Arena_T ar)
 {
     temp_list_t* c = NULL;
 
     for (int i = 0; i < NELEMS(arm64_caller_saves); i++) {
-        c = temp_list_cons(arm64_caller_saves[i], c);
+        c = temp_list_cons(arm64_caller_saves[i], c, ar);
     }
 
     // The link register is by convention caller saved
-    c = temp_list_cons(special_regs[1], c); //
+    c = temp_list_cons(special_regs[1], c, ar); //
 
     // The arguments are allowed to be trashed by the called function
     for (int i = 0; i < NELEMS(arm64_argument_regs); i++) {
         temp_t t = arm64_argument_regs[i];
         t.temp_size = word_size;
-        c = temp_list_cons(t, c);
+        c = temp_list_cons(t, c, ar);
     }
 
     return c;
@@ -175,23 +176,25 @@ static const char* arm64_register_for_size(const char* regname, size_t size)
     return buf;
 }
 
-static assm_instr_t* arm64_load_temp(struct ac_frame_var* v, temp_t temp)
+static assm_instr_t*
+arm64_load_temp(struct ac_frame_var* v, temp_t temp, Arena_T ar)
 {
     char* s = NULL;
     Asprintf(&s, "ldr%s	`d0, [`s0, #%d]	; unspill\n",
             suff_from_size(v->acf_size), v->acf_offset);
-    var src_list = temp_list(FP);
-    return assm_oper(s, temp_list(temp), src_list, NULL);
+    var src_list = temp_list(FP, ar);
+    return assm_oper(s, temp_list(temp, ar), src_list, NULL);
 }
 
-static assm_instr_t* arm64_store_temp(struct ac_frame_var* v, temp_t temp)
+static assm_instr_t*
+arm64_store_temp(struct ac_frame_var* v, temp_t temp, Arena_T ar)
 {
     char* s = NULL;
     Asprintf(&s, "str%s	`s0, [`s1, #%d]	; spill\n",
             suff_from_size(v->acf_size), v->acf_offset);
     var src_list =
         temp_list_cons(temp,
-                temp_list(FP));
+                temp_list(FP, ar), ar);
     return assm_oper(
             s,
             NULL, /* dst list */
@@ -226,6 +229,8 @@ static int round_up_size(int size, int multiple)
 
 static temp_list_t* munch_stack_args(codegen_state_t state, tree_exp_t* exp)
 {
+#define temp_list(t) temp_list(t, state.ret_arena)
+#define temp_list_cons(h, t) temp_list_cons(h, t, state.ret_arena)
     // This will be wrong / broken!
 
     for (var e = exp; e; e = e->te_list) {
@@ -255,10 +260,14 @@ static temp_list_t* munch_stack_args(codegen_state_t state, tree_exp_t* exp)
     reserve_outgoing_arg_space(state.frame, total_size);
 
     return NULL;
+#undef temp_list
+#undef temp_list_cons
 }
 
 static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* exp)
 {
+#define temp_list(t) temp_list(t, state.ret_arena)
+#define temp_list_cons(h, t) temp_list_cons(h, t, state.ret_arena)
     if (exp == NULL) {
         // no more remaining arguments, return empty list
         return NULL;
@@ -305,6 +314,8 @@ static temp_list_t* munch_args(codegen_state_t state, int arg_idx, tree_exp_t* e
          */
         return munch_stack_args(state, exp);
     }
+#undef temp_list
+#undef temp_list_cons
 }
 
 /*
@@ -319,6 +330,9 @@ static temp_t new_temp_for_exp(temp_state_t* temp_state, tree_exp_t* exp)
 static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
 {
 #define Munch_exp(_exp) munch_exp(state, _exp)
+#define temp_list(t) temp_list(t, state.ret_arena)
+#define temp_list_cons(h, t) temp_list_cons(h, t, state.ret_arena)
+
     switch (exp->te_tag) {
         case TREE_EXP_MEM:
         {
@@ -437,7 +451,8 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                 char* s = NULL;
                 Asprintf(&s, "bl	_%s\n", func->te_name);
                 emit(state, assm_oper(
-                            s, calldefs(), munch_args(state, 0, args), NULL));
+                            s, calldefs(state.ret_arena),
+                            munch_args(state, 0, args), NULL));
             } else {
                 tree_printf(stderr, ">>> %E\n", exp);
                 assert(!"TODO: TREE_EXP_CALL");
@@ -469,6 +484,8 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
             assert(!"eseqs should no longer exist");
         }
     }
+#undef temp_list
+#undef temp_list_cons
 #undef Munch_exp
 }
 
@@ -483,6 +500,8 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
 {
 #define Munch_stm(_stm) munch_stm(state, _stm)
 #define Munch_exp(_exp) munch_exp(state, _exp)
+#define temp_list(t) temp_list(t, state.ret_arena)
+#define temp_list_cons(h, t) temp_list_cons(h, t, state.ret_arena)
 
     switch (stm->tst_tag) {
         case TREE_STM_SEQ:
@@ -655,6 +674,8 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
             break;
         }
     }
+#undef temp_list
+#undef temp_list_cons
 #undef Munch_exp
 #undef Munch_stm
 }
@@ -664,7 +685,9 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
  * language. It returns a list of instructions in the arm64 architecture
  */
 assm_instr_t* /* list */
-arm64_codegen(temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm)
+arm64_codegen(
+        Arena_T arena, temp_state_t* temp_state, sl_fragment_t* fragment,
+        tree_stm_t* stm)
 {
     assm_instr_t* result = NULL;
     sl_fragment_t* ptr_map_fragments = NULL;
@@ -673,6 +696,7 @@ arm64_codegen(temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm
         .temp_state = temp_state,
         .frame = fragment->fr_frame,
         .ptr_map_fragments = &ptr_map_fragments,
+        .ret_arena = arena,
     };
     munch_stm(codegen_state, stm);
 
@@ -689,24 +713,24 @@ arm64_codegen(temp_state_t* temp_state, sl_fragment_t* fragment, tree_stm_t* stm
  * of the function
  */
 static assm_instr_t*
-arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body)
+arm64_proc_entry_exit_2(ac_frame_t* frame, assm_instr_t* body, Arena_T ar)
 {
     temp_list_t* src_list = NULL;
     for (int i = 0; i < NELEMS(arm64_callee_saves); i++) {
-        src_list = temp_list_cons(arm64_callee_saves[i], src_list);
+        src_list = temp_list_cons(arm64_callee_saves[i], src_list, ar);
     }
-    src_list = temp_list_cons(FP, src_list);
-    src_list = temp_list_cons(SP, src_list);
-    src_list = temp_list_cons(special_regs[3], src_list); // x18 - apple
+    src_list = temp_list_cons(FP, src_list, ar);
+    src_list = temp_list_cons(SP, src_list, ar);
+    src_list = temp_list_cons(special_regs[3], src_list, ar); // x18 - apple
                                                           // reserved
 
     temp_t ret0 = frame->acf_target->tgt_ret0;
     ret0.temp_size = word_size;
-    src_list = temp_list_cons(ret0, src_list); // x0
+    src_list = temp_list_cons(ret0, src_list, ar); // x0
     if (0) { // TODO: check larger return sizes
         temp_t ret1 = frame->acf_target->tgt_ret1;
         ret1.temp_size = word_size;
-        src_list = temp_list_cons(ret1, src_list); // x1
+        src_list = temp_list_cons(ret1, src_list, ar); // x1
     }
 
     // A jump list end with a terminating null.

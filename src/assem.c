@@ -43,8 +43,6 @@ void assm_free(assm_instr_t** pinstr)
     free(instr->ai_assem);
     switch (instr->ai_tag) {
         case ASSM_INSTR_OPER:
-            // FIXME: it turns out these can
-            // be shared e.g. calldefs
             temp_list_free(&instr->ai_oper_src);
             temp_list_free(&instr->ai_oper_dst);
             break;

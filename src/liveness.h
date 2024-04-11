@@ -3,8 +3,9 @@
 // vim:ft=c:
 
 #include <stdbool.h>
-#include "assem.h" // assm_instr_t
+#include "interfaces/arena.h"
 #include "interfaces/table.h"
+#include "assem.h" // assm_instr_t
 
 // TODO: define wrapper types around these graphs to improve type safety.
 
@@ -75,7 +76,7 @@ struct lv_flowgraph_t {
 struct flowgraph_and_node_list {
     lv_flowgraph_t* flowgraph;
     lv_node_list_t* node_list;
-} instrs2graph(const assm_instr_t*);
+} instrs2graph(const assm_instr_t*, Arena_T);
 
 /*
  * Liveness
@@ -126,7 +127,8 @@ struct igraph_and_table {
     Table_T live_outs; // lv_node_t* -> temp_list_t*
 };
 
-struct igraph_and_table interference_graph(lv_flowgraph_t*, lv_node_list_t* node_list);
+struct igraph_and_table interference_graph(
+        lv_flowgraph_t*, lv_node_list_t* node_list, Arena_T);
 
 void lv_free_interference_and_flow_graph(
         struct igraph_and_table*, struct flowgraph_and_node_list*);

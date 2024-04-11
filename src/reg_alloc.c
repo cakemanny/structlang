@@ -226,6 +226,14 @@ temp_eq(temp_t a, temp_t b)
     return a.temp_id == b.temp_id;
 }
 
+static temp_t*
+temp_copy_to_arena(Arena_T arena, temp_t src)
+{
+    temp_t* dst = Arena_alloc(arena, sizeof src, __FILE__, __LINE__);
+    temp_copy(dst, &src);
+    return dst;
+}
+
 static bool
 temp_list_contains(const temp_list_t* haystack, temp_t temp)
 {
@@ -900,7 +908,9 @@ struct ra_color_result {
     Table_T initial_allocation, // temp_t* -> register (char*)
     /* registers is just a list of all machine registers */
     const char* registers[],
-    assm_instr_t* body_instrs)
+    Arena_T ar_spills,
+    Arena_T ar_allocation
+    )
 {
     // Prepare
     reg_alloc_info_t info = {
@@ -1023,14 +1033,15 @@ struct ra_color_result {
         var node = n->nl_node;
         temp_t* temp = temp_for_node(&info, node);
         result.racr_spills =
-            temp_list_cons(*temp, result.racr_spills);
+            temp_list_cons(*temp, result.racr_spills, ar_spills);
     }
 
     // Return Allocation
     result.racr_allocation = Table_new(0, cmptemp, hashtemp);
     for (var n = info.precolored; n; n = n->nl_list) {
         var node = n->nl_node;
-        temp_t* temp = temp_for_node(&info, node);
+        var temp = temp_copy_to_arena(
+                ar_allocation, *temp_for_node(&info, node));
         Table_put(result.racr_allocation,
                 temp,
                 Table_get(initial_allocation, temp));
@@ -1043,7 +1054,7 @@ struct ra_color_result {
 
         Table_put(
                 result.racr_allocation,
-                temp_for_node(&info, node),
+                temp_copy_to_arena(ar_allocation, *temp_for_node(&info, node)),
                 // cast away const
                 (void*)register_name);
     }
@@ -1059,7 +1070,7 @@ struct ra_color_result {
 
         Table_put(
                 result.racr_allocation,
-                temp_for_node(&info, node),
+                temp_copy_to_arena(ar_allocation, *temp_for_node(&info, node)),
                 // cast away const
                 (void*)register_name);
     }
@@ -1108,6 +1119,7 @@ replace_temp(temp_list_t* temp_list, temp_t to_be_replaced, temp_t replacement)
 
 static void
 spill_temp(
+        Arena_T ar_instrs, // arena for body_instrs
         temp_state_t* temp_state,
         ac_frame_t* frame,
         assm_instr_t** pbody_instrs,
@@ -1136,7 +1148,8 @@ spill_temp(
                     var new_temp = temp_newtemp(temp_state,
                             temp_to_spill.temp_size, temp_to_spill.temp_ptr_dispo);
                     replace_temp(instr->ai_oper_dst, temp_to_spill, new_temp);
-                    var new_instr = backend->store_temp(new_frame_var, new_temp);
+                    var new_instr = backend->store_temp(
+                            new_frame_var, new_temp, ar_instrs);
 
                     // HACK to know spilled registers in stack maps
                     assert(new_frame_var->acf_stored.temp_id == -1);
@@ -1152,7 +1165,8 @@ spill_temp(
                     var new_temp = temp_newtemp(temp_state,
                             temp_to_spill.temp_size, temp_to_spill.temp_ptr_dispo);
                     replace_temp(instr->ai_oper_src, temp_to_spill, new_temp);
-                    var new_instr = backend->load_temp(new_frame_var, new_temp);
+                    var new_instr = backend->load_temp(
+                            new_frame_var, new_temp, ar_instrs);
                     // graft in
                     new_instr->ai_list = instr;
                     *pinstr = new_instr;
@@ -1167,7 +1181,8 @@ spill_temp(
                     var new_temp = temp_newtemp(temp_state,
                             temp_to_spill.temp_size, temp_to_spill.temp_ptr_dispo);
                     instr->ai_move_dst = new_temp;
-                    var new_instr = backend->store_temp(new_frame_var, new_temp);
+                    var new_instr = backend->store_temp(
+                            new_frame_var, new_temp, ar_instrs);
                     /*
                      * Hack to know what register was spilled when creating
                      * stack maps.
@@ -1185,7 +1200,8 @@ spill_temp(
                     var new_temp = temp_newtemp(temp_state,
                             temp_to_spill.temp_size, temp_to_spill.temp_ptr_dispo);
                     instr->ai_move_src = new_temp;
-                    var new_instr = backend->load_temp(new_frame_var, new_temp);
+                    var new_instr = backend->load_temp(
+                            new_frame_var, new_temp, ar_instrs);
                     // graft in
                     new_instr->ai_list = instr;
                     *pinstr = new_instr;
@@ -1267,7 +1283,8 @@ record_spill_liveness(
         lv_flowgraph_t* flowgraph,
         struct igraph_and_table igraph_and_table,
         temp_list_t* about_to_spill,
-        Table_T label_to_spill_liveness // sl_sym_t -> temp_list_t*
+        Table_T label_to_spill_liveness, // sl_sym_t -> temp_list_t*
+        Arena_T ar_spill_liveness
         )
 {
 
@@ -1291,7 +1308,8 @@ record_spill_liveness(
                 for (var tl1 = about_to_spill; tl1; tl1 = tl1->tmp_list) {
                     if (tl0->tmp_temp.temp_id == tl1->tmp_temp.temp_id) {
 
-                        updated = temp_list_cons(tl0->tmp_temp, updated);
+                        updated = temp_list_cons(tl0->tmp_temp, updated,
+                                ar_spill_liveness);
 
                     }
                 }
@@ -1393,8 +1411,12 @@ debug_print_instrs(assm_instr_t* body_instrs, ac_frame_t* frame)
     }
 }
 
-
-
+/*
+ * Performs liveness analysis and register allocation.
+ *
+ * body_instrs is no longer valid after calling this; it is mutated and
+ * returned as ra_instrs in the returned structure.
+ */
 struct instr_list_and_allocation
 ra_alloc(
         FILE* out,
@@ -1403,23 +1425,31 @@ ra_alloc(
         ac_frame_t* frame,
         bool print_interference_and_return,
         Table_T label_to_cs_bitmap,
-        Table_T label_to_spill_liveness)
+        Table_T label_to_spill_liveness,
+        Arena_T arena_spill_liveness, // TODO: consolidate if possible
+        Arena_T arena_instrs,
+        Arena_T arena_allocation)
 {
     // here: liveness analysis
-    var flow_and_nodes = instrs2graph(body_instrs);
+    var scratch = Arena_new();
+    var flow_and_nodes = instrs2graph(body_instrs, scratch);
     lv_flowgraph_t* flow = flow_and_nodes.flowgraph;
 
     var igraph_and_table =
-        interference_graph(flow, flow_and_nodes.node_list);
+        interference_graph(flow, flow_and_nodes.node_list, scratch);
     if (print_interference_and_return) {
         igraph_show(out, igraph_and_table.igraph);
-        struct instr_list_and_allocation result = {};
-        return result;
+        struct instr_list_and_allocation result = {
+            .ra_instrs = body_instrs,
+        };
+        Arena_dispose(&scratch);
+        return result; // FIXME: igraph is leaked
     }
 
     var color_result =
         ra_color(igraph_and_table.igraph, flow, frame->acf_temp_map,
-                frame->acf_target->register_names, body_instrs);
+                frame->acf_target->register_names, scratch,
+                arena_allocation);
 
     // :: check for spilled nodes, and rewrite program if so ::
     if (color_result.racr_spills) {
@@ -1430,10 +1460,12 @@ ra_alloc(
         }
 
         record_spill_liveness(body_instrs, flow, igraph_and_table,
-                color_result.racr_spills, label_to_spill_liveness);
+                color_result.racr_spills, label_to_spill_liveness,
+                arena_spill_liveness);
 
         for (temp_list_t* x = color_result.racr_spills; x; x = x->tmp_list) {
-            spill_temp(temp_state, frame, &body_instrs, x->tmp_temp);
+            spill_temp(arena_instrs, temp_state,
+                    frame, &body_instrs, x->tmp_temp);
         }
 
         if (debug) {
@@ -1441,12 +1473,13 @@ ra_alloc(
             debug_print_instrs(body_instrs, frame);
         }
 
-        temp_list_free(&color_result.racr_spills);
         Table_free(&color_result.racr_allocation);
 
         lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
+        Arena_dispose(&scratch);
         return ra_alloc(out, temp_state, body_instrs, frame, false,
-                label_to_cs_bitmap, label_to_spill_liveness);
+                label_to_cs_bitmap, label_to_spill_liveness,
+                arena_spill_liveness, arena_instrs, arena_allocation);
     }
 
     /* Must happen before removing the dead moves, so that flowgraph
@@ -1463,6 +1496,7 @@ ra_alloc(
     };
 
     lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
+    Arena_dispose(&scratch);
 
     return result;
 }
