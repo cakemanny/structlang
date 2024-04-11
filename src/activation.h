@@ -53,8 +53,6 @@ typedef struct ac_frame {
     struct ac_frame* acf_link; // link all the frames in a list
 } ac_frame_t;
 
-void ac_frame_free(ac_frame_t** pframe);
-
 /*
  * Returns the number of words used by the frame.
  * This can be added to the stack pointer on function entry to allocate the
@@ -111,19 +109,19 @@ typedef struct ac_frame_map_t {
 /*
  *
  */
-ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars);
-
-void ac_frame_map_free(ac_frame_map_t** pfm);
+ac_frame_map_t* ac_calculate_ptr_maps(
+        ac_frame_t* frame, int* defined_vars, Arena_T frag_arena);
 
 extern const size_t ac_word_size;
 
 extern bool ac_debug;
 
-struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame, temp_t t);
+struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame, temp_t t,
+        Arena_T frag_arena);
 
 void ac_extend_frame_map_for_spills(
         ac_frame_map_t* frame_map, temp_list_t* spill_live_outs,
-        Table_T allocation);
+        Table_T allocation, Arena_T frag_arena);
 
 
 /*

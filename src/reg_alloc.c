@@ -1092,6 +1092,7 @@ replace_temp(temp_list_t* temp_list, temp_t to_be_replaced, temp_t replacement)
 static void
 spill_temp(
         Arena_T ar_instrs, // arena for body_instrs
+        Arena_T ar_frags, // arena for fragments
         temp_state_t* temp_state,
         ac_frame_t* frame,
         assm_instr_t** pbody_instrs,
@@ -1109,7 +1110,8 @@ spill_temp(
 
     var backend = frame->acf_target->tgt_backend;
 
-    struct ac_frame_var* new_frame_var = ac_spill_temporary(frame, temp_to_spill);
+    struct ac_frame_var* new_frame_var =
+        ac_spill_temporary(frame, temp_to_spill, ar_frags);
     for (var pinstr = pbody_instrs; *pinstr; pinstr = &((*pinstr)->ai_list)) {
         var instr = *pinstr;
         switch (instr->ai_tag) {
@@ -1399,7 +1401,8 @@ ra_alloc(
         Table_T label_to_spill_liveness,
         Arena_T arena_spill_liveness, // TODO: consolidate if possible
         Arena_T arena_instrs,
-        Arena_T arena_allocation)
+        Arena_T arena_allocation,
+        Arena_T arena_fragments)
 {
     // here: liveness analysis
     var scratch = Arena_new();
@@ -1435,7 +1438,7 @@ ra_alloc(
                 arena_spill_liveness);
 
         for (temp_list_t* x = color_result.racr_spills; x; x = x->tmp_list) {
-            spill_temp(arena_instrs, temp_state,
+            spill_temp(arena_instrs, arena_fragments, temp_state,
                     frame, &body_instrs, x->tmp_temp);
         }
 
@@ -1450,7 +1453,8 @@ ra_alloc(
         Arena_dispose(&scratch);
         return ra_alloc(out, temp_state, body_instrs, frame, false,
                 label_to_cs_bitmap, label_to_spill_liveness,
-                arena_spill_liveness, arena_instrs, arena_allocation);
+                arena_spill_liveness, arena_instrs, arena_allocation,
+                arena_fragments);
     }
 
     /* Must happen before removing the dead moves, so that flowgraph

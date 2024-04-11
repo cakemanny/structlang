@@ -7,6 +7,7 @@
 #include <string.h>
 
 #define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 #define BitsetLen(len) (((len) + 63) / 64)
 #define IsBitSet(x, i) (( (x)[(i)>>6] & (1ULL<<((i)&63)) ) != 0ULL)
@@ -69,9 +70,10 @@ const size_t ac_word_size = 8;
 static const target_t* target = &target_x86_64;
 
 static ac_frame_t* ac_frame_new(
-        sl_sym_t func_name, const target_t* target, Table_T temp_map)
+        sl_sym_t func_name, const target_t* target, Table_T temp_map,
+        Arena_T ar)
 {
-    ac_frame_t* f = xmalloc(sizeof *f);
+    ac_frame_t* f = Alloc(ar, sizeof *f);
     f->acf_name = func_name;
     f->acf_next_arg_offset =
         // space for previous frame pointer and for return address
@@ -81,22 +83,6 @@ static ac_frame_t* ac_frame_new(
     f->acf_target = target;
     f->acf_temp_map = temp_map;
     return f;
-}
-
-void ac_frame_free(ac_frame_t** pframe)
-{
-    ac_frame_t* frame = *pframe;
-    while (frame->ac_frame_vars) {
-        struct ac_frame_var* v = frame->ac_frame_vars;
-        frame->ac_frame_vars = v->acf_list;
-        if (v->acf_ptr_map) {
-            free(v->acf_ptr_map);
-            v->acf_ptr_map = NULL;
-        }
-        free(v);
-    }
-    free(frame);
-    *pframe = NULL;
 }
 
 static void ac_frame_append_var(ac_frame_t* frame, struct ac_frame_var* v)
@@ -307,7 +293,7 @@ char* ac_record_descriptor_for_type(
 
     unsigned long nwords = num_words(size);
     // +1 for the null terminator
-    char* buf = Arena_alloc(arena, nwords + 1, __FILE__, __LINE__);
+    char* buf = Alloc(arena, nwords + 1);
 
     // for now we just reuse the ptr map logic
     uint64_t* ptr_map = xmalloc(BitsetBytes(nwords));
@@ -337,7 +323,7 @@ static void calculate_activation_record_expr(
             recur(expr->ex_init);
             size_t size = size_of_type(info->program, expr->ex_type_ann);
             assert(size > 0 && "zero-size let-bound variable");
-            struct ac_frame_var* v = xmalloc(sizeof *v);
+            struct ac_frame_var* v = Alloc(info->frag_arena, sizeof *v);
             v->acf_tag = ACF_ACCESS_FRAME;
             v->acf_varname = expr->ex_name;
             v->acf_size = size;
@@ -347,7 +333,7 @@ static void calculate_activation_record_expr(
             while ((v->acf_offset % v->acf_alignment) != 0)
                 v->acf_offset--;
             v->acf_is_formal = false;
-            v->acf_ptr_map = xmalloc(BitsetBytes(num_words(size)));
+            v->acf_ptr_map = Alloc(info->frag_arena, BitsetBytes(num_words(size)));
             ptr_map_for_type(info->program, expr->ex_type_ann, v->acf_ptr_map, 0);
             v->acf_spilled.temp_id = -1;
             v->acf_stored.temp_id = -1;
@@ -477,7 +463,7 @@ calculate_activation_record_decl_func(
         // Need to allocate temporary for the return value?
         assert(0 && "TODO: larger return sizes");
         // The result is converted into a by-reference param
-        struct ac_frame_var* v = xmalloc(sizeof *v);
+        struct ac_frame_var* v = Alloc(info->frag_arena, sizeof *v);
         v->acf_tag = ACF_ACCESS_REG;
         v->acf_varname = NULL; // no name TODO
         v->acf_size = target->word_size;
@@ -486,7 +472,7 @@ calculate_activation_record_decl_func(
         v->acf_reg = target->arg_registers.elems[frame->acf_next_arg_reg++];
         v->acf_reg.temp_size = target->word_size;
         v->acf_is_formal = true; // ... not really though ...
-        v->acf_ptr_map = xmalloc(BitsetBytes(num_words(ret_type_size)));
+        v->acf_ptr_map = Alloc(info->frag_arena, BitsetBytes(num_words(ret_type_size)));
         ptr_map_for_type(info->program, ret_type, v->acf_ptr_map, 0);
         v->acf_spilled.temp_id = -1;
         v->acf_stored.temp_id = -1;
@@ -499,13 +485,13 @@ calculate_activation_record_decl_func(
         size_t size = size_of_type(info->program, type);
         assert(size > 0 && "zero-size parameter");
 
-        struct ac_frame_var* v = xmalloc(sizeof *v);
+        struct ac_frame_var* v = Alloc(info->frag_arena, sizeof *v);
         v->acf_varname = p->dl_name;
         v->acf_size = size;
         v->acf_alignment = alignment_of_type(info->program, type);
         v->acf_var_id = p->dl_var_id;
         v->acf_is_formal = true;
-        v->acf_ptr_map = xmalloc(BitsetBytes(num_words(size)));
+        v->acf_ptr_map = Alloc(info->frag_arena, BitsetBytes(num_words(size)));
         ptr_map_for_type(info->program, type, v->acf_ptr_map, 0);
         v->acf_spilled.temp_id = -1;
         v->acf_stored.temp_id = -1;
@@ -551,7 +537,8 @@ calculate_activation_records(
     ac_frame_t* frame_list = NULL;
     for (sl_decl_t* d = program; d; d = d->dl_list) {
         if (d->dl_tag == SL_DECL_FUNC) {
-            ac_frame_t* f = ac_frame_new(d->dl_name, target, temp_map);
+            ac_frame_t* f =
+                ac_frame_new(d->dl_name, target, temp_map, frag_arena);
             act_info_t info = {
                 .program = program,
                 .temp_state = temp_state,
@@ -623,11 +610,14 @@ debug_print_frame(ac_frame_t* frame)
  * defined_vars is an array of var_id s that are in scope at the call site
  * (call or new)
  */
-ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
+ac_frame_map_t*
+ac_calculate_ptr_maps(
+        ac_frame_t* frame, int* defined_vars, Arena_T frag_arena)
+{
     // Now, scan through the frame vars and calculate a bitset showing where
     // the pointers in the frame are
 
-    ac_frame_map_t* frame_map = xmalloc(sizeof *frame_map);
+    ac_frame_map_t* frame_map = Alloc(frag_arena, sizeof *frame_map);
     frame_map->acfm_frame = frame;
 
     if (ac_debug) {
@@ -640,12 +630,12 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
     int num_local_words =
         frame_map->acfm_num_local_words =
         num_words(-frame->acf_last_local_offset);
-    frame_map->acfm_locals = xmalloc(BitsetBytes(num_local_words));
+    frame_map->acfm_locals = Alloc(frag_arena, BitsetBytes(num_local_words));
 
     int args_words = num_words(frame->acf_next_arg_offset);
     frame_map->acfm_num_arg_words = args_words;
 
-    frame_map->acfm_args = xmalloc(BitsetBytes(args_words));
+    frame_map->acfm_args = Alloc(frag_arena, BitsetBytes(args_words));
 
 
     for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
@@ -675,32 +665,16 @@ ac_frame_map_t* ac_calculate_ptr_maps(ac_frame_t* frame, int* defined_vars) {
     return frame_map;
 }
 
-void ac_frame_map_free(ac_frame_map_t** pfm)
-{
-    var fm = *pfm;
-    if (fm->acfm_args)
-        free(fm->acfm_args);
-    if (fm->acfm_locals)
-        free(fm->acfm_locals);
-    if (fm->acfm_spills)
-        free(fm->acfm_spills);
-    fm->acfm_args = fm->acfm_locals = fm->acfm_spills = NULL;
-
-    fm->acfm_frame = NULL; // not owned by us, so we don't free
-
-    free(fm);
-    *pfm = NULL;
-}
-
 /*
  * Creates some space in the frame to store a temporary.
  * Called during register allocation.
  */
-struct ac_frame_var* ac_spill_temporary(ac_frame_t* frame, temp_t t)
+struct ac_frame_var*
+ac_spill_temporary(ac_frame_t* frame, temp_t t, Arena_T frag_arena)
 {
     var target = frame->acf_target;
     size_t size = target->word_size;
-    struct ac_frame_var* v = xmalloc(sizeof *v);
+    struct ac_frame_var* v = Alloc(frag_arena, sizeof *v);
     v->acf_tag = ACF_ACCESS_FRAME;
     v->acf_varname = NULL; // ?? t_n
     v->acf_size = size;
@@ -803,7 +777,7 @@ reg_idx_for_name(const ac_frame_t* frame, const char* reg_name)
  */
 void ac_extend_frame_map_for_spills(
         ac_frame_map_t* frame_map, temp_list_t* spill_live_outs,
-        Table_T allocation)
+        Table_T allocation, Arena_T frag_arena)
 {
     const ac_frame_t* frame = frame_map->acfm_frame;
 
@@ -830,7 +804,7 @@ void ac_extend_frame_map_for_spills(
 
     if (spill_words > 0) {
         var locals_old = frame_map->acfm_locals;
-        frame_map->acfm_locals = xmalloc(BitsetBytes(frame_words));
+        frame_map->acfm_locals = Alloc(frag_arena, BitsetBytes(frame_words));
 
         // copy old, shifting by spill_words bits
         for (int i = 0; i < old_num_local_words; i++) {
@@ -838,10 +812,10 @@ void ac_extend_frame_map_for_spills(
                 SetBit(frame_map->acfm_locals, i + spill_words);
             }
         }
-        free(locals_old);
+        // locals_old is not freed until the arena is disposed
     }
 
-    frame_map->acfm_spills = xmalloc(BitsetBytes(spill_words));
+    frame_map->acfm_spills = Alloc(frag_arena, BitsetBytes(spill_words));
     frame_map->acfm_num_spill_words = spill_words;
 
     int spill_reg_idx = 0;

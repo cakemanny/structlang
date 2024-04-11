@@ -296,7 +296,7 @@ int main(int argc, char* argv[])
             ra_alloc(out, temp_state, body_instrs, frag->fr_frame,
                     stop_after_liveness_analysis, label_to_cs_bitmap,
                     label_to_spill_liveness, instr_loop_arena,
-                    instr_loop_arena, instr_loop_arena);
+                    instr_loop_arena, instr_loop_arena, frag_arena);
         body_instrs = instrs_and_allocation.ra_instrs;
         if (stop_after_liveness_analysis) {
             goto instr_loop_cleanup; // continue
@@ -330,7 +330,7 @@ int main(int argc, char* argv[])
             temp_list_t* spill_live_outs =
                 Table_get(label_to_spill_liveness, frag->fr_ret_label);
             ac_extend_frame_map_for_spills(frag->fr_map, spill_live_outs,
-                    instrs_and_allocation.ra_allocation);
+                    instrs_and_allocation.ra_allocation, frag_arena);
         }
 
 
@@ -348,7 +348,6 @@ instr_loop_cleanup:
     }
     Table_free(&label_to_cs_bitmap);
 
-    sl_fragment_free_list(&fragments);
     Arena_dispose(&frag_arena);
     // end of program... maybe
     temp_state_free(&temp_state);

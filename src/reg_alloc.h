@@ -23,7 +23,8 @@ ra_alloc(FILE* out, temp_state_t*, assm_instr_t*, ac_frame_t* frame,
         Table_T label_to_spill_liveness, // sl_sym_t -> tmp_list_t*
         Arena_T arena_spill_liveness,
         Arena_T arena_instrs,
-        Arena_T arena_allocation  // for the temp_t* s in ra_allocation
+        Arena_T arena_allocation, // for the temp_t* s in ra_allocation
+        Arena_T arena_fragments // for frame variables etc
         );
 
 

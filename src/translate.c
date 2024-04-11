@@ -613,7 +613,7 @@ static translate_exp_t* translate_expr_new(
                 arg_exp,
                 ac_word_size,
                 translate_type(ar, info->program, expr->ex_type),
-                ac_calculate_ptr_maps(frame, expr->ex_new_defd_vars),
+                ac_calculate_ptr_maps(frame, expr->ex_new_defd_vars, ar),
                 ar
             ),
             ar
@@ -694,7 +694,7 @@ static translate_exp_t* translate_expr_call(
         translated_args,
         size_of_type(info->program, expr->ex_type),
         translate_type(ar, info->program, expr->ex_type),
-        ac_calculate_ptr_maps(frame, expr->ex_fn_defd_vars),
+        ac_calculate_ptr_maps(frame, expr->ex_fn_defd_vars, ar),
         ar
     );
     return translate_ex(result);

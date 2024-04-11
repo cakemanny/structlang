@@ -90,7 +90,7 @@ void*
 Arena_alloc(T arena, long nbytes, const char* file, int line)
 {
     assert(arena);
-    assert(nbytes > 0);
+    assert(nbytes >= 0);
 #if USE_ZONES
     void* ptr = malloc_zone_calloc(arena->zone, 1, nbytes);
     if (unlikely(!ptr)) {
