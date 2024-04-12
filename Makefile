@@ -36,7 +36,7 @@ LFLAGS=
 
 CPPFLAGS ?= $(INC_FLAGS) -MMD -MP
 CFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer
-LDFLAGS = -L$(BUILD_DIR) -lgraph
+LDFLAGS =
 
 RTCFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer -O1
 
@@ -51,8 +51,6 @@ else ifndef NDEBUG
 else
   CFLAGS += -O3
 endif
-
-RUSTC=rustc
 
 .PHONY: all lib gen runtime
 all: gen lib \
@@ -70,16 +68,13 @@ $(BUILD_DIR)/$(TARGET_LIB): $(LIB_OBJS)
 	$(AR) rcs $@ $^
 
 $(BUILD_DIR)/$(TARGET_EXEC) \
-$(BUILD_DIR)/$(TEST_EXEC): $(OBJS) $(BUILD_DIR)/libgraph.a
+$(BUILD_DIR)/$(TEST_EXEC): $(OBJS)
 	$(CC) $(OBJS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/$(RUNTIME_LIB): runtime/runtime.c
 	$(MKDIR_P) $(BUILD_DIR)/runtime
 	$(CC) -g -Wall -Werror -fno-omit-frame-pointer -c $< -o $(BUILD_DIR)/runtime/runtime.o
 	$(AR) rcs $@ $(BUILD_DIR)/runtime/runtime.o
-
-$(BUILD_DIR)/libgraph.a: src/graph.rs
-	$(RUSTC) --crate-type staticlib --out-dir $(BUILD_DIR) $<
 
 $(BUILD_DIR)/src/lex.yy.c: src/lexer.l
 	$(MKDIR_P) $(dir $@)

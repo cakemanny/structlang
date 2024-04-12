@@ -208,7 +208,7 @@ test_Arena()
 
 static void register_tests() __attribute__((constructor));
 void
-register_tests()  {
+register_tests() {
 
     REGISTER_TEST(test_Arena);
 

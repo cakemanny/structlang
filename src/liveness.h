@@ -15,7 +15,6 @@
 typedef struct lv_graph_t lv_graph_t;
 typedef struct lv_node_t lv_node_t;
 
-/* this might not be correct wrt Rust rep  */
 struct lv_node_t {
     lv_graph_t* lvn_graph;
     size_t lvn_idx;
@@ -27,7 +26,6 @@ typedef struct lv_node_list_t {
 } lv_node_list_t;
 
 
-
 extern lv_node_list_t* lv_nodes(lv_graph_t*);
 extern lv_node_list_t* lv_succ(lv_node_t*);
 extern lv_node_list_t* lv_pred(lv_node_t*);
@@ -37,15 +35,14 @@ extern bool lv_eq(const lv_node_t*, const lv_node_t*);
 extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
 
 typedef struct node_vec {
-    size_t *nv_elems;
-    size_t nv_len;
-    size_t nv_capacity;
+    int *nv_elems;
+    int nv_len;
+    int nv_capacity;
 } node_vec_t;
 extern node_vec_t lv_succ_vec(lv_node_t*);
 
-// I'm putting extern here for functions implemented in Rust
 extern lv_graph_t* lv_new_graph();
-extern size_t lv_graph_length(lv_graph_t*);
+extern size_t lv_graph_length(const lv_graph_t*);
 extern void lv_free_graph(lv_graph_t*);
 extern lv_node_t* lv_new_node(lv_graph_t* graph);
 /* for when freeing a node that came from lv_new_node */

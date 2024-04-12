@@ -6,10 +6,6 @@ RUN apt update && \
         make \
         flex \
         bison \
-        rustc
-
-RUN apt update && \
-    apt install -y \
         man-db \
         gdb \
         lldb

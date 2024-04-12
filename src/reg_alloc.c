@@ -438,7 +438,8 @@ decrement_degree(reg_alloc_info_t* info, lv_node_t* m)
  * in the adjacent set of n
  */
 static void
-simplify(reg_alloc_info_t* info) {
+simplify(reg_alloc_info_t* info)
+{
     // Remove node from simplify_worklist
     // We take the first cell of the list and cons
     // it onto the selectStack instead of actually pulling out the node
@@ -518,7 +519,8 @@ conservative_adj(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 
 
 static void
-add_work_list(reg_alloc_info_t* info, lv_node_t* u) {
+add_work_list(reg_alloc_info_t* info, lv_node_t* u)
+{
     if (!node_list_contains(info->precolored, u)
             && !is_move_related(info, u)
             && info->degree[u->lvn_idx] < info->K)
@@ -602,7 +604,8 @@ combine(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
  * same register)
  */
 static void
-coalesce(reg_alloc_info_t* info) {
+coalesce(reg_alloc_info_t* info)
+{
     assert(info->worklist_moves != NULL);
     var m_cell = info->worklist_moves;
 
@@ -649,7 +652,8 @@ coalesce(reg_alloc_info_t* info) {
 
 
 static void
-freeze_moves(reg_alloc_info_t* info, lv_node_t* u) {
+freeze_moves(reg_alloc_info_t* info, lv_node_t* u)
+{
     node_move_it_t it = {};
     node_move_it_init(&it, info, u);
     for (var m = node_move_it_next(&it); m; m = node_move_it_next(&it)) {
@@ -683,7 +687,8 @@ freeze_moves(reg_alloc_info_t* info, lv_node_t* u) {
  * I have no idea what this is about, but it's in the book.
  */
 static void
-freeze(reg_alloc_info_t* info) {
+freeze(reg_alloc_info_t* info)
+{
     var u = info->freeze_worklist->nl_node;
     var u_cell = node_list_remove(&info->freeze_worklist, u);
     node_list_prepend(&info->simplify_worklist, u_cell);
@@ -698,8 +703,8 @@ freeze(reg_alloc_info_t* info) {
 static int
 spill_cost(
         reg_alloc_info_t* info,
-        lv_node_t* node) {
-
+        lv_node_t* node)
+{
     temp_t t = *temp_for_node(info, node);
     int cost = 0;
 
@@ -728,7 +733,8 @@ spill_cost(
 
 static void
 select_spill(
-        reg_alloc_info_t* info) {
+        reg_alloc_info_t* info)
+{
     // 1. select m from spill_worklist
     // 2. remove m from spill_worklist
     // 3. push m onto simplify_worklist
@@ -753,8 +759,8 @@ select_spill(
 
 
 static void
-assign_colors(reg_alloc_info_t* info) {
-
+assign_colors(reg_alloc_info_t* info)
+{
     while (info->select_stack != NULL) {
         // pop n from select_stack
         var n_cell = info->select_stack;
