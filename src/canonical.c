@@ -1,5 +1,4 @@
 #include "canonical.h"
-#include "mem.h"
 #include <assert.h> /* assert */
 #include <stdbool.h> /* bool */
 #include "interfaces/arena.h"
@@ -568,7 +567,7 @@ basic_blocks(canon_info_t* info, tree_stm_t* stmts)
         // start a new block if necessary
         if (curr_block == NULL) {
             assert(s->tst_tag == TREE_STM_LABEL);
-            curr_block = xmalloc(sizeof *curr_block);
+            curr_block = Alloc(info->scratch, sizeof *curr_block);
         }
 
         // append this statement to the current block
@@ -629,9 +628,9 @@ struct trace_list_t {
     trace_list_t* tl_list;
 };
 
-static trace_list_t* trace_list_new(trace_t* t)
+static trace_list_t* trace_list_new(trace_t* t, Arena_T ar)
 {
-    trace_list_t* tl = xmalloc(sizeof *tl);
+    trace_list_t* tl = Alloc(ar, sizeof *tl);
     tl->tl_trace = t;
     return tl;
 }
@@ -644,9 +643,11 @@ static trace_t* append_block_to_trace(trace_t* trace, basic_block_t* b)
     *end = b;
     return trace;
 }
-static trace_list_t* append_trace_to_trace_list(trace_list_t* hd, trace_t* t)
+
+static trace_list_t*
+append_trace_to_trace_list(trace_list_t* hd, trace_t* t, Arena_T ar)
 {
-    var list_item = trace_list_new(t);
+    var list_item = trace_list_new(t, ar);
     var end = &hd;
     while (*end)
         end = &(*end)->tl_list;
@@ -831,7 +832,7 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
         }
         // End trace
         if (T)
-            traces = append_trace_to_trace_list(traces, T);
+            traces = append_trace_to_trace_list(traces, T, info->scratch);
     }
 
     Table_free(&table);
@@ -841,8 +842,7 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
     // fuck you c
     int num_statements = 0;
     for (var ti = traces; ti; ti = ti->tl_list) {
-        var trace = ti->tl_trace;
-        for (var bb = trace; bb; bb = bb->bb_list) {
+        for (var bb = ti->tl_trace; bb; bb = bb->bb_list) {
             for (var s = bb->bb_stmts; s; s = s->tst_list){
                 num_statements += 1;
             }
@@ -852,8 +852,7 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
     tree_stm_t* stmts_in_order[num_statements];
     int i = 0;
     for (var ti = traces; ti; ti = ti->tl_list) {
-        var trace = ti->tl_trace;
-        for (var bb = trace; bb; bb = bb->bb_list) {
+        for (var bb = ti->tl_trace; bb; bb = bb->bb_list) {
             for (var s = bb->bb_stmts; s; s = s->tst_list, i++){
                 stmts_in_order[i] = s;
             }
@@ -867,27 +866,6 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
     }
     stmts_in_order[num_statements - 1]->tst_list = NULL;
     tree_stm_t* result = stmts_in_order[0];
-
-    // TODO: replace this all with usage of a scratch arena
-    // reclaim some of the memory here
-    for (var ti = traces; ti;) {
-        for (var bb = ti->tl_trace; bb; ) {
-            ti->tl_trace = bb->bb_list;
-
-            bb->bb_stmts = NULL;
-            bb->bb_list = NULL;
-            free(bb);
-
-            bb = ti->tl_trace;
-        }
-        traces = ti->tl_list;
-
-        ti->tl_trace = NULL;
-        ti->tl_list = NULL;
-        free(ti);
-
-        ti = traces;
-    }
 
     // remove unconditional jumps that are followed by their label
     while (remove_redundant_unconditional_jumps(result) > 0) {
@@ -1015,6 +993,7 @@ canonicalise_tree(
             case FR_FRAME_MAP:
                 continue;
         }
+        Arena_free(info.scratch);
     }
 
     Arena_dispose(&info.scratch);
