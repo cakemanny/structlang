@@ -512,7 +512,7 @@ all_adjacent_ok(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 
 /*
  * Works out whether in the union of all the adjacent nodes of u and v
- * there are less that K nodes with degree ≥ K
+ * there are less than K nodes with degree ≥ K
  */
 static bool
 conservative_adj(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
@@ -539,7 +539,7 @@ conservative_adj(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
     }
 
     Table_free(&seen);
-    return k;
+    return (k < info->K);
 }
 
 
