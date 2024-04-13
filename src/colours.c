@@ -56,7 +56,7 @@ void init_term_colours()
 
     // shortcut for common case of xterm
     const char* term = getenv("TERM");
-    if (term && strcmp(term, "xterm-256color") == 0) {
+    if (term && strncmp(term, "xterm", strlen("xterm")) == 0) {
         term_colours.red = "\x1b[31m";
         term_colours.magenta = "\x1b[35m";
         term_colours.clear = "\x1b(B\x1b[m";

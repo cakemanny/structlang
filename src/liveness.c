@@ -356,9 +356,13 @@ static lv_node_t* ig_get_node_by_idx(lv_igraph_t* igraph, int i)
     return ig_get_node_for_temp(igraph, ptemp);
 }
 
+/*
+ * Given a control flow graph (and its associated nodes), compute
+ * the interference graph and the Live Outs for each flow graph node.
+ */
 struct igraph_and_table
 interference_graph(
-        lv_flowgraph_t* flow, lv_node_list_t* nodes, Arena_T arena)
+        lv_flowgraph_t* flow, lv_node_list_t* cg_nodes, Arena_T arena)
 {
     // First ensure that there is an interference graph node for
     // each temporary
@@ -371,7 +375,7 @@ interference_graph(
     /*
      * Add nodes to the interference graph for each temporary
      */
-    for (var n = nodes; n; n = n->nl_list) {
+    for (var n = cg_nodes; n; n = n->nl_list) {
         temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
         for (var d = def_n; d; d = d->tmp_list) {
             ig_get_node_for_temp(igraph, &d->tmp_temp);
@@ -386,7 +390,7 @@ interference_graph(
     // TODO: order nodes by depth-first search
     // A simple initial strategy is to rever order the control graph nodes.
     // By my testing, this halfs the number of iterations required.
-    nodes = list_reverse(nodes);
+    cg_nodes = list_reverse(cg_nodes);
 
     // compute live out
     // live out
@@ -398,7 +402,7 @@ interference_graph(
     node_set_table_t def_map = node_set_table_new(flowgraph_length, igraph_length);
     node_set_table_t use_map = node_set_table_new(flowgraph_length, igraph_length);
 
-    for (var n = nodes; n; n = n->nl_list) {
+    for (var n = cg_nodes; n; n = n->nl_list) {
         var def_ns = Table_NST_get(def_map, n->nl_node);
         var use_ns = Table_NST_get(use_map, n->nl_node);
 
@@ -426,7 +430,7 @@ interference_graph(
 
     // calculate live-in and live-out sets iteratively
     for (;;) {
-        for (var n = nodes; n; n = n->nl_list) {
+        for (var n = cg_nodes; n; n = n->nl_list) {
             var node = n->nl_node;
             // copy the previous iteration
             // in'[n] = in[n]; out'[n] = out[n]
@@ -454,7 +458,7 @@ interference_graph(
         }
 
         bool match = true;
-        for (var n = nodes; n; n = n->nl_list) {
+        for (var n = cg_nodes; n; n = n->nl_list) {
             var node = n->nl_node;
 
             node_set2_t in_ns_ = Table_NST_get(live_in_map_, node);
@@ -490,7 +494,7 @@ interference_graph(
     // interfere with the live-outs at that instruction
     // 2. At any move instruction a <- c , b in live-outs interferes with a
     // if b != c.
-    for (var n = nodes; n; n = n->nl_list) {
+    for (var n = cg_nodes; n; n = n->nl_list) {
         var node = n->nl_node;
         node_set2_t def_n = Table_NST_get(def_map, node);
         node_set2_t use_n = Table_NST_get(use_map, node);
@@ -538,7 +542,7 @@ interference_graph(
     Table_T live_outs = Table_new(0, cmpnode, hashnode);
 
     // convert the live outs into a map just to temp_list
-    for (var n = nodes; n; n = n->nl_list) {
+    for (var n = cg_nodes; n; n = n->nl_list) {
         node_set2_t out_ns = Table_NST_get(live_out_map, n->nl_node);
         if (node_set2_count(out_ns) > 0) {
             temp_list_t* out_temps = NULL;
@@ -555,7 +559,7 @@ interference_graph(
     node_set_table_free(&live_out_map);
 
     // Put the nodes back in order before we are caught!
-    nodes = list_reverse(nodes);
+    cg_nodes = list_reverse(cg_nodes);
 
     struct igraph_and_table result = {
         .igraph = igraph,

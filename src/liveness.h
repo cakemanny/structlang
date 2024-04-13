@@ -122,10 +122,8 @@ struct igraph_and_table {
      * that are Live Out at that node
      */
     Table_T live_outs; // lv_node_t* -> temp_list_t*
-};
-
-struct igraph_and_table interference_graph(
-        lv_flowgraph_t*, lv_node_list_t* node_list, Arena_T);
+} interference_graph(
+        lv_flowgraph_t*, lv_node_list_t* cg_nodes, Arena_T);
 
 void lv_free_interference_and_flow_graph(
         struct igraph_and_table*, struct flowgraph_and_node_list*);

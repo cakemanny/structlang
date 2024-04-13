@@ -166,6 +166,7 @@ int main(int argc, char* argv[])
             dl_print(out, decl);
             fprintf(out, "\n");
         }
+        Arena_dispose(&ast_arena);
         return 0;
     }
 
@@ -177,6 +178,7 @@ int main(int argc, char* argv[])
 
     if (stop_after_type_checking) {
         // Print typed tree?
+        Arena_dispose(&ast_arena);
         return 0;
     }
 
@@ -189,11 +191,12 @@ int main(int argc, char* argv[])
             dl_print(out, decl);
             fprintf(out, "\n");
         }
+        Arena_dispose(&ast_arena);
         return 0;
     }
 
     Arena_T frag_arena = Arena_new();
-    temp_state_t* temp_state = temp_state_new();
+    temp_state_t* temp_state = temp_state_new(frag_arena);
     ac_frame_t* frames =
         calculate_activation_records(frag_arena, target, temp_state, program);
     if(!frames) {
@@ -203,6 +206,8 @@ int main(int argc, char* argv[])
     }
 
     if (stop_after_activation_calculation) {
+        Arena_dispose(&frag_arena);
+        Arena_dispose(&ast_arena);
         return 0;
     }
 
@@ -228,15 +233,11 @@ int main(int argc, char* argv[])
                 fr_string_print(out, frag);
             }
         }
+        Arena_dispose(&frag_arena);
         return 0;
     }
 
-    sl_fragment_t* canonical_frags =
-        canonicalise_tree(frag_arena, target, temp_state, fragments);
-    if(!canonical_frags) {
-        fprintf(stderr, "internal error: failed to canonicalise trees\n");
-        return 1;
-    }
+    canonicalise_tree(frag_arena, target, temp_state, fragments);
     if (stop_after_canonicalisation) {
         for (var frag = fragments; frag; frag = frag->fr_list) {
             if (frag->fr_tag == FR_CODE) {
@@ -250,6 +251,7 @@ int main(int argc, char* argv[])
                 fr_string_print(out, frag);
             }
         }
+        Arena_dispose(&frag_arena);
         return 0;
     }
 
@@ -349,6 +351,4 @@ instr_loop_cleanup:
     Table_free(&label_to_cs_bitmap);
 
     Arena_dispose(&frag_arena);
-    // end of program... maybe
-    temp_state_free(&temp_state);
 }

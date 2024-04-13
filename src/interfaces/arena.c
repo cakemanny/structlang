@@ -15,7 +15,7 @@
 
 // <macros>
 #define unlikely(x)    __builtin_expect(!!(x), 0)
-#define THRESHOLD 10
+enum { THRESHOLD = 10 };
 
 #define fatal(msg) do { perror(msg); abort(); } while (0)
 

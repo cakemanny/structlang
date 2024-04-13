@@ -1,8 +1,8 @@
 #define _GNU_SOURCE // linux: ask for asprintf in stdio.h
 #include "temp.h"
-#include "mem.h"
 #include <stdio.h> // snprintf
 #include <assert.h>
+#include <stdlib.h>
 
 #define var __auto_type
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
@@ -14,18 +14,12 @@ struct temp_state {
     int next_label;
 };
 
-temp_state_t* temp_state_new()
+temp_state_t* temp_state_new(Arena_T a)
 {
-    temp_state_t* ts = xmalloc(sizeof *ts);
+    temp_state_t* ts = Alloc(a, sizeof *ts);
     ts->next_temp = start_temp;
     ts->next_label = 0;
     return ts;
-}
-
-void temp_state_free(temp_state_t** ts)
-{
-    free(*ts);
-    *ts = NULL;
 }
 
 temp_t temp_newtemp(temp_state_t* ts, unsigned size, temp_ptr_disposition_t ptr_dispo)

@@ -1445,8 +1445,9 @@ ra_alloc(
         struct instr_list_and_allocation result = {
             .ra_instrs = body_instrs,
         };
+        lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
         Arena_dispose(&scratch);
-        return result; // FIXME: igraph is leaked
+        return result;
     }
 
     var color_result =

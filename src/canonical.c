@@ -6,6 +6,7 @@
 #include "interfaces/table.h"
 
 #define var __auto_type
+#define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 static const bool debug = 0;
 
@@ -13,6 +14,7 @@ typedef struct canon_info_t {
     temp_state_t* temp_state;
     const target_t* target;
     Arena_T arena;
+    Arena_T scratch;
 } canon_info_t;
 
 typedef struct canon_stm_exp_pair_t {
@@ -534,7 +536,7 @@ static void bb_append_block(
 
 static tree_stm_t* unconditional_jump(sl_sym_t dst, Arena_T a)
 {
-    sl_sym_t* labels = Arena_alloc(a, 1 * sizeof *labels, __FILE__, __LINE__);
+    sl_sym_t* labels = Alloc(a, 1 * sizeof *labels);
     labels[0] = dst;
     return tree_stm_jump(tree_exp_name(dst, a), 1, labels, a);
 }
@@ -544,17 +546,17 @@ static tree_stm_t* unconditional_jump(sl_sym_t dst, Arena_T a)
  * and ending with a jump or cjump
  */
 /* stm list -> (stm list list * label) */
-static basic_blocks_t basic_blocks(
-        Arena_T arena, temp_state_t* temp_state, tree_stm_t* stmts)
+static basic_blocks_t
+basic_blocks(canon_info_t* info, tree_stm_t* stmts)
 {
-    sl_sym_t done = temp_newlabel(temp_state);
+    sl_sym_t done = temp_newlabel(info->temp_state);
 
     basic_block_t* curr_block = NULL;
     basic_blocks_t result = { .bb_end_label = done };
 
     if (stmts->tst_tag != TREE_STM_LABEL) {
         tree_stm_t* start_label =
-            tree_stm_label(temp_newlabel(temp_state), arena);
+            tree_stm_label(temp_newlabel(info->temp_state), info->arena);
         start_label->tst_list = stmts;
         stmts = start_label;
     }
@@ -590,7 +592,7 @@ static basic_blocks_t basic_blocks(
         if (stmts == NULL || stmts->tst_tag == TREE_STM_LABEL) {
             if (s->tst_tag != TREE_STM_JUMP && s->tst_tag != TREE_STM_CJUMP) {
                 var j = unconditional_jump(
-                    stmts ? stmts->tst_label : done, arena
+                    stmts ? stmts->tst_label : done, info->arena
                 );
                 curr_block->bb_stmts =
                     tree_stm_append(curr_block->bb_stmts, j);
@@ -745,7 +747,7 @@ static tree_relop_t invert_relop(tree_relop_t op)
  * CJUMP(<
  */
 static void put_falses_after_cjumps(
-        Arena_T arena, temp_state_t* temp_state, tree_stm_t* result)
+        canon_info_t* info, tree_stm_t* result)
 {
     for (var s = result; s->tst_list; s = s->tst_list) {
         var s1 = s->tst_list;
@@ -762,30 +764,30 @@ static void put_falses_after_cjumps(
                         s1->tst_cjump_rhs,
                         s1->tst_cjump_false,
                         s1->tst_cjump_true,
-                        arena);
+                        info->arena);
                 s->tst_list->tst_list = s2;
                 // leak s1 ,lol
             } else { // neither the t or f label follows
                 // add an unconditional jump
-                sl_sym_t f0 = temp_newlabel(temp_state);
+                sl_sym_t f0 = temp_newlabel(info->temp_state);
                 s->tst_list = tree_stm_cjump(
                         s1->tst_cjump_op,
                         s1->tst_cjump_lhs,
                         s1->tst_cjump_rhs,
                         s1->tst_cjump_true,
                         f0,
-                        arena);
-                s->tst_list->tst_list = tree_stm_label(f0, arena);
+                        info->arena);
+                s->tst_list->tst_list = tree_stm_label(f0, info->arena);
                 s->tst_list->tst_list->tst_list =
-                    unconditional_jump(s1->tst_cjump_false, arena);
+                    unconditional_jump(s1->tst_cjump_false, info->arena);
                 s->tst_list->tst_list->tst_list->tst_list = s2;
             }
         }
     }
 }
 
-static tree_stm_t* trace_schedule(
-        Arena_T arena, temp_state_t* temp_state, basic_blocks_t blocks)
+static tree_stm_t*
+trace_schedule(canon_info_t* info, basic_blocks_t blocks)
 {
     // if the block is in the table it's not marked
     Table_T table = Table_new(0, NULL, NULL);
@@ -858,7 +860,7 @@ static tree_stm_t* trace_schedule(
         }
     }
     stmts_in_order[num_statements - 1] =
-        tree_stm_label(blocks.bb_end_label, arena);
+        tree_stm_label(blocks.bb_end_label, info->arena);
 
     for (int i = 0; i < num_statements - 1; i++) {
         stmts_in_order[i]->tst_list = stmts_in_order[i+1];
@@ -893,7 +895,7 @@ static tree_stm_t* trace_schedule(
     }
 
     // rewrite cjumps so that their false label follows
-    put_falses_after_cjumps(arena, temp_state, result);
+    put_falses_after_cjumps(info, result);
 
     return result;
 }
@@ -983,7 +985,7 @@ static void verify_basic_blocks(basic_blocks_t blocks, const char* check)
     assert(err == 0);
 }
 
-sl_fragment_t*
+void
 canonicalise_tree(
         Arena_T arena, const target_t* target, temp_state_t* temp_state,
         sl_fragment_t* fragments)
@@ -992,6 +994,7 @@ canonicalise_tree(
         .temp_state = temp_state,
         .target = target,
         .arena = arena,
+        .scratch = Arena_new(),
     };
 
     for (var frag = fragments; frag; frag = frag->fr_list) {
@@ -1001,11 +1004,10 @@ canonicalise_tree(
                 frag->fr_body = linearise(&info, frag->fr_body);
                 verify_statements(frag->fr_body, "post-linearise");
 
-                basic_blocks_t blocks =
-                    basic_blocks(arena, temp_state, frag->fr_body);
+                var blocks = basic_blocks(&info, frag->fr_body);
                 verify_basic_blocks(blocks, "post-basic_blocks");
 
-                frag->fr_body = trace_schedule(arena, temp_state, blocks);
+                frag->fr_body = trace_schedule(&info, blocks);
                 verify_statements(frag->fr_body, "post-trace_schedule");
                 break;
             }
@@ -1014,5 +1016,6 @@ canonicalise_tree(
                 continue;
         }
     }
-    return fragments;
+
+    Arena_dispose(&info.scratch);
 }

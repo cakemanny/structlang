@@ -25,8 +25,7 @@ typedef struct temp_list {
     struct temp_list* tmp_list;
 } temp_list_t;
 
-temp_state_t* temp_state_new();
-void temp_state_free(temp_state_t** ts);
+temp_state_t* temp_state_new(Arena_T);
 
 temp_t temp_newtemp(temp_state_t* ts, unsigned size, temp_ptr_disposition_t ptr_dispo);
 // Not sure what this is for
