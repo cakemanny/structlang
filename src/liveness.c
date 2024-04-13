@@ -8,6 +8,7 @@
 #include <string.h>
 
 #define var __auto_type
+#define Alloc(ar, size) Arena_alloc(ar, size, __FILE__, __LINE__)
 
 static temp_list_t* temp_list_sort(temp_list_t* tl, Arena_T);
 
@@ -278,10 +279,14 @@ static temp_list_t* temp_list_sort(temp_list_t* tl, Arena_T ar)
         // FIXME: don't we need to copy this?
         return tl;
     }
-    temp_t temp_array[len];
+    long nbytes = len * sizeof(temp_t);
+    // there are multiple calls to this per instruction - so for those
+    // cases we use alloca to avoid lots of small leaks. Expected number of
+    // calls with a large N is small.
+    temp_t* temp_array = (len > 1024) ? Alloc(ar, nbytes) : alloca(nbytes);
     int i = 0;
     for (var t = tl; t; t = t->tmp_list, i++) {
-        memcpy(temp_array + i, &t->tmp_temp, sizeof t->tmp_temp);
+        temp_array[i] = t->tmp_temp;
     }
 
     qsort(temp_array, len, sizeof(struct temp), cmptemp);

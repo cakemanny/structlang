@@ -1,5 +1,5 @@
 #include "array.h"
-#include "mem.h"
+#include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
@@ -14,12 +14,13 @@ arrgrow(void *slice, long size)
     memcpy(&replica, slice, sizeof replica);
 
     replica.cap = replica.cap ? replica.cap : 1;
-    void *data = xmalloc(2*size * replica.cap);
     replica.cap *= 2;
-    if (replica.len) {
-        memcpy(data, replica.data, size*replica.len);
-        free(replica.data);
-    }
+    void *data = realloc(replica.data, size * replica.cap);
+    if (!data) { perror("out of memory"); abort(); }
+    //if (replica.len) {
+    //    memcpy(data, replica.data, size*replica.len);
+    //    free(replica.data);
+    //}
     replica.data = data;
 
     memcpy(slice, &replica, sizeof replica);

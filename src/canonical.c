@@ -3,6 +3,7 @@
 #include <stdbool.h> /* bool */
 #include "interfaces/arena.h"
 #include "interfaces/table.h"
+#include "array.h"
 
 #define var __auto_type
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
@@ -839,33 +840,25 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
 
     // build a new list of basic blocks by following the traces
 
-    // fuck you c
-    int num_statements = 0;
+    struct { tree_stm_t** data; int len; int cap; } stmts_in_order = {};
+
     for (var ti = traces; ti; ti = ti->tl_list) {
         for (var bb = ti->tl_trace; bb; bb = bb->bb_list) {
             for (var s = bb->bb_stmts; s; s = s->tst_list){
-                num_statements += 1;
+                // NOLINTNEXTLINE(bugprone-sizeof-expression)
+                arrpush(&stmts_in_order, s);
             }
         }
     }
-    num_statements += 1; // add one for done/end block
-    tree_stm_t* stmts_in_order[num_statements];
-    int i = 0;
-    for (var ti = traces; ti; ti = ti->tl_list) {
-        for (var bb = ti->tl_trace; bb; bb = bb->bb_list) {
-            for (var s = bb->bb_stmts; s; s = s->tst_list, i++){
-                stmts_in_order[i] = s;
-            }
-        }
-    }
-    stmts_in_order[num_statements - 1] =
-        tree_stm_label(blocks.bb_end_label, info->arena);
+    // NOLINTNEXTLINE(bugprone-sizeof-expression)
+    arrpush(&stmts_in_order, tree_stm_label(blocks.bb_end_label, info->arena));
 
-    for (int i = 0; i < num_statements - 1; i++) {
-        stmts_in_order[i]->tst_list = stmts_in_order[i+1];
+    for (int i = 0; i < stmts_in_order.len - 1; i++) {
+        stmts_in_order.data[i]->tst_list = stmts_in_order.data[i+1];
     }
-    stmts_in_order[num_statements - 1]->tst_list = NULL;
-    tree_stm_t* result = stmts_in_order[0];
+    arrlast(stmts_in_order)->tst_list = NULL;
+    tree_stm_t* result = stmts_in_order.data[0];
+    arrfree(stmts_in_order);
 
     // remove unconditional jumps that are followed by their label
     while (remove_redundant_unconditional_jumps(result) > 0) {
