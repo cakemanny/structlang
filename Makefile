@@ -44,7 +44,9 @@ ifdef PROFILE
   CFLAGS += -O1 -fprofile-instr-generate -fcoverage-mapping
   LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
 else ifndef NDEBUG
-  ifneq "$(OS)" "Windows_NT"
+  ifeq "$(OS)" "Windows_NT"
+  else ifdef NASAN
+  else
     CFLAGS += -fsanitize=address
     LDFLAGS += -fsanitize=address
   endif
