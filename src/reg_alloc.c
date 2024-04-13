@@ -446,16 +446,14 @@ simplify(reg_alloc_info_t* info)
     assert(info->simplify_worklist != NULL);
 
     // remove from simplify_worklist
-    var n_cell = info->simplify_worklist;
-    info->simplify_worklist = info->simplify_worklist->nl_list;
+    var n = info->simplify_worklist->nl_node;
+    var n_cell = node_list_remove(&info->simplify_worklist, n);
 
     // push onto the select_stack
     node_list_prepend(&info->select_stack, n_cell);
 
-    var node = n_cell->nl_node;
-
     adj_it_t it = {};
-    adj_it_init(&it, info, node);
+    adj_it_init(&it, info, n);
     for (var m = adj_it_next(&it); m; m = adj_it_next(&it)) {
         decrement_degree(info, m);
     }
@@ -763,9 +761,8 @@ assign_colors(reg_alloc_info_t* info)
 {
     while (info->select_stack != NULL) {
         // pop n from select_stack
-        var n_cell = info->select_stack;
-        info->select_stack = info->select_stack->nl_list;
-        var node = n_cell->nl_node;
+        var node = info->select_stack->nl_node;
+        var n_cell = node_list_remove(&info->select_stack, node);
 
         assert(info->K <= 64);
         uint64_t _ok_colors = 0;
