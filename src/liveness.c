@@ -429,7 +429,6 @@ interference_graph(
         for (var n = nodes; n; n = n->nl_list) {
             var node = n->nl_node;
             // copy the previous iteration
-            // TODO: collect and free the old sets / reuse them a/b style
             // in'[n] = in[n]; out'[n] = out[n]
             Table_NST_put(live_in_map_, node, Table_NST_get(live_in_map, node));
             node_set2_t out_ns = Table_NST_get(live_out_map, node);

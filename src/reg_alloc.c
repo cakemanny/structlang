@@ -17,6 +17,17 @@
 static const bool debug = 0;
 static const bool enable_coalescing = true;
 
+enum worklist_mem : unsigned char {
+    WL_PRECOLORED = 0,
+    WL_INITIAL,
+    WL_SIMPLIFY,
+    WL_FREEZE,
+    WL_SPILL,
+    WL_SPILLED,
+    WL_COALESCED,
+    WL_COLORED,
+    WL_SELECT,
+};
 
 /*
  * Holds all of our worklists and state, etc for the graph colouring
@@ -51,6 +62,8 @@ typedef struct reg_alloc_info_t {
     lv_node_pair_list_t** move_list;
     Table_T alias; // lv_node_t* -> lv_node_t*
 
+    enum worklist_mem* worklist; // array of worklist membership for node ID
+
     lv_flowgraph_t* flowgraph;
     lv_igraph_t* interference;
 
@@ -58,6 +71,10 @@ typedef struct reg_alloc_info_t {
 
 } reg_alloc_info_t;
 
+static_assert(
+        offsetof(reg_alloc_info_t, precolored) + (WL_SELECT * sizeof(void*)) ==
+        offsetof(reg_alloc_info_t, select_stack),
+        "offsetof(..., select_stack)");
 
 static temp_t* temp_for_node(reg_alloc_info_t* info, lv_node_t* node)
 {
@@ -127,15 +144,25 @@ node_list_prepend(lv_node_list_t** pworklist, lv_node_list_t* cell)
     *pworklist = cell;
 }
 
-static bool
-node_list_contains(const lv_node_list_t* haystack, const lv_node_t* node)
+static void
+worklist_prepend(
+        reg_alloc_info_t* info, enum worklist_mem wl, lv_node_list_t* cell)
 {
-    for (var h = haystack; h; h = h->nl_list) {
-        if (lv_eq(h->nl_node, node)) {
-            return true;
-        }
-    }
-    return false;
+    // This will make refactoring harder...
+    lv_node_list_t** pnl =
+        (lv_node_list_t**)(
+                    (char*)info
+                    + offsetof(reg_alloc_info_t, precolored)
+                    + (wl * sizeof(void*)));
+    node_list_prepend(pnl, cell);
+    info->worklist[cell->nl_node->lvn_idx] = wl;
+}
+
+static bool
+worklist_contains(
+        reg_alloc_info_t* info, enum worklist_mem wl, const lv_node_t* node)
+{
+    return info->worklist[node->lvn_idx] == wl;
 }
 
 
@@ -235,7 +262,7 @@ get_degree(reg_alloc_info_t* info, lv_node_t* n)
 static lv_node_t*
 get_alias(reg_alloc_info_t* info, lv_node_t* n)
 {
-    if (node_list_contains(info->coalesced_nodes, n)) {
+    if (worklist_contains(info, WL_COALESCED, n)) {
         var alias = Table_get(info->alias, n);
         assert(alias);
         return get_alias(info, alias);
@@ -337,8 +364,8 @@ adj_it_next(adj_it_t* it)
         it->next = it->next->nl_list; /* prepare for next iteration in advance */
 
         var m = nln->nl_node;
-        if (!node_list_contains(it->info->select_stack, m)
-                && !node_list_contains(it->info->coalesced_nodes, m)) {
+        if (!worklist_contains(it->info, WL_SELECT, m)
+                && !worklist_contains(it->info, WL_COALESCED, m)) {
             return m;
         }
     }
@@ -418,16 +445,16 @@ decrement_degree(reg_alloc_info_t* info, lv_node_t* m)
         enable_moves_adj(info, m);
 
         // hack to deal with combine not keeping things consistent
-        if ((node_list_contains(info->freeze_worklist, m) && is_move_related(info, m)) ||
-                (node_list_contains(info->simplify_worklist, m) && !is_move_related(info, m))) {
+        if ((worklist_contains(info, WL_FREEZE, m) && is_move_related(info, m)) ||
+                (worklist_contains(info, WL_SIMPLIFY, m) && !is_move_related(info, m))) {
             return;
         }
 
         var m_cell = node_list_remove(&info->spill_worklist, m);
         if (is_move_related(info, m_cell->nl_node)) {
-            node_list_prepend(&info->freeze_worklist, m_cell);
+            worklist_prepend(info, WL_FREEZE, m_cell);
         } else {
-            node_list_prepend(&info->simplify_worklist, m_cell);
+            worklist_prepend(info, WL_SIMPLIFY, m_cell);
         }
     }
 }
@@ -450,7 +477,7 @@ simplify(reg_alloc_info_t* info)
     var n_cell = node_list_remove(&info->simplify_worklist, n);
 
     // push onto the select_stack
-    node_list_prepend(&info->select_stack, n_cell);
+    worklist_prepend(info, WL_SELECT, n_cell);
 
     adj_it_t it = {};
     adj_it_init(&it, info, n);
@@ -465,7 +492,7 @@ static bool
 ok(reg_alloc_info_t* info, lv_node_t* t, lv_node_t* r)
 {
     return info->degree[t->lvn_idx] < info->K
-        || node_list_contains(info->precolored, t)
+        || worklist_contains(info, WL_PRECOLORED, t)
         || lv_is_adj(t, r);
 }
 
@@ -519,12 +546,12 @@ conservative_adj(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 static void
 add_work_list(reg_alloc_info_t* info, lv_node_t* u)
 {
-    if (!node_list_contains(info->precolored, u)
+    if (!worklist_contains(info, WL_PRECOLORED, u)
             && !is_move_related(info, u)
             && info->degree[u->lvn_idx] < info->K)
     {
         var u_cell = node_list_remove(&info->freeze_worklist, u);
-        node_list_prepend(&info->simplify_worklist, u_cell);
+        worklist_prepend(info, WL_SIMPLIFY, u_cell);
     }
 }
 
@@ -534,7 +561,7 @@ add_work_list(reg_alloc_info_t* info, lv_node_t* u)
 static void
 add_edge_helper(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 {
-    assert(!node_list_contains(info->precolored, u));
+    assert(!worklist_contains(info, WL_PRECOLORED, u));
     // degree is the number of adjacent but not precolored nodes
     info->degree[u->lvn_idx] += 1;
 
@@ -547,10 +574,10 @@ add_edge(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 {
     if (!lv_is_adj(u, v) && !lv_eq(u, v)) {
         lv_mk_edge(u, v);
-        if (!node_list_contains(info->precolored, u)) {
+        if (!worklist_contains(info, WL_PRECOLORED, u)) {
             add_edge_helper(info, u, v);
         }
-        if (!node_list_contains(info->precolored, v)) {
+        if (!worklist_contains(info, WL_PRECOLORED, v)) {
             add_edge_helper(info, v, u);
         }
     }
@@ -560,13 +587,13 @@ static void
 combine(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 {
     lv_node_list_t* v_cell;
-    if (node_list_contains(info->freeze_worklist, v)) {
+    if (worklist_contains(info, WL_FREEZE, v)) {
         v_cell = node_list_remove(&info->freeze_worklist, v);
     } else {
         v_cell = node_list_remove(&info->spill_worklist, v);
     }
 
-    node_list_prepend(&info->coalesced_nodes, v_cell);
+    worklist_prepend(info, WL_COALESCED, v_cell);
 
     Table_put(info->alias, v, u);
 
@@ -590,9 +617,9 @@ combine(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
     }
 
     if (info->degree[u->lvn_idx] >= info->K
-            && node_list_contains(info->freeze_worklist, u)) {
+            && worklist_contains(info, WL_FREEZE, u)) {
         var u_cell = node_list_remove(&info->freeze_worklist, u);
-        node_list_prepend(&info->spill_worklist, u_cell);
+        worklist_prepend(info, WL_SPILL, u_cell);
     }
 }
 
@@ -611,7 +638,7 @@ coalesce(reg_alloc_info_t* info)
     lv_node_t* y = get_alias(info, m_cell->npl_node->np_node1);
 
     lv_node_t *u, *v;
-    if (node_list_contains(info->precolored, y)) {
+    if (worklist_contains(info, WL_PRECOLORED, y)) {
         u = y; v = x;
     } else {
         u = x; v = y;
@@ -625,13 +652,13 @@ coalesce(reg_alloc_info_t* info)
         m_cell->npl_list = info->coalesced_moves;
         info->coalesced_moves = m_cell;
         add_work_list(info, u);
-    } else if (node_list_contains(info->precolored, v) || lv_is_adj(u, v)) {
+    } else if (worklist_contains(info, WL_PRECOLORED, v) || lv_is_adj(u, v)) {
         m_cell->npl_list = info->constrained_moves;
         info->constrained_moves = m_cell;
         add_work_list(info, u);
         add_work_list(info, v);
     } else {
-        bool is_u_precolored = node_list_contains(info->precolored, u);
+        bool is_u_precolored = worklist_contains(info, WL_PRECOLORED, u);
         if ((is_u_precolored && all_adjacent_ok(info, u, v))
                 || (!is_u_precolored && conservative_adj(info, u, v))) {
 
@@ -671,9 +698,9 @@ freeze_moves(reg_alloc_info_t* info, lv_node_t* u)
 
         if (!is_move_related(info, v) && get_degree(info, v) < info->K) {
 
-            if (node_list_contains(info->freeze_worklist, v)) {
+            if (worklist_contains(info, WL_FREEZE, v)) {
                 var v_cell = node_list_remove(&info->freeze_worklist, v);
-                node_list_prepend(&info->simplify_worklist, v_cell);
+                worklist_prepend(info, WL_SIMPLIFY, v_cell);
             }
 
         }
@@ -689,7 +716,7 @@ freeze(reg_alloc_info_t* info)
 {
     var u = info->freeze_worklist->nl_node;
     var u_cell = node_list_remove(&info->freeze_worklist, u);
-    node_list_prepend(&info->simplify_worklist, u_cell);
+    worklist_prepend(info, WL_SIMPLIFY, u_cell);
     freeze_moves(info, u);
 }
 
@@ -750,7 +777,7 @@ select_spill(
     }
 
     var m_cell = node_list_remove(&info->spill_worklist, m);
-    node_list_prepend(&info->simplify_worklist, m_cell);
+    worklist_prepend(info, WL_SIMPLIFY, m_cell);
 
     freeze_moves(info, m);
 }
@@ -780,8 +807,8 @@ assign_colors(reg_alloc_info_t* info)
         if (debug) { print_adj_list(info, adj); }
         for (var wn = adj; wn; wn = wn->nl_list) {
             var w_alias = get_alias(info, wn->nl_node);
-            if (node_list_contains(info->colored_nodes, w_alias)
-                    || node_list_contains(info->precolored, w_alias)) {
+            if (worklist_contains(info, WL_COLORED, w_alias)
+                    || worklist_contains(info, WL_PRECOLORED, w_alias)) {
                 var w_color = info->color[w_alias->lvn_idx];
                 // remove from ok_colors
                 ClearBit(ok_colors, w_color);
@@ -792,10 +819,10 @@ assign_colors(reg_alloc_info_t* info)
         // If we have no remaining colours, spill.
         if (__builtin_popcountll(_ok_colors) == 0) {
             if (debug) { fprintf(stderr, "spill\n"); }
-            node_list_prepend(&info->spilled_nodes, n_cell);
+            worklist_prepend(info, WL_SPILLED, n_cell);
         } else {
             // add n to coloured nodes
-            node_list_prepend(&info->colored_nodes, n_cell);
+            worklist_prepend(info, WL_COLORED, n_cell);
 
             // store the new first available colour for n
             int new_color = __builtin_ctzll(_ok_colors);
@@ -915,6 +942,7 @@ struct ra_color_result {
     // NOLINTNEXTLINE(bugprone-sizeof-expression)
     info.move_list = Salloc(count_nodes * sizeof *info.move_list);
     info.alias = Table_new(0, cmpnode, hashnode);
+    info.worklist = Salloc(count_nodes * sizeof *info.worklist);
 #undef Salloc
 
     for (var n = nodes; n; n = n->nl_list) {
@@ -928,6 +956,7 @@ struct ra_color_result {
             info.color[node->lvn_idx] = t->temp_id;
         } else {
             info.initial = list_cons(node, info.initial, info.scratch);
+            info.worklist[node->lvn_idx] = WL_INITIAL;
 
             lv_node_list_t* adj = lv_adj(node);
             for (var s = adj; s; s = s->nl_list) {
@@ -973,18 +1002,15 @@ struct ra_color_result {
         if (info.degree[node->lvn_idx] >= info.K) {
             // add to spill_worklist
             info.initial = n->nl_list;
-            n->nl_list = info.spill_worklist;
-            info.spill_worklist = n;
+            worklist_prepend(&info, WL_SPILL, n);
         } else if (enable_coalescing && is_move_related(&info, node)) {
             // add to freeze_worklist
             info.initial = n->nl_list;
-            n->nl_list = info.freeze_worklist;
-            info.freeze_worklist = n;
+            worklist_prepend(&info, WL_FREEZE, n);
         } else {
             // add to simplify_worklist
             info.initial = n->nl_list;
-            n->nl_list = info.simplify_worklist;
-            info.simplify_worklist = n;
+            worklist_prepend(&info, WL_SIMPLIFY, n);
         }
     }
 
@@ -1048,7 +1074,7 @@ struct ra_color_result {
     for (var n = info.coalesced_nodes; n; n = n->nl_list) {
         var node = n->nl_node;
         var alias = get_alias(&info, node);
-        if (node_list_contains(info.spilled_nodes, alias)) {
+        if (worklist_contains(&info, WL_SPILLED, alias)) {
             continue;
         }
 
