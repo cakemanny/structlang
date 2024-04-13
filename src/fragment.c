@@ -49,10 +49,12 @@ sl_fragment_t* fr_append(sl_fragment_t* hd, sl_fragment_t* to_append)
     if (!hd)
         return to_append;
 
-    var final_node = hd;
+    var final_node = (hd->fr_last) ? hd->fr_last : hd;
     while (final_node->fr_list)
         final_node = final_node->fr_list;
     final_node->fr_list = to_append;
+
+    hd->fr_last = to_append;
 
     return hd;
 }

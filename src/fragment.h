@@ -29,6 +29,7 @@ struct sl_fragment_t {
         }; // FR_FRAME_MAP
     };
     sl_fragment_t* fr_list;
+    sl_fragment_t* fr_last; // for O(1) append
 };
 
 sl_fragment_t* sl_code_fragment(tree_stm_t* body, ac_frame_t* frame, Arena_T);

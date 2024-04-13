@@ -444,13 +444,8 @@ interference_graph(
 
             // out[n] = union {in[s] for s in succ[n]}
             node_set2_clear(out_n);
-            node_vec_t succ = lv_succ_vec(node);
-            for (int i = 0; i < succ.nv_len; i++) {
-                lv_node_t node = {
-                    .lvn_graph=igraph->lvig_graph,
-                    .lvn_idx=succ.nv_elems[i],
-                };
-                node_set2_t in_s = Table_NST_get(live_in_map, &node);
+            for (var it = lv_succ(node); lv_node_it_next(&it);) {
+                node_set2_t in_s = Table_NST_get(live_in_map, &it.lvni_node);
                 node_set2_union(out_n, out_n, in_s);
             }
 

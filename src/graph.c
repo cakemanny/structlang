@@ -131,22 +131,30 @@ lv_nodes(lv_graph_t* graph)
     return result;
 }
 
-node_vec_t
-lv_succ_vec(lv_node_t* n)
+lv_node_it
+lv_succ(lv_node_t* n)
 {
     var graph = n->lvn_graph;
-    var v = graph->nodes.data[n->lvn_idx].succ;
-    node_vec_t result = {
-        .nv_elems = v.data,  // we do this assignment to get some sort
-                             // of type compatibility checking
-        .nv_len = v.len,
-        .nv_capacity = v.cap,
+    node_array_t* a = &graph->nodes.data[n->lvn_idx].succ;
+    return (lv_node_it){
+        .node_array = a,
+        .graph = graph,
+        .i = 0,
     };
-    return result;
 }
 
-// lv_succ ?
-
+bool
+lv_node_it_next(lv_node_it* it)
+{
+    var a = (node_array_t*)it->node_array;
+    var has_next = it->i < a->len;
+    if (has_next) {
+        it->lvni_node.lvn_graph = it->graph;
+        it->lvni_node.lvn_idx = a->data[it->i];
+        it->i++;
+    }
+    return has_next;
+}
 
 void
 lv_node_list_free(lv_node_list_t* nl)

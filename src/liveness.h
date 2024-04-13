@@ -13,33 +13,33 @@
  * Graph
  */
 typedef struct lv_graph_t lv_graph_t;
-typedef struct lv_node_t lv_node_t;
 
-struct lv_node_t {
+typedef struct lv_node_t {
     lv_graph_t* lvn_graph;
     size_t lvn_idx;
-};
+} lv_node_t;
 
 typedef struct lv_node_list_t {
     lv_node_t* nl_node;
     struct lv_node_list_t* nl_list;
 } lv_node_list_t;
 
+typedef struct {
+    lv_node_t lvni_node;
+    const void* node_array;
+    lv_graph_t* graph;
+    int i;
+} lv_node_it;
+
+extern bool lv_node_it_next(lv_node_it*);
 
 extern lv_node_list_t* lv_nodes(lv_graph_t*);
-extern lv_node_list_t* lv_succ(lv_node_t*);
+extern lv_node_it lv_succ(lv_node_t*);
 extern lv_node_list_t* lv_pred(lv_node_t*);
 extern lv_node_list_t* lv_adj(lv_node_t*);
 extern void lv_node_list_free(lv_node_list_t*);
 extern bool lv_eq(const lv_node_t*, const lv_node_t*);
 extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
-
-typedef struct node_vec {
-    int *nv_elems;
-    int nv_len;
-    int nv_capacity;
-} node_vec_t;
-extern node_vec_t lv_succ_vec(lv_node_t*);
 
 extern lv_graph_t* lv_new_graph();
 extern size_t lv_graph_length(const lv_graph_t*);

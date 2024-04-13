@@ -26,7 +26,7 @@ struct sl_decl_t {
     sl_expr_t* dl_body;     // SL_DECL_FUNC
 
     sl_decl_t* dl_list; // next declaration in program
-    sl_decl_t* dl_link; // all sl_decl_t nodes
+    sl_decl_t* dl_last; // end of list for O(1) append
 };
 
 /* These need to somehow be interned / refer to a table of type declarations */

@@ -26,7 +26,7 @@ static sl_decl_t* dl_alloc(int tag)
     node->dl_type = NULL;
     node->dl_body = NULL;
     node->dl_list = NULL;
-    node->dl_link = NULL; // TODO: should be added to allocator's list
+    node->dl_last = NULL;
     return node;
 }
 
@@ -62,10 +62,13 @@ sl_decl_t* dl_append(sl_decl_t* dln, sl_decl_t* to_append)
     if (!dln)
         return to_append;
 
-    sl_decl_t* final_node = dln;
+    sl_decl_t* final_node = (dln->dl_last) ? dln->dl_last : dln;
     while (final_node->dl_list)
         final_node = final_node->dl_list;
     final_node->dl_list = to_append;
+
+    // stash the end node for O(1) append
+    dln->dl_last = to_append;
 
     return dln;
 }
