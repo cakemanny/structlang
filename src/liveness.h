@@ -29,24 +29,33 @@ typedef struct {
     const void* node_array;
     lv_graph_t* graph;
     int i;
-} lv_node_it;
+} lv_node_it_arr;
 
-extern bool lv_node_it_next(lv_node_it*);
+typedef struct {
+    lv_node_t lvni_node;
+    int i;
+} lv_node_it_virt;
 
-extern lv_node_list_t* lv_nodes(lv_graph_t*);
-extern lv_node_it lv_succ(lv_node_t*);
-extern lv_node_it lv_pred(lv_node_t*);
+extern bool _lv_node_it_arr_next(lv_node_it_arr*);
+extern bool _lv_node_it_virt_next(lv_node_it_virt* it);
+#define lv_node_it_next(it) _Generic((it) \
+        , lv_node_it_arr*: _lv_node_it_arr_next \
+        , lv_node_it_virt*: _lv_node_it_virt_next \
+        )(it)
+
+extern lv_node_it_virt lv_nodes(lv_graph_t*);
+extern lv_node_it_arr lv_succ(lv_node_t*);
+extern lv_node_it_arr lv_pred(lv_node_t*);
 extern lv_node_list_t* lv_adj(lv_node_t*);
 extern void lv_node_list_free(lv_node_list_t*);
 extern bool lv_eq(const lv_node_t*, const lv_node_t*);
 extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
 
-extern lv_graph_t* lv_new_graph();
+extern lv_graph_t* lv_new_graph(Arena_T);
 extern size_t lv_graph_length(const lv_graph_t*);
-extern void lv_free_graph(lv_graph_t*);
-extern lv_node_t* lv_new_node(lv_graph_t* graph);
+extern void lv_free_graph(lv_graph_t**);
+extern lv_node_t* lv_new_node(lv_graph_t* graph, Arena_T);
 /* for when freeing a node that came from lv_new_node */
-extern void lv_free_node(lv_node_t*);
 extern void lv_mk_edge(lv_node_t* from, lv_node_t* to);
 extern void lv_rm_edge(lv_node_t* from, lv_node_t* to);
 

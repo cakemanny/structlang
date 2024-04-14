@@ -2,7 +2,6 @@
 #include <assert.h> /* assert */
 #include <stdbool.h> /* bool */
 #include <string.h>
-#include "mem.h" // xmalloc
 #include "grammar.tab.h"
 #include "arena_util.h"
 
@@ -68,25 +67,25 @@ static tree_stm_t* lbf_call(label_bifunc_t lbf, sl_sym_t t, sl_sym_t f, Arena_T 
     return lbf.lbf_fn(t, f, lbf.lbf_cl, a);
 }
 
-static translate_exp_t* translate_ex(tree_exp_t* e)
+static translate_exp_t* translate_ex(tree_exp_t* e, Arena_T ar)
 {
-    translate_exp_t* result = xmalloc(sizeof *result);
+    translate_exp_t* result = Alloc(ar, sizeof *result);
     result->tr_exp_tag = TR_EXP_EX;
     result->tr_exp_ex = e;
     return result;
 }
 
-static translate_exp_t* translate_nx(tree_stm_t* s)
+static translate_exp_t* translate_nx(tree_stm_t* s, Arena_T ar)
 {
-    translate_exp_t* result = xmalloc(sizeof *result);
+    translate_exp_t* result = Alloc(ar, sizeof *result);
     result->tr_exp_tag = TR_EXP_NX;
     result->tr_exp_nx = s;
     return result;
 }
 
-static translate_exp_t* translate_cx(label_bifunc_t genstm)
+static translate_exp_t* translate_cx(label_bifunc_t genstm, Arena_T ar)
 {
-    translate_exp_t* result = xmalloc(sizeof *result);
+    translate_exp_t* result = Alloc(ar, sizeof *result);
     result->tr_exp_tag = TR_EXP_CX;
     result->tr_exp_cx = genstm;
     return result;
@@ -96,22 +95,19 @@ static tree_exp_t* translate_un_ex(translate_info_t* info, translate_exp_t* ex)
 {
     temp_state_t* ts = info->temp_state;
     Arena_T ar = info->ret_arena;
-    tree_exp_t* ret;
     switch (ex->tr_exp_tag) {
         case TR_EXP_EX:
-            ret = ex->tr_exp_ex;
-            break;
+            return ex->tr_exp_ex;
         case TR_EXP_NX:
-            ret = tree_exp_eseq(ex->tr_exp_nx,
+            return tree_exp_eseq(ex->tr_exp_nx,
                     tree_exp_const(0, ac_word_size, tree_typ_void(ar), ar), ar);
-            break;
         case TR_EXP_CX:
         {
             temp_t r = temp_newtemp(ts, bool_size, TEMP_DISP_NOT_PTR);
             sl_sym_t t = temp_newlabel(ts);
             sl_sym_t f = temp_newlabel(ts);
 
-            ret = tree_exp_eseq(
+            return tree_exp_eseq(
                     tree_stm_seq(
                     tree_stm_seq(
                     tree_stm_seq(
@@ -135,38 +131,30 @@ static tree_exp_t* translate_un_ex(translate_info_t* info, translate_exp_t* ex)
             break;
         }
     }
-    free(ex);
-    return ret;
 }
 
 static tree_stm_t* translate_un_nx(translate_info_t* info, translate_exp_t* ex)
 {
     temp_state_t* ts = info->temp_state;
     Arena_T arena = info->ret_arena;
-    tree_stm_t* ret;
     switch (ex->tr_exp_tag) {
         case TR_EXP_EX:
-            ret = tree_stm_exp(ex->tr_exp_ex, arena);
-            break;
+            return tree_stm_exp(ex->tr_exp_ex, arena);
         case TR_EXP_NX:
-            ret = ex->tr_exp_nx;
-            break;
+            return ex->tr_exp_nx;
         case TR_EXP_CX:
         {
             // Just evaluate the conditional and continue...
             // Not sure if it's legal to end with a label...
             // maybe we need a post-label no-op?
             sl_sym_t dst = temp_newlabel(ts);
-            ret = tree_stm_seq(
+            return tree_stm_seq(
                 lbf_call(ex->tr_exp_cx, dst, dst, arena), /* genstm */
                 tree_stm_label(dst, arena),
                 arena
             );
-            break;
         }
     }
-    free(ex);
-    return ret;
 }
 
 static tree_stm_t* unconditional_jump(sl_sym_t dst, Arena_T a)
@@ -201,7 +189,6 @@ static label_bifunc_t translate_un_cx(translate_exp_t* ex)
         case TR_EXP_EX:
         {
             tree_exp_t* e = ex->tr_exp_ex;
-            free(ex);
             switch (e->te_tag) {
                 case TREE_EXP_CONST:
                     if (e->te_const == 0) {
@@ -222,9 +209,7 @@ static label_bifunc_t translate_un_cx(translate_exp_t* ex)
             assert(0 && "impossible case");
         case TR_EXP_CX:
         {
-            var cx = ex->tr_exp_cx;
-            free(ex);
-            return cx;
+            return ex->tr_exp_cx;
         }
     }
 }
@@ -375,7 +360,7 @@ static translate_exp_t* translate_expr_var(
 {
     tree_exp_t* result = translate_var_mem_ref_expr(info, frame,
             expr->ex_var_id, expr->ex_type);
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_int(
@@ -386,7 +371,7 @@ static translate_exp_t* translate_expr_int(
             expr->ex_value,
             size_of_type(info->program, expr->ex_type),
             tree_typ_int(ar), ar);
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_bool(
@@ -397,7 +382,7 @@ static translate_exp_t* translate_expr_bool(
             expr->ex_value,
             size_of_type(info->program, expr->ex_type),
             tree_typ_bool(ar), ar);
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_void(
@@ -406,7 +391,8 @@ static translate_exp_t* translate_expr_void(
     var ar = info->ret_arena;
     /* TODO: or shoud this have 0 size? */
     return translate_ex(
-            tree_exp_const(0, ac_word_size, tree_typ_void(ar), ar));
+            tree_exp_const(0, ac_word_size, tree_typ_void(ar), ar),
+            info->scratch);
 }
 
 
@@ -473,7 +459,7 @@ static translate_exp_t* translate_expr_binop(
                 cl->ts = info->temp_state;
                 cl->lhe = lhe;
                 cl->rhe = rhe;
-                return translate_cx(label_bifunc(logical_or, cl));
+                return translate_cx(label_bifunc(logical_or, cl), info->scratch);
             }
         case SL_TOK_LAND:
             {
@@ -486,7 +472,7 @@ static translate_exp_t* translate_expr_binop(
                 cl->ts = info->temp_state;
                 cl->lhe = lhe;
                 cl->rhe = rhe;
-                return translate_cx(label_bifunc(logical_and, cl));
+                return translate_cx(label_bifunc(logical_and, cl), info->scratch);
             }
         default: break;
     }
@@ -518,7 +504,7 @@ static translate_exp_t* translate_expr_binop(
         cl->relop = relop;
         cl->lhe = lhe;
         cl->rhe = rhe;
-        return translate_cx(label_bifunc(compare_and_jump, cl));
+        return translate_cx(label_bifunc(compare_and_jump, cl), info->scratch);
     }
 
     int op = -1;
@@ -537,7 +523,7 @@ static translate_exp_t* translate_expr_binop(
     assert(op != -1);
 
     tree_exp_t* result = tree_exp_binop(op, lhe, rhe, info->ret_arena);
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_let(
@@ -563,7 +549,7 @@ static translate_exp_t* translate_expr_let(
 
     tree_stm_t* result = tree_stm_move(dst, rhe, info->ret_arena);
 
-    return translate_nx(result);
+    return translate_nx(result, info->scratch);
 }
 
 static sl_sym_t label_for_descriptor(
@@ -669,7 +655,7 @@ static translate_exp_t* translate_expr_new(
                 translate_type(ar, info->program, expr->ex_type), ar),
             ar
     );
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_call(
@@ -697,7 +683,7 @@ static translate_exp_t* translate_expr_call(
         ac_calculate_ptr_maps(frame, expr->ex_fn_defd_vars, ar),
         ar
     );
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 /*
@@ -751,7 +737,7 @@ static translate_exp_t* translate_expr_return(
         result = tree_stm_seq(move_stmt, result, arena);
     }
 
-    return translate_nx(result);
+    return translate_nx(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_break(
@@ -762,7 +748,7 @@ static translate_exp_t* translate_expr_break(
      */
     tree_stm_t* result = unconditional_jump(
             info->current_loop_end, info->ret_arena);
-    return translate_nx(result);
+    return translate_nx(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_loop(
@@ -798,7 +784,7 @@ static translate_exp_t* translate_expr_loop(
     tree_stm_t* result = tree_stm_seq(
             translated_stmts,
             tree_stm_label(loop_end, info->ret_arena), info->ret_arena);
-    return translate_nx(result);
+    return translate_nx(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_deref(
@@ -816,7 +802,7 @@ static translate_exp_t* translate_expr_deref(
                 info->ret_arena, info->program, expr->ex_deref_arg->ex_type);
 
     tree_exp_t* result = tree_exp_mem(arg, size, type, info->ret_arena);
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_addrof(
@@ -836,7 +822,7 @@ static translate_exp_t* translate_expr_addrof(
      */
     assert(arg->te_tag == TREE_EXP_MEM);
     tree_exp_t* result = arg->te_mem_addr;
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_member(
@@ -896,7 +882,7 @@ static translate_exp_t* translate_expr_member(
                 arena
                 );
 
-        return translate_ex(result);
+        return translate_ex(result, info->scratch);
     }
 
     // The uncommon case: The struct fits in a register
@@ -931,7 +917,7 @@ static translate_exp_t* translate_expr_member(
                 mask, base_ref->te_size, base_ref->te_type, arena),
             arena
             );
-    return translate_ex(result);
+    return translate_ex(result, info->scratch);
 }
 
 static translate_exp_t* translate_expr_if(
@@ -966,7 +952,7 @@ static translate_exp_t* translate_expr_if(
     res = tree_stm_seq(res, tree_stm_move(r_exp, alt, arena), arena);
     res = tree_stm_seq(res, unconditional_jump(join, arena), arena);
     res = tree_stm_seq(res, tree_stm_label(join, arena), arena);
-    return translate_ex(tree_exp_eseq(res, r_exp, arena));
+    return translate_ex(tree_exp_eseq(res, r_exp, arena), info->scratch);
 }
 
 static translate_exp_t* translate_expr(

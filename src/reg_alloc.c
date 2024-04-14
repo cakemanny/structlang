@@ -734,16 +734,16 @@ spill_cost(
     int cost = 0;
 
     var flow = info->flowgraph;
-    var nodes = lv_nodes(flow->lvfg_control);
-    for (var n = nodes; n; n = n->nl_list) {
-        temp_list_t* use_n = Table_get(flow->lvfg_use, n->nl_node);
+    for (var it = lv_nodes(flow->lvfg_control); lv_node_it_next(&it); ) {
+        var node = &it.lvni_node;
+        temp_list_t* use_n = Table_get(flow->lvfg_use, node);
         for (var u = use_n; u; u = u->tmp_list) {
             if (u->tmp_temp.temp_id == t.temp_id) {
                 cost += 1;
                 break;
             }
         }
-        temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
+        temp_list_t* def_n = Table_get(flow->lvfg_def, node);
         for (var d = def_n; d; d = d->tmp_list) {
             if (d->tmp_temp.temp_id == t.temp_id) {
                 cost += 1;
@@ -751,7 +751,6 @@ spill_cost(
             }
         }
     }
-    lv_node_list_free(nodes);
     return cost;
 }
 
@@ -932,8 +931,13 @@ struct ra_color_result {
     };
 #define Salloc(nbytes) Arena_alloc(info.scratch, nbytes, __FILE__, __LINE__)
 
-    var nodes = lv_nodes(interference->lvig_graph);
     var count_nodes = Table_length(interference->lvig_gtemp);
+    // Attention: all pointers to nodes which are stored, must be pointers
+    // into this nodes array to avoid dangles / observed mutation
+    lv_node_t* nodes = Salloc(count_nodes * sizeof *nodes);
+    for (var it = lv_nodes(interference->lvig_graph); lv_node_it_next(&it); ) {
+        nodes[it.lvni_node.lvn_idx] = it.lvni_node;
+    }
     info.degree = Salloc(count_nodes * sizeof *info.degree);
     info.color = Salloc(count_nodes * sizeof *info.color);
     // This is correct, since we are allocating an array of pointers
@@ -945,8 +949,9 @@ struct ra_color_result {
     info.worklist = Salloc(count_nodes * sizeof *info.worklist);
 #undef Salloc
 
-    for (var n = nodes; n; n = n->nl_list) {
-        var node = n->nl_node;
+
+    for (int i = 0; i < count_nodes; i++) {
+        var node = &nodes[i];
 
         temp_t* t = temp_for_node(&info, node);
 
@@ -958,18 +963,13 @@ struct ra_color_result {
             info.initial = list_cons(node, info.initial, info.scratch);
             info.worklist[node->lvn_idx] = WL_INITIAL;
 
-            lv_node_list_t* adj = lv_adj(node);
-            for (var s = adj; s; s = s->nl_list) {
-                var nn = nodes;
-                for (; nn; nn = nn->nl_list) {
-                    if (lv_eq(s->nl_node, nn->nl_node)) {
-                        break;
-                    }
+            for (int j = 0; j < count_nodes; j++) {
+                var m = &nodes[j];
+                // todo: write an efficient adj iterator
+                if (lv_is_adj(node, m)) {
+                    add_edge_helper(&info, node, m);
                 }
-                assert(nn);
-                add_edge_helper(&info, node, nn->nl_node);
             }
-            lv_node_list_free(adj);
         }
     }
 
@@ -1101,9 +1101,6 @@ struct ra_color_result {
 
     // dealloc all adj_lists
     Table_free(&info.alias);
-
-    lv_node_list_free(nodes);
-
     Arena_dispose(&info.scratch);
     return result;
 }
@@ -1290,12 +1287,11 @@ record_spill_liveness(
         )
 {
 
-    var nodes = lv_nodes(flowgraph->lvfg_control);
-    var nd = nodes;
-    for (var instr = instrs; instr; instr = instr->ai_list, nd = nd->nl_list) {
+    var it = lv_nodes(flowgraph->lvfg_control); lv_node_it_next(&it);
+    for (var instr = instrs; instr && lv_node_it_next(&it); instr = instr->ai_list) {
         if (is_call_instr(instr)) {
             temp_list_t* live_outs =
-                Table_get(igraph_and_table.live_outs, nd->nl_node);
+                Table_get(igraph_and_table.live_outs, &it.lvni_node);
 
             temp_list_t* spill_live_outs =
                 Table_get(label_to_spill_liveness, instr->ai_list->ai_label);
@@ -1321,7 +1317,6 @@ record_spill_liveness(
                     updated);
         }
     }
-    lv_node_list_free(nodes);
 }
 
 /*
@@ -1367,12 +1362,11 @@ compute_cs_ptr_dispo_at_call_sites(
             target->register_names[target->callee_saves.elems[i].temp_id];
     }
 
-    var nodes = lv_nodes(flowgraph->lvfg_control);
-    var nd = nodes;
-    for (var instr = instrs; instr; instr = instr->ai_list, nd = nd->nl_list) {
+    var it = lv_nodes(flowgraph->lvfg_control); lv_node_it_next(&it);
+    for (var instr = instrs; instr && lv_node_it_next(&it); instr = instr->ai_list) {
         if (is_call_instr(instr)) {
             temp_list_t* live_outs =
-                Table_get(igraph_and_table.live_outs, nd->nl_node);
+                Table_get(igraph_and_table.live_outs, &it.lvni_node);
 
             // Any non-live callee saved will get a value of 0b00.
             uint32_t cs_bitmap = 0;
@@ -1400,7 +1394,6 @@ compute_cs_ptr_dispo_at_call_sites(
                     table_value.v);
         }
     }
-    lv_node_list_free(nodes);
 }
 
 static void

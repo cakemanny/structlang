@@ -6,11 +6,7 @@
 void
 arrgrow(void *slice, long size)
 {
-    struct {
-        void *data;
-        int len;
-        int cap;
-    } replica;
+    arrtype(void) replica;
     memcpy(&replica, slice, sizeof replica);
 
     replica.cap = replica.cap ? replica.cap : 1;
@@ -29,11 +25,7 @@ arrgrow(void *slice, long size)
 
 #include "test_harness.h"
 
-typedef struct {
-    int* data;
-    int len;
-    int cap;
-} some_array_t;
+typedef arrtype(int) some_array_t;
 
 void
 test_array()

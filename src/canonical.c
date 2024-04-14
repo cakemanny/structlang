@@ -840,7 +840,7 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
 
     // build a new list of basic blocks by following the traces
 
-    struct { tree_stm_t** data; int len; int cap; } stmts_in_order = {};
+    arrtype(tree_stm_t*) stmts_in_order = {};
 
     for (var ti = traces; ti; ti = ti->tl_list) {
         for (var bb = ti->tl_trace; bb; bb = bb->bb_list) {

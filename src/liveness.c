@@ -1,11 +1,11 @@
 #include "liveness.h"
-#include "mem.h"
 #include "list.h"
 #include <assert.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define var __auto_type
@@ -50,7 +50,7 @@ typedef struct node_set_table {
 } node_set_table_t;
 
 static node_set_table_t
-node_set_table_new(size_t count, size_t max_elems)
+node_set_table_new(size_t count, size_t max_elems, Arena_T ar)
 {
     assert(count >= 1);
     assert(max_elems >= 1);
@@ -59,15 +59,8 @@ node_set_table_new(size_t count, size_t max_elems)
         .count = count,
         .len = max_elems,
     };
-    table.bits = xmalloc(count * BitsetBytes(max_elems));
+    table.bits = Alloc(ar, count * BitsetBytes(max_elems));
     return table;
-}
-static void node_set_table_free(node_set_table_t* table)
-{
-    assert(table);
-    assert(table->bits);
-    free(table->bits);
-    table->bits = NULL;
 }
 static node_set2_t node_set_table_get(node_set_table_t table, int idx)
 {
@@ -174,8 +167,8 @@ static unsigned hashnode(const void* key)
 struct flowgraph_and_node_list
 instrs2graph(const assm_instr_t* instrs, Arena_T arena)
 {
-    lv_flowgraph_t* flow_graph = xmalloc(sizeof *flow_graph);
-    var graph = flow_graph->lvfg_control = lv_new_graph();
+    lv_flowgraph_t* flow_graph = Alloc(arena, sizeof *flow_graph);
+    var graph = flow_graph->lvfg_control = lv_new_graph(arena);
 
     var def = flow_graph->lvfg_def = Table_new(0, cmpnode, hashnode);
     var use = flow_graph->lvfg_use = Table_new(0, cmpnode, hashnode);
@@ -190,7 +183,7 @@ instrs2graph(const assm_instr_t* instrs, Arena_T arena)
 
     const assm_instr_t* prev = NULL;
     for (var instr = instrs; instr; instr = instr->ai_list) {
-        var node = lv_new_node(graph);
+        var node = lv_new_node(graph, arena);
         nodes = list_cons(node, nodes, arena);
 
         switch (instr->ai_tag) {
@@ -333,11 +326,12 @@ bool lv_node_pair_eq(const lv_node_pair_t* lhs, const lv_node_pair_t* rhs)
 }
 
 
-static lv_node_t* ig_get_node_for_temp(lv_igraph_t* igraph, temp_t* ptemp)
+static lv_node_t*
+ig_get_node_for_temp(lv_igraph_t* igraph, temp_t* ptemp, Arena_T ar)
 {
     lv_node_t* ig_node = Table_get(igraph->lvig_tnode, ptemp);
     if (!ig_node) {
-        ig_node = lv_new_node(igraph->lvig_graph);
+        ig_node = lv_new_node(igraph->lvig_graph, ar);
         Table_put(igraph->lvig_tnode, ptemp, ig_node);
         Table_put(igraph->lvig_gtemp, ig_node, ptemp);
     }
@@ -345,11 +339,12 @@ static lv_node_t* ig_get_node_for_temp(lv_igraph_t* igraph, temp_t* ptemp)
 }
 
 
-static lv_node_t* ig_get_node_by_idx(lv_igraph_t* igraph, int i)
+static lv_node_t*
+ig_get_node_by_idx(lv_igraph_t* igraph, int i, Arena_T ar)
 {
     lv_node_t fake_node = {.lvn_graph=igraph->lvig_graph, .lvn_idx=i};
     var ptemp = Table_get(igraph->lvig_gtemp, &fake_node);
-    return ig_get_node_for_temp(igraph, ptemp);
+    return ig_get_node_for_temp(igraph, ptemp, ar);
 }
 
 
@@ -398,10 +393,11 @@ struct igraph_and_table
 interference_graph(
         lv_flowgraph_t* flow, lv_node_list_t* cg_nodes, Arena_T arena)
 {
+    Arena_T scratch = Arena_new();
     // First ensure that there is an interference graph node for
     // each temporary
-    lv_igraph_t* igraph = xmalloc(sizeof *igraph);
-    igraph->lvig_graph = lv_new_graph();
+    lv_igraph_t* igraph = Alloc(arena, sizeof *igraph);
+    igraph->lvig_graph = lv_new_graph(arena);
     igraph->lvig_tnode = Table_new(0, cmptemp, hashtemp);
     igraph->lvig_gtemp = Table_new(0, cmpnode, hashnode);
     igraph->lvig_moves = NULL;
@@ -412,60 +408,62 @@ interference_graph(
     for (var n = cg_nodes; n; n = n->nl_list) {
         temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
         for (var d = def_n; d; d = d->tmp_list) {
-            ig_get_node_for_temp(igraph, &d->tmp_temp);
+            ig_get_node_for_temp(igraph, &d->tmp_temp, arena);
         }
         temp_list_t* use_n = Table_get(flow->lvfg_use, n->nl_node);
         for (var u = use_n; u; u = u->tmp_list) {
-            ig_get_node_for_temp(igraph, &u->tmp_temp);
+            ig_get_node_for_temp(igraph, &u->tmp_temp, arena);
         }
     }
 
     // compute live outs
-    size_t igraph_length = lv_graph_length(igraph->lvig_graph);
-    size_t flowgraph_length = lv_graph_length(flow->lvfg_control);
+    size_t igraph_len = lv_graph_length(igraph->lvig_graph);
+    size_t fg_len = lv_graph_length(flow->lvfg_control);
 
     // using a topological sort means we navigate the control flow graph
     // from the end backwards. The speeds up the settling of iterative
     // equations.
-    lv_node_t* sorted = topological_sort(flowgraph_length, cg_nodes, arena);
+    // FIXME: this should use scratch, but we are leaking the references into
+    // our graph.
+    lv_node_t* sorted = topological_sort(fg_len, cg_nodes, arena);
 
-    node_set_table_t live_in_map = node_set_table_new(flowgraph_length, igraph_length);
-    node_set_table_t live_out_map = node_set_table_new(flowgraph_length, igraph_length);
-    node_set_table_t def_map = node_set_table_new(flowgraph_length, igraph_length);
-    node_set_table_t use_map = node_set_table_new(flowgraph_length, igraph_length);
+    node_set_table_t live_in_map = node_set_table_new(fg_len, igraph_len, scratch);
+    node_set_table_t live_out_map = node_set_table_new(fg_len, igraph_len, scratch);
+    node_set_table_t def_map = node_set_table_new(fg_len, igraph_len, scratch);
+    node_set_table_t use_map = node_set_table_new(fg_len, igraph_len, scratch);
 
-    for (int i = 0; i < flowgraph_length; i++) {
+    for (int i = 0; i < fg_len; i++) {
         var node = &sorted[i];
         var def_ns = Table_NST_get(def_map, node);
         var use_ns = Table_NST_get(use_map, node);
 
         temp_list_t* def_n = Table_get(flow->lvfg_def, node);
         for (var d = def_n; d; d = d->tmp_list) {
-            var d_node = ig_get_node_for_temp(igraph, &d->tmp_temp);
+            var d_node = ig_get_node_for_temp(igraph, &d->tmp_temp, arena);
             node_set2_add(def_ns, d_node);
         }
         temp_list_t* use_n = Table_get(flow->lvfg_use, node);
         for (var u = use_n; u; u = u->tmp_list) {
-            var u_node = ig_get_node_for_temp(igraph, &u->tmp_temp);
+            var u_node = ig_get_node_for_temp(igraph, &u->tmp_temp, arena);
             node_set2_add(use_ns, u_node);
         }
     }
 
 
-    node_set_table_t live_in_map_ = node_set_table_new(flowgraph_length, igraph_length);
-    node_set_table_t live_out_map_ = node_set_table_new(flowgraph_length, igraph_length);
+    node_set_table_t live_in_map_ = node_set_table_new(fg_len, igraph_len, scratch);
+    node_set_table_t live_out_map_ = node_set_table_new(fg_len, igraph_len, scratch);
 
     // space allocated for sets that we use within our loop.
-    node_set_table_t loop_statics = node_set_table_new(3, igraph_length);
+    node_set_table_t loop_statics = node_set_table_new(3, igraph_len, scratch);
     node_set2_t out_n = node_set_table_get(loop_statics, 0);
     node_set2_t in_n = node_set_table_get(loop_statics, 1);
     node_set2_t out_minus_def = node_set_table_get(loop_statics, 2);
 
-    node_set_table_t fgraph_sets = node_set_table_new(3, flowgraph_length);
+    node_set_table_t fgraph_sets = node_set_table_new(3, fg_len, scratch);
     // Algo 17.6 from the book adapted for liveness - i.e. we run it backwards
     node_set2_t worklist = node_set_table_get(fgraph_sets, 0);
 
-    for (int i = 0; i < flowgraph_length; i++) {
+    for (int i = 0; i < fg_len; i++) {
         var node = &sorted[i];
         node_set2_add(worklist, node);
     }
@@ -476,7 +474,7 @@ interference_graph(
         // todo: Investigate if priority queue / treap might be better for
         // retrieval.
         lv_node_t* node = NULL;
-        for (int i = 0; i < flowgraph_length; i++) {
+        for (int i = 0; i < fg_len; i++) {
             node = &sorted[i];
             if (node_set2_member(worklist, node)) {
                 break;
@@ -522,15 +520,9 @@ interference_graph(
         }
     }
     if (debug) {
-        fprintf(stderr, "## iterations = %d, gflen = %lu\n", iterations,
-                flowgraph_length);
+        fprintf(stderr, "## iterations = %d, fglen = %lu\n", iterations,
+                fg_len);
     }
-
-    // we are done with live_in_map and the diff maps
-    node_set_table_free(&loop_statics);
-    node_set_table_free(&live_in_map_);
-    node_set_table_free(&live_out_map_);
-    node_set_table_free(&live_in_map);
 
     // Now we have the live-out sets, we can compute the interference graph
 
@@ -541,7 +533,7 @@ interference_graph(
     // interfere with the live-outs at that instruction
     // 2. At any move instruction a <- c , b in live-outs interferes with a
     // if b != c.
-    for (int i = 0; i < flowgraph_length; i++) {
+    for (int i = 0; i < fg_len; i++) {
         var node = &sorted[i];
         node_set2_t def_n = Table_NST_get(def_map, node);
         node_set2_t use_n = Table_NST_get(use_map, node);
@@ -549,12 +541,13 @@ interference_graph(
 
         for (int i = 0; i < def_n.len; i++) {
             if (IsBitSet(def_n.bits, i)) {
-                lv_node_t* d_node = ig_get_node_by_idx(igraph, i);
+                lv_node_t* d_node = ig_get_node_by_idx(igraph, i, arena);
 
                 if (!Table_get(flow->lvfg_ismove, node)) {
                     for (int j = 0; j < out_ns.len; j++) {
                         if (IsBitSet(out_ns.bits, j)) {
-                            lv_node_t* t_node = ig_get_node_by_idx(igraph, j);
+                            lv_node_t* t_node =
+                                ig_get_node_by_idx(igraph, j, arena);
                             lv_mk_edge(d_node, t_node);
                         }
                     }
@@ -562,14 +555,15 @@ interference_graph(
                     assert(node_set2_count(use_n) == 1);
                     var u_idx = node_set2_first_idx(use_n);
 
-                    lv_node_t* u_node = ig_get_node_by_idx(igraph, u_idx);
+                    lv_node_t* u_node = ig_get_node_by_idx(igraph, u_idx, arena);
                     igraph->lvig_moves = lv_node_pair_cons(
                             lv_node_pair(d_node, u_node, arena),
                             igraph->lvig_moves, arena);
 
                     for (int j = 0; j < out_ns.len; j++) {
                         if (IsBitSet(out_ns.bits, j)) {
-                            lv_node_t* t_node = ig_get_node_by_idx(igraph, j);
+                            lv_node_t* t_node =
+                                ig_get_node_by_idx(igraph, j, arena);
                             // self moves don't interfere
                             if (lv_eq(t_node, u_node)) {
                                 continue;
@@ -581,15 +575,11 @@ interference_graph(
             }
         }
     }
-    // we are done with the def and use maps (until we convert our
-    // control flow graph structure)
-    node_set_table_free(&def_map);
-    node_set_table_free(&use_map);
 
     Table_T live_outs = Table_new(0, cmpnode, hashnode);
 
     // convert the live outs into a map just to temp_list
-    for (int i = 0; i < flowgraph_length; i++) {
+    for (int i = 0; i < fg_len; i++) {
         var node = &sorted[i];
         node_set2_t out_ns = Table_NST_get(live_out_map, node);
         if (node_set2_count(out_ns) > 0) {
@@ -604,20 +594,13 @@ interference_graph(
             Table_put(live_outs, node, out_temps);
         }
     }
-    node_set_table_free(&live_out_map);
 
+    Arena_dispose(&scratch);
     struct igraph_and_table result = {
         .igraph = igraph,
         .live_outs = live_outs,
     };
     return result;
-}
-
-static void
-tnode_entry_free(const void* key, void** value, void* cl)
-{
-    lv_node_t* ig_node = *value;
-    lv_free_node(ig_node);
 }
 
 void
@@ -628,34 +611,17 @@ lv_free_interference_and_flow_graph(
     // Free interference graph
     // values referenced by live_outs are on an arena
     Table_free(&igraph_and_live_outs->live_outs);
-    lv_free_graph(igraph_and_live_outs->igraph->lvig_graph);
-    igraph_and_live_outs->igraph->lvig_graph = NULL;
-    Table_map(igraph_and_live_outs->igraph->lvig_tnode, tnode_entry_free, NULL);
+    lv_free_graph(&igraph_and_live_outs->igraph->lvig_graph);
     Table_free(&igraph_and_live_outs->igraph->lvig_tnode);
     Table_free(&igraph_and_live_outs->igraph->lvig_gtemp);
     // lvig_moves: on an arena
-    free(igraph_and_live_outs->igraph); igraph_and_live_outs->igraph = NULL;
 
     // Free flow graph
-    lv_free_graph(flow_and_nodes->flowgraph->lvfg_control);
-    flow_and_nodes->flowgraph->lvfg_control = NULL;
+    lv_free_graph(&flow_and_nodes->flowgraph->lvfg_control);
 
     Table_free(&flow_and_nodes->flowgraph->lvfg_def);
     Table_free(&flow_and_nodes->flowgraph->lvfg_use);
     Table_free(&flow_and_nodes->flowgraph->lvfg_ismove);
-    free(flow_and_nodes->flowgraph); flow_and_nodes->flowgraph = NULL;
-
-    // free nodes from flow_and_nodes
-    for (lv_node_list_t *n = flow_and_nodes->node_list, *next=NULL; n; n = next) {
-        // read the field in advance of freeing the memory
-        next = n->nl_list;
-
-        lv_free_node(n->nl_node); n->nl_node = NULL;
-        n->nl_list = NULL;
-        // we don't free n, as it was allocated on an arena
-    }
-    flow_and_nodes->node_list = NULL;
-
 }
 
 // Yeah... so... the return value must be used immediately, or copied by the
@@ -694,42 +660,54 @@ flowgraph_print(
 }
 
 static temp_list_t*
-sorted_temps_for_nodes(lv_igraph_t* igraph, lv_node_list_t* nodes, Arena_T ar)
+temps_for_graph_nodes(lv_igraph_t* igraph, Arena_T ar)
 {
     temp_list_t* temps = NULL;
-    for (var s = nodes; s; s = s->nl_list) {
-        temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, s->nl_node);
+    for (var it = lv_nodes(igraph->lvig_graph); lv_node_it_next(&it); ) {
+        temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, &it.lvni_node);
         assert(temp_for_node);
         temps = temp_list_cons(*temp_for_node, temps, ar);
     }
-    return temp_list_sort(temps, ar);
+    return temps;
+}
+
+static temp_list_t*
+temps_for_adj(lv_igraph_t* igraph, lv_node_t* node, Arena_T ar)
+{
+    temp_list_t* temps = NULL;
+    for (var it = lv_nodes(igraph->lvig_graph); lv_node_it_next(&it); ) {
+        if (lv_is_adj(node, &it.lvni_node)) {
+            temp_t* temp_for_node = Table_get(igraph->lvig_gtemp, &it.lvni_node);
+            assert(temp_for_node);
+            temps = temp_list_cons(*temp_for_node, temps, ar);
+        }
+    }
+    return temps;
 }
 
 void igraph_show(FILE* out, lv_igraph_t* igraph)
 {
     fprintf(out, "# ---- Interference Graph ----\n");
 
-    var nodes = lv_nodes(igraph->lvig_graph);
     var scratch = Arena_new();
-    var sorted_temps = sorted_temps_for_nodes(igraph, nodes, scratch);
+    var sorted_temps = temp_list_sort(
+            temps_for_graph_nodes(igraph, scratch), scratch);
 
     for (var t = sorted_temps; t; t = t->tmp_list) {
 
         fprintf(out, "# %d [", t->tmp_temp.temp_id);
 
         var node = Table_get(igraph->lvig_tnode, &t->tmp_temp);
-        lv_node_list_t* adj = lv_adj(node);
 
-        var sorted_temps = sorted_temps_for_nodes(igraph, adj, scratch);
-        for (var t = sorted_temps; t; t = t->tmp_list) {
+        var sorted_adj_temps = temp_list_sort(
+            temps_for_adj(igraph, node, scratch), scratch);
+        for (var t = sorted_adj_temps; t; t = t->tmp_list) {
             fprintf(out, "%d,", t->tmp_temp.temp_id);
         }
-        lv_node_list_free(adj);
         fprintf(out, "]\n");
     }
     fprintf(out, "# ----------------------------\n");
     Arena_dispose(&scratch);
-    lv_node_list_free(nodes);
 
     fprintf(out, "# ----       Moves        ----\n");
     for (var mm = igraph->lvig_moves; mm; mm = mm->npl_list) {
