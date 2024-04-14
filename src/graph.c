@@ -143,6 +143,18 @@ lv_succ(lv_node_t* n)
     };
 }
 
+lv_node_it
+lv_pred(lv_node_t* n)
+{
+    var graph = n->lvn_graph;
+    node_array_t* a = &graph->nodes.data[n->lvn_idx].pred;
+    return (lv_node_it){
+        .node_array = a,
+        .graph = graph,
+        .i = 0,
+    };
+}
+
 bool
 lv_node_it_next(lv_node_it* it)
 {
@@ -166,8 +178,6 @@ lv_node_list_free(lv_node_list_t* nl)
         free(to_free);
     }
 }
-
-// TODO: lv_pred
 
 static int
 node_qsort_cmp(const void* x, const void* y)

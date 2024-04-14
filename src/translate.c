@@ -1076,6 +1076,7 @@ translate_program(
             // the next frame will be for the next function, so iter
             f = f->acf_link;
         }
+        Arena_free(info.scratch);
     }
     assert(!f);
 

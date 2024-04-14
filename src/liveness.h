@@ -35,7 +35,7 @@ extern bool lv_node_it_next(lv_node_it*);
 
 extern lv_node_list_t* lv_nodes(lv_graph_t*);
 extern lv_node_it lv_succ(lv_node_t*);
-extern lv_node_list_t* lv_pred(lv_node_t*);
+extern lv_node_it lv_pred(lv_node_t*);
 extern lv_node_list_t* lv_adj(lv_node_t*);
 extern void lv_node_list_free(lv_node_list_t*);
 extern bool lv_eq(const lv_node_t*, const lv_node_t*);
@@ -122,7 +122,9 @@ struct igraph_and_table {
      * that are Live Out at that node
      */
     Table_T live_outs; // lv_node_t* -> temp_list_t*
-} interference_graph(
+};
+
+struct igraph_and_table interference_graph(
         lv_flowgraph_t*, lv_node_list_t* cg_nodes, Arena_T);
 
 void lv_free_interference_and_flow_graph(

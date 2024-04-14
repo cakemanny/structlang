@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 
 #define var __auto_type
@@ -120,12 +121,12 @@ static int node_set2_count(const node_set2_t s)
 
 static bool node_set2_eq(const node_set2_t s, const node_set2_t t)
 {
-	assert(s.len == t.len);
-	for (int i = BitsetLen(s.len); --i >= 0; ) {
+    assert(s.len == t.len);
+    for (int i = BitsetLen(s.len); --i >= 0; ) {
         if (s.bits[i] != t.bits[i])
             return false;
     }
-	return true;
+    return true;
 }
 
 static void node_set2_add(node_set2_t s, const lv_node_t* node)
@@ -361,6 +362,44 @@ static lv_node_t* ig_get_node_by_idx(lv_igraph_t* igraph, int i)
     return ig_get_node_for_temp(igraph, ptemp);
 }
 
+
+static void
+depth_first_search(int* N, lv_node_t* i, bool* mark, lv_node_t* sorted)
+{
+    // TODO: change this into a work-stack based algorithm
+    // instead of recursive function
+    if (mark[i->lvn_idx] == false) {
+        mark[i->lvn_idx] = true;
+        for (var it = lv_pred(i); lv_node_it_next(&it);) {
+            depth_first_search(N, &it.lvni_node, mark, sorted);
+        }
+        sorted[*N - 1] = *i;
+        *N = *N - 1;
+    }
+}
+
+static lv_node_t*
+topological_sort(int flowgraph_length, lv_node_list_t* cg_nodes, Arena_T ar)
+{
+    int N = flowgraph_length;
+    bool* mark = Alloc(ar, N * sizeof *mark);
+    lv_node_t* sorted = Alloc(ar, N * sizeof *sorted);
+
+    lv_node_t* exit_node = NULL;
+    for (var n = cg_nodes; n; n = n->nl_list) {
+        int k = 0;
+        for (var it = lv_succ(n->nl_node); lv_node_it_next(&it);) {
+            k++; }
+        if (k == 0) {
+            exit_node = n->nl_node;
+        }
+    }
+    assert(exit_node);
+
+    depth_first_search(&N, exit_node, mark, sorted);
+    return sorted;
+}
+
 /*
  * Given a control flow graph (and its associated nodes), compute
  * the interference graph and the Live Outs for each flow graph node.
@@ -391,32 +430,31 @@ interference_graph(
         }
     }
 
-
-    // TODO: order nodes by depth-first search
-    // A simple initial strategy is to rever order the control graph nodes.
-    // By my testing, this halfs the number of iterations required.
-    cg_nodes = list_reverse(cg_nodes);
-
-    // compute live out
-    // live out
+    // compute live outs
     size_t igraph_length = lv_graph_length(igraph->lvig_graph);
     size_t flowgraph_length = lv_graph_length(flow->lvfg_control);
+
+    // using a topological sort means we navigate the control flow graph
+    // from the end backwards. The speeds up the settling of iterative
+    // equations.
+    lv_node_t* sorted = topological_sort(flowgraph_length, cg_nodes, arena);
 
     node_set_table_t live_in_map = node_set_table_new(flowgraph_length, igraph_length);
     node_set_table_t live_out_map = node_set_table_new(flowgraph_length, igraph_length);
     node_set_table_t def_map = node_set_table_new(flowgraph_length, igraph_length);
     node_set_table_t use_map = node_set_table_new(flowgraph_length, igraph_length);
 
-    for (var n = cg_nodes; n; n = n->nl_list) {
-        var def_ns = Table_NST_get(def_map, n->nl_node);
-        var use_ns = Table_NST_get(use_map, n->nl_node);
+    for (int i = 0; i < flowgraph_length; i++) {
+        var node = &sorted[i];
+        var def_ns = Table_NST_get(def_map, node);
+        var use_ns = Table_NST_get(use_map, node);
 
-        temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
+        temp_list_t* def_n = Table_get(flow->lvfg_def, node);
         for (var d = def_n; d; d = d->tmp_list) {
             var d_node = ig_get_node_for_temp(igraph, &d->tmp_temp);
             node_set2_add(def_ns, d_node);
         }
-        temp_list_t* use_n = Table_get(flow->lvfg_use, n->nl_node);
+        temp_list_t* use_n = Table_get(flow->lvfg_use, node);
         for (var u = use_n; u; u = u->tmp_list) {
             var u_node = ig_get_node_for_temp(igraph, &u->tmp_temp);
             node_set2_add(use_ns, u_node);
@@ -435,8 +473,8 @@ interference_graph(
 
     // calculate live-in and live-out sets iteratively
     for (;;) {
-        for (var n = cg_nodes; n; n = n->nl_list) {
-            var node = n->nl_node;
+        for (int i = 0; i < flowgraph_length; i++) {
+            var node = &sorted[i];
             // copy the previous iteration
             // in'[n] = in[n]; out'[n] = out[n]
             Table_NST_put(live_in_map_, node, Table_NST_get(live_in_map, node));
@@ -463,8 +501,8 @@ interference_graph(
         }
 
         bool match = true;
-        for (var n = cg_nodes; n; n = n->nl_list) {
-            var node = n->nl_node;
+        for (int i = 0; i < flowgraph_length; i++) {
+            var node = &sorted[i];
 
             node_set2_t in_ns_ = Table_NST_get(live_in_map_, node);
             node_set2_t in_ns = Table_NST_get(live_in_map, node);
@@ -499,8 +537,8 @@ interference_graph(
     // interfere with the live-outs at that instruction
     // 2. At any move instruction a <- c , b in live-outs interferes with a
     // if b != c.
-    for (var n = cg_nodes; n; n = n->nl_list) {
-        var node = n->nl_node;
+    for (int i = 0; i < flowgraph_length; i++) {
+        var node = &sorted[i];
         node_set2_t def_n = Table_NST_get(def_map, node);
         node_set2_t use_n = Table_NST_get(use_map, node);
         node_set2_t out_ns = Table_NST_get(live_out_map, node);
@@ -547,8 +585,9 @@ interference_graph(
     Table_T live_outs = Table_new(0, cmpnode, hashnode);
 
     // convert the live outs into a map just to temp_list
-    for (var n = cg_nodes; n; n = n->nl_list) {
-        node_set2_t out_ns = Table_NST_get(live_out_map, n->nl_node);
+    for (int i = 0; i < flowgraph_length; i++) {
+        var node = &sorted[i];
+        node_set2_t out_ns = Table_NST_get(live_out_map, node);
         if (node_set2_count(out_ns) > 0) {
             temp_list_t* out_temps = NULL;
             for (int j = 0; j < out_ns.len; j++) {
@@ -558,13 +597,10 @@ interference_graph(
                     out_temps = temp_list_cons(*ptemp, out_temps, arena);
                 }
             }
-            Table_put(live_outs, n->nl_node, out_temps);
+            Table_put(live_outs, node, out_temps);
         }
     }
     node_set_table_free(&live_out_map);
-
-    // Put the nodes back in order before we are caught!
-    cg_nodes = list_reverse(cg_nodes);
 
     struct igraph_and_table result = {
         .igraph = igraph,

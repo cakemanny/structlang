@@ -46,8 +46,8 @@ assm_instr_t* assm_move(char* assem, temp_t dst, temp_t src, Arena_T);
  * The caller provides an adequately sized buffer `out` of size `out_len`
  * that the formatted instruction is written into.
  */
-void assm_format(char* const out, const size_t out_len, assm_instr_t* instr,
-        Table_T allocation, const target_t* target);
+void assm_format(char* const out, const size_t out_len,
+        const assm_instr_t* instr, Table_T allocation, const target_t* target);
 
 assm_instr_t* assm_list_reverse(assm_instr_t*);
 

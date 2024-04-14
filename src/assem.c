@@ -81,7 +81,9 @@ static int format_temp(
     return o - out - 1;
 }
 
-void assm_format(char* const out, const size_t out_len, assm_instr_t* instr,
+void
+assm_format(
+        char* const out, const size_t out_len, const assm_instr_t* instr,
         Table_T allocation, const target_t* target)
 {
     switch (instr->ai_tag) {
