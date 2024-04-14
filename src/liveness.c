@@ -31,6 +31,8 @@ static temp_list_t* temp_list_sort(temp_list_t* tl, Arena_T);
 #define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
 #define BitsetBytes(len) (sizeof(uint64_t) * BitsetLen(len))
 
+static const bool debug = 0;
+
 /*
  * This is a single set from our table. It points somewhere into the table.
  * It's passed by value to avoid double indirection.
@@ -132,6 +134,11 @@ static bool node_set2_eq(const node_set2_t s, const node_set2_t t)
 static void node_set2_add(node_set2_t s, const lv_node_t* node)
 {
     SetBit(s.bits, node->lvn_idx);
+}
+
+static void node_set2_remove(node_set2_t s, const lv_node_t* node)
+{
+    ClearBit(s.bits, node->lvn_idx);
 }
 
 /*static*/ bool node_set2_member(node_set2_t s, const lv_node_t* node)
@@ -454,55 +461,69 @@ interference_graph(
     node_set2_t in_n = node_set_table_get(loop_statics, 1);
     node_set2_t out_minus_def = node_set_table_get(loop_statics, 2);
 
+    node_set_table_t fgraph_sets = node_set_table_new(3, flowgraph_length);
+    // Algo 17.6 from the book adapted for liveness - i.e. we run it backwards
+    node_set2_t worklist = node_set_table_get(fgraph_sets, 0);
+
+    for (int i = 0; i < flowgraph_length; i++) {
+        var node = &sorted[i];
+        node_set2_add(worklist, node);
+    }
+
     // calculate live-in and live-out sets iteratively
-    for (;;) {
+    int iterations = 0;
+    for (; node_set2_count(worklist) > 0; iterations++) {
+        // todo: Investigate if priority queue / treap might be better for
+        // retrieval.
+        lv_node_t* node = NULL;
         for (int i = 0; i < flowgraph_length; i++) {
-            var node = &sorted[i];
-            // copy the previous iteration
-            // in'[n] = in[n]; out'[n] = out[n]
-            Table_NST_put(live_in_map_, node, Table_NST_get(live_in_map, node));
-            node_set2_t out_ns = Table_NST_get(live_out_map, node);
-            Table_NST_put(live_out_map_, node, out_ns);
-
-            // in[n] = use[n] union (out[n] setminus def[n])
-            node_set2_t use_n = Table_NST_get(use_map, node);
-            node_set2_t def_n = Table_NST_get(def_map, node);
-
-            node_set2_minus(out_minus_def, out_ns, def_n);
-            node_set2_union(in_n, use_n, out_minus_def);
-
-            // out[n] = union {in[s] for s in succ[n]}
-            node_set2_clear(out_n);
-            for (var it = lv_succ(node); lv_node_it_next(&it);) {
-                node_set2_t in_s = Table_NST_get(live_in_map, &it.lvni_node);
-                node_set2_union(out_n, out_n, in_s);
-            }
-
-            // store results back into live_in_map and live_out_map
-            Table_NST_put(live_out_map, node, out_n);
-            Table_NST_put(live_in_map, node, in_n);
-        }
-
-        bool match = true;
-        for (int i = 0; i < flowgraph_length; i++) {
-            var node = &sorted[i];
-
-            node_set2_t in_ns_ = Table_NST_get(live_in_map_, node);
-            node_set2_t in_ns = Table_NST_get(live_in_map, node);
-            if (!node_set2_eq(in_ns_, in_ns)) {
-                match = false;
-                break;
-            }
-
-            node_set2_t out_ns_ = Table_NST_get(live_out_map_, node);
-            node_set2_t out_ns = Table_NST_get(live_out_map, node);
-            if (!node_set2_eq(out_ns_, out_ns)) {
-                match = false;
+            node = &sorted[i];
+            if (node_set2_member(worklist, node)) {
                 break;
             }
         }
-        if (match)
-            break;
+        node_set2_remove(worklist, node);
+
+        // copy the previous iteration
+        // in'[n] = in[n]; out'[n] = out[n]
+        Table_NST_put(live_in_map_, node, Table_NST_get(live_in_map, node));
+        node_set2_t out_ns = Table_NST_get(live_out_map, node);
+        Table_NST_put(live_out_map_, node, out_ns);
+
+        // in[n] = use[n] union (out[n] setminus def[n])
+        node_set2_t use_n = Table_NST_get(use_map, node);
+        node_set2_t def_n = Table_NST_get(def_map, node);
+
+        node_set2_minus(out_minus_def, out_ns, def_n);
+        node_set2_union(in_n, use_n, out_minus_def);
+
+        // out[n] = union {in[s] for s in succ[n]}
+        node_set2_clear(out_n);
+        for (var it = lv_succ(node); lv_node_it_next(&it);) {
+            node_set2_t in_s = Table_NST_get(live_in_map, &it.lvni_node);
+            node_set2_union(out_n, out_n, in_s);
+        }
+
+        // store results back into live_in_map and live_out_map
+        Table_NST_put(live_out_map, node, out_n);
+        Table_NST_put(live_in_map, node, in_n);
+
+        // check for changes
+        node_set2_t in_ns_ = Table_NST_get(live_in_map_, node);
+        node_set2_t in_ns = Table_NST_get(live_in_map, node);
+        node_set2_t out_ns_ = Table_NST_get(live_out_map_, node);
+
+        if (!node_set2_eq(in_ns_, in_ns) || !node_set2_eq(out_ns_, out_ns)) {
+
+            node_set2_add(worklist, node);
+            for (var it = lv_pred(node); lv_node_it_next(&it);) {
+                node_set2_add(worklist, &it.lvni_node);
+            }
+        }
+    }
+    if (debug) {
+        fprintf(stderr, "## iterations = %d, gflen = %lu\n", iterations,
+                flowgraph_length);
     }
 
     // we are done with live_in_map and the diff maps
