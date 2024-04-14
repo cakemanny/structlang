@@ -131,6 +131,13 @@ void lv_free_interference_and_flow_graph(
         struct igraph_and_table*, struct flowgraph_and_node_list*);
 
 #include <stdio.h>
+
+void
+flowgraph_print(
+        FILE* out, const lv_flowgraph_t* flow_graph,
+        const lv_node_list_t* node_list, const assm_instr_t* instrs,
+        const target_t* target);
+
 /*
  * The function igraph_show just prints out - for debugging purposes - a list
  * of nodes in the interference graph, and for each node, a list of nodes

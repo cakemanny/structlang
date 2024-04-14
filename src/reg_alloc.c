@@ -1433,23 +1433,25 @@ ra_alloc(
         Arena_T arena_allocation,
         Arena_T arena_fragments)
 {
-    // here: liveness analysis
+    // liveness analysis
     var scratch = Arena_new();
     var flow_and_nodes = instrs2graph(body_instrs, scratch);
     lv_flowgraph_t* flow = flow_and_nodes.flowgraph;
+    if (print_interference_and_return) {
+        flowgraph_print(out, flow, flow_and_nodes.node_list, body_instrs,
+                frame->acf_target);
+    }
 
     var igraph_and_table =
         interference_graph(flow, flow_and_nodes.node_list, scratch);
     if (print_interference_and_return) {
         igraph_show(out, igraph_and_table.igraph);
-        struct instr_list_and_allocation result = {
-            .ra_instrs = body_instrs,
-        };
         lv_free_interference_and_flow_graph(&igraph_and_table, &flow_and_nodes);
         Arena_dispose(&scratch);
-        return result;
+        return (struct instr_list_and_allocation) { .ra_instrs = body_instrs };
     }
 
+    // register allocation
     var color_result =
         ra_color(igraph_and_table.igraph, flow, frame->acf_temp_map,
                 frame->acf_target->register_names, scratch,

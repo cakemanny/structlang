@@ -299,23 +299,6 @@ static temp_list_t* temp_list_sort(temp_list_t* tl, Arena_T ar)
     return result;
 }
 
-#define temp_cmp(a, b) ((a).temp_id - (b).temp_id)
-
-void print_temp_list(const temp_list_t* a)
-{
-    fprintf(stderr, "[");
-    for (; a; a = a->tmp_list)
-    {
-        if (a->tmp_list) {
-            fprintf(stderr, "%d, ", a->tmp_temp.temp_id);
-        } else {
-            fprintf(stderr, "%d", a->tmp_temp.temp_id);
-        }
-    }
-    fprintf(stderr, "]\n");
-}
-
-
 // prove that we can use the list.h routines on it
 static_assert(sizeof(lv_node_pair_t) == sizeof(struct list_t),
         "lv_node_pair_t size");
@@ -663,6 +646,32 @@ char* lv_nodename(lv_node_t* node)
     return buf;
 }
 
+void
+flowgraph_print(
+        FILE* out, const lv_flowgraph_t* flow_graph,
+        const lv_node_list_t* node_list, const assm_instr_t* instrs,
+        const target_t* target)
+{
+    fprintf(out, "# ---- Control Flow Graph ----\n");
+    var nd = node_list;
+    for (var instr = instrs; instr; instr = instr->ai_list, nd = nd->nl_list) {
+        var node = nd->nl_node;
+
+        fprintf(out, "# %3lu [", node->lvn_idx);
+        const char* fmt = "%2lu";
+        for (var it = lv_succ(node); lv_node_it_next(&it);) {
+            fprintf(out, fmt, it.lvni_node.lvn_idx);
+            fmt = ", %2lu";
+        }
+        fprintf(out, "] ");
+        char buf[128];
+        assm_format(buf, 128, instr,
+                target->tgt_temp_map(), target);
+        fprintf(out, "%s", buf);
+    }
+    fprintf(out, "# ----------------------------\n");
+}
+
 static temp_list_t*
 sorted_temps_for_nodes(lv_igraph_t* igraph, lv_node_list_t* nodes, Arena_T ar)
 {
@@ -677,7 +686,6 @@ sorted_temps_for_nodes(lv_igraph_t* igraph, lv_node_list_t* nodes, Arena_T ar)
 
 void igraph_show(FILE* out, lv_igraph_t* igraph)
 {
-
     fprintf(out, "# ---- Interference Graph ----\n");
 
     var nodes = lv_nodes(igraph->lvig_graph);
@@ -719,5 +727,4 @@ void igraph_show(FILE* out, lv_igraph_t* igraph)
         }
     }
     fprintf(out, "# ----------------------------\n");
-
 }
