@@ -187,6 +187,11 @@ expect 'fn main() -> int { if 1 < 2 { 1 } else { 2 } }' '1'
 expect 'fn main() -> void { if 1 < 2 { return } }' 1
 
 expect 'fn main() -> int { if 1 < 2 { 1 } else { 2 } }' '1'
+## cjumps
+expect 'fn f(a: int) -> int { if (a == 0) { 1 } else { 2 } } fn main() -> int { f(0) }' 1
+expect 'fn f(a: int) -> int { if (a == 0) { 1 } else { 2 } } fn main() -> int { f(1) }' 2
+expect 'fn f(a: int) -> int { if (0 == a) { 1 } else { 2 } } fn main() -> int { f(0) }' 1
+expect 'fn f(a: int) -> int { if (0 == a) { 1 } else { 2 } } fn main() -> int { f(1) }' 2
 
 
 # Complex interactions

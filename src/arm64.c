@@ -604,25 +604,36 @@ static void munch_stm(codegen_state_t state, tree_stm_t* stm)
                     var src_list =
                         temp_list(Munch_exp(stm->tst_cjump_rhs));
 
-                    sl_sym_t* jump = ret_alloc(state, 3 * sizeof *jump);
-                    jump[0] = stm->tst_cjump_true;
-                    jump[1] = stm->tst_cjump_false;
-
-                    char* s = NULL;
-                    if (stm->tst_cjump_op == TREE_RELOP_EQ) {
-                        Asprintf(&s, "cbz    `s0, %s\n", stm->tst_cjump_true);
-                    } else {
-                        assert(stm->tst_cjump_op == TREE_RELOP_NE);
-                        Asprintf(&s, "cbnz    `s0, %s\n", stm->tst_cjump_true);
-                    }
+#define COMMON \
+                    sl_sym_t* jump = ret_alloc(state, 3 * sizeof *jump); \
+                    jump[0] = stm->tst_cjump_true; \
+                    jump[1] = stm->tst_cjump_false; \
+ \
+                    char* s = NULL; \
+                    if (stm->tst_cjump_op == TREE_RELOP_EQ) { \
+                        Asprintf(&s, "cbz	`s0, %s\n", stm->tst_cjump_true); \
+                    } else { \
+                        assert(stm->tst_cjump_op == TREE_RELOP_NE); \
+                        Asprintf(&s, "cbnz	`s0, %s\n", stm->tst_cjump_true); \
+                    } \
                     emit(state, Assm_oper(s, NULL, src_list, jump));
+                    COMMON
                     return;
                 }
             }
             // CJUMP(op, e1, 0, Ltrue, Lfalse)
             if (stm->tst_cjump_rhs->te_tag == TREE_EXP_CONST
                     && stm->tst_cjump_rhs->te_const == 0) {
-                tree_printf(stderr, "$$$ %S\n", stm);
+                // TODO: factor this and the code above properly
+                if (stm->tst_cjump_op == TREE_RELOP_EQ
+                        || stm->tst_cjump_op == TREE_RELOP_NE) {
+                    var src_list =
+                        temp_list(Munch_exp(stm->tst_cjump_lhs));
+
+                    COMMON
+#undef COMMON
+                    return;
+                }
             }
 
             // CJUMP(op, e1, e2, Ltrue, Lfalse)
