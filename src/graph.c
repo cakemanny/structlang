@@ -1,5 +1,4 @@
 #include "liveness.h"
-#include "mem.h"
 #include <assert.h>
 #include <stdbool.h>
 #include "array.h"
@@ -26,27 +25,16 @@ typedef arrtype(node_rep_t) node_rep_array_t;
 
 struct lv_graph_t {
      node_rep_array_t nodes;
+     Arena_T arena; // for allocations of internal structures
 };
 
 lv_graph_t*
 lv_new_graph(Arena_T ar)
 {
     lv_graph_t* result = Alloc(ar, sizeof *result);
+    result->arena = ar;
     return result;
 }
-
-void
-lv_free_graph(lv_graph_t** g)
-{
-    for (int i = 0; i < (*g)->nodes.len; i++) {
-        var x = (*g)->nodes.data[i];
-        arrfree(x.succ);
-        arrfree(x.pred);
-    }
-    arrfree((*g)->nodes);
-    *g = NULL;
-}
-
 
 size_t
 lv_graph_length(const lv_graph_t* g)
@@ -67,7 +55,7 @@ lv_node_t*
 lv_new_node(lv_graph_t* graph, Arena_T ar)
 {
     node_rep_t node_rep = {};
-    arrpush(&graph->nodes, node_rep);
+    arrpush(&graph->nodes, graph->arena, node_rep);
     return lv_node_new(graph, graph->nodes.len - 1, ar);
 }
 
@@ -87,10 +75,11 @@ lv_mk_edge(lv_node_t* from, lv_node_t* to)
 {
     assert(from->lvn_graph == to->lvn_graph);
 
+    var arena = from->lvn_graph->arena;
     var nodes = from->lvn_graph->nodes;
     if (!node_array_contains(&nodes.data[from->lvn_idx].succ, to->lvn_idx)) {
-        arrpush(&nodes.data[from->lvn_idx].succ, to->lvn_idx);
-        arrpush(&nodes.data[to->lvn_idx].pred, from->lvn_idx);
+        arrpush(&nodes.data[from->lvn_idx].succ, arena, to->lvn_idx);
+        arrpush(&nodes.data[to->lvn_idx].pred, arena, from->lvn_idx);
     }
 }
 
@@ -99,9 +88,9 @@ lv_mk_edge(lv_node_t* from, lv_node_t* to)
 
 
 static lv_node_list_t*
-node_list_cons(lv_node_t* node, lv_node_list_t* list)
+node_list_cons(lv_node_t* node, lv_node_list_t* list, Arena_T ar)
 {
-    lv_node_list_t* cell = xmalloc(sizeof *cell);
+    lv_node_list_t* cell = Alloc(ar, sizeof *cell);
     cell->nl_node = node;
     cell->nl_list = list;
     return cell;
@@ -189,10 +178,10 @@ node_qsort_cmp(const void* x, const void* y)
 }
 
 static void
-node_array_push_if_missing(node_array_t* a, node_t idx)
+node_array_push_if_missing(node_array_t* a, node_t idx, Arena_T ar)
 {
     if (!node_array_contains(a, idx)) {
-        arrpush(a, idx);
+        arrpush(a, ar, idx);
     }
 }
 
@@ -227,7 +216,7 @@ node_array_it_next(node_array_it_t* it)
  * Deprecated: use lv_is_adj for now
  */
 lv_node_list_t*
-lv_adj(lv_node_t* node)
+lv_adj(lv_node_t* node, Arena_T ar)
 {
     var graph = node->lvn_graph;
 
@@ -235,20 +224,19 @@ lv_adj(lv_node_t* node)
     var node_rep = graph->nodes.data[node->lvn_idx];
     // TODO: implement some sort of Set
     for (var it = node_array_it(&node_rep.pred); node_array_it_next(&it);) {
-        node_array_push_if_missing(&adj, it.idx);
+        node_array_push_if_missing(&adj, it.idx, ar);
     }
     for (NODE_ARR_IT(idx, node_rep.succ)) {
-        node_array_push_if_missing(&adj, idx);
+        node_array_push_if_missing(&adj, idx, ar);
     }
     qsort(adj.data, adj.len, sizeof(adj.data[0]), node_qsort_cmp);
 
     lv_node_list_t* result = NULL;
     for (int i = adj.len - 1; i >= 0; i--) {
         var idx = adj.data[i];
-        lv_node_t* new_node = lv_node_new(graph, idx, NULL); // XXX: FAIL
-        result = node_list_cons(new_node, result);
+        lv_node_t* new_node = lv_node_new(graph, idx, ar);
+        result = node_list_cons(new_node, result, ar);
     }
-    arrfree(adj);
     return result;
 }
 
@@ -305,7 +293,7 @@ test_graph()
     assert(lv_is_succ(n, m));
     assert(!lv_is_succ(m, n));
 
-    lv_free_graph(&g);
+    Arena_dispose(&a);
 }
 
 

@@ -215,7 +215,8 @@ arm64_store_temp(struct ac_frame_var* v, temp_t temp, Arena_T ar)
 static bool can_be_immediate(int constant_value) __attribute__((const));
 static bool can_be_immediate(int constant_value)
 {
-    return (constant_value < (1<<15) && constant_value >= -(1<<15));
+    return (constant_value >= INT16_MIN &&
+            constant_value <= INT16_MAX);
 }
 
 /*

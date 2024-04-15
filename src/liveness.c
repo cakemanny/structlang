@@ -609,16 +609,11 @@ lv_free_interference_and_flow_graph(
         struct flowgraph_and_node_list* flow_and_nodes)
 {
     // Free interference graph
-    // values referenced by live_outs are on an arena
     Table_free(&igraph_and_live_outs->live_outs);
-    lv_free_graph(&igraph_and_live_outs->igraph->lvig_graph);
     Table_free(&igraph_and_live_outs->igraph->lvig_tnode);
     Table_free(&igraph_and_live_outs->igraph->lvig_gtemp);
-    // lvig_moves: on an arena
 
     // Free flow graph
-    lv_free_graph(&flow_and_nodes->flowgraph->lvfg_control);
-
     Table_free(&flow_and_nodes->flowgraph->lvfg_def);
     Table_free(&flow_and_nodes->flowgraph->lvfg_use);
     Table_free(&flow_and_nodes->flowgraph->lvfg_ismove);

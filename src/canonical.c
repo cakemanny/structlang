@@ -846,19 +846,19 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
         for (var bb = ti->tl_trace; bb; bb = bb->bb_list) {
             for (var s = bb->bb_stmts; s; s = s->tst_list){
                 // NOLINTNEXTLINE(bugprone-sizeof-expression)
-                arrpush(&stmts_in_order, s);
+                arrpush(&stmts_in_order, info->scratch, s);
             }
         }
     }
     // NOLINTNEXTLINE(bugprone-sizeof-expression)
-    arrpush(&stmts_in_order, tree_stm_label(blocks.bb_end_label, info->arena));
+    arrpush(&stmts_in_order, info->scratch,
+            tree_stm_label(blocks.bb_end_label, info->arena));
 
     for (int i = 0; i < stmts_in_order.len - 1; i++) {
         stmts_in_order.data[i]->tst_list = stmts_in_order.data[i+1];
     }
     arrlast(stmts_in_order)->tst_list = NULL;
     tree_stm_t* result = stmts_in_order.data[0];
-    arrfree(stmts_in_order);
 
     // remove unconditional jumps that are followed by their label
     while (remove_redundant_unconditional_jumps(result) > 0) {

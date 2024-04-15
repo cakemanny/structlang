@@ -137,6 +137,29 @@ Arena_calloc(T arena, long count, long nbytes, const char* file, int line)
 }
 
 
+// Idea... for more efficient array growing...
+#if 0
+void *
+Arena_realloc(T arena, void *ptr, long old_size, long size, const char* file, int line)
+{
+    assert(size >= 0);
+#if USE_ZONES
+    void* new_ptr = malloc_zone_realloc(arena->zone, ptr, size);
+    if (unlikely(!new_ptr)) {
+        fatal("out of memory");
+    }
+    return new_ptr;
+#else
+    // TODO: think about checking if this was the most recent allocation... ?
+    //   if (ptr + align(old_size) == arena->avail) ??
+    // and maybe the previous size with alignment was already enough?
+    void* data = Arena_alloc(arena, size, file, line);
+    memcpy(data, ptr, old_size);
+    return data;
+#endif // USE_ZONES
+}
+#endif // 0
+
 void
 Arena_free(T arena)
 {
