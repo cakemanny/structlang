@@ -1,6 +1,5 @@
 #include "activation.h"
 #include "x86_64.h"
-#include "mem.h" // xmalloc
 #include "translate.h"
 #include <assert.h>
 #include <stdint.h>
@@ -296,7 +295,7 @@ char* ac_record_descriptor_for_type(
     char* buf = Alloc(arena, nwords + 1);
 
     // for now we just reuse the ptr map logic
-    uint64_t* ptr_map = xmalloc(BitsetBytes(nwords));
+    uint64_t* ptr_map = Alloc(arena, BitsetBytes(nwords));
     ptr_map_for_type(program, type, ptr_map, 0);
     for (int i = 0; i < nwords; i++) {
         if (IsBitSet(ptr_map, i)) {
@@ -305,7 +304,7 @@ char* ac_record_descriptor_for_type(
             buf[i] = 'n';
         }
     }
-    free(ptr_map);
+    Arena_free(arena, ptr_map, BitsetBytes(nwords));
     return buf;
 }
 

@@ -14,11 +14,10 @@ arrgrow(void *slice, long size, Arena_T arena)
     assert(replica.len <= replica.cap);
 
     replica.cap = replica.cap ? replica.cap : 1;
+    ptrdiff_t nbytes = size * replica.cap;
+    void *data = Arena_realloc(arena, replica.data, nbytes, 2 * nbytes,
+            __FILE__, __LINE__);
     replica.cap *= 2;
-    void *data = Arena_alloc(arena, size * replica.cap, __FILE__, __LINE__);
-    if (replica.len) {
-        memcpy(data, replica.data, size*replica.len);
-    }
     replica.data = data;
 
     memcpy(slice, &replica, sizeof replica);

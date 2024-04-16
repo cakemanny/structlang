@@ -986,7 +986,7 @@ canonicalise_tree(
             case FR_FRAME_MAP:
                 continue;
         }
-        Arena_free(info.scratch);
+        Arena_clear(info.scratch);
     }
 
     Arena_dispose(&info.scratch);

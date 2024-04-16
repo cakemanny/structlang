@@ -340,7 +340,7 @@ int main(int argc, char* argv[])
         Table_free(&instrs_and_allocation.ra_allocation);
 instr_loop_cleanup:
         Table_free(&label_to_spill_liveness);
-        Arena_free(instr_loop_arena);
+        Arena_clear(instr_loop_arena);
     }
     Arena_dispose(&instr_loop_arena);
 

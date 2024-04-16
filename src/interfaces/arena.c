@@ -55,7 +55,6 @@ static int nfree;
 
 T Arena_new()
 {
-
     T arena = malloc(sizeof *arena);
     if (unlikely(!arena)) {
         fatal("out of memory");
@@ -79,12 +78,13 @@ Arena_dispose(T* ap)
 #if USE_ZONES
     malloc_destroy_zone((*ap)->zone);
 #else
-    Arena_free(*ap);
+    Arena_clear(*ap);
 #endif
     free(*ap);
     *ap = NULL;
 }
 
+#define align_round(n) ((n + alignment - 1) / alignment) * alignment
 
 void*
 Arena_alloc(T arena, long nbytes, const char* file, int line)
@@ -99,7 +99,7 @@ Arena_alloc(T arena, long nbytes, const char* file, int line)
     return ptr;
 #else
     // <round up to alignment boundary>
-    nbytes = ((nbytes + alignment - 1) / alignment) * alignment;
+    nbytes = align_round(nbytes);
     while (nbytes > arena->limit - arena->avail) {
         // <get new chunk>
         T ptr;
@@ -137,10 +137,8 @@ Arena_calloc(T arena, long count, long nbytes, const char* file, int line)
 }
 
 
-// Idea... for more efficient array growing...
-#if 0
 void *
-Arena_realloc(T arena, void *ptr, long old_size, long size, const char* file, int line)
+Arena_realloc(T arena, void *ptr, ptrdiff_t old_size, ptrdiff_t size, const char* file, int line)
 {
     assert(size >= 0);
 #if USE_ZONES
@@ -150,18 +148,42 @@ Arena_realloc(T arena, void *ptr, long old_size, long size, const char* file, in
     }
     return new_ptr;
 #else
-    // TODO: think about checking if this was the most recent allocation... ?
-    //   if (ptr + align(old_size) == arena->avail) ??
-    // and maybe the previous size with alignment was already enough?
+    assert(size >= old_size);
+    // if this was the most recent allocation, we can just extend
+    ptrdiff_t old_aligned = align_round(old_size);
+    ptrdiff_t extra = align_round(size) - old_aligned;
+    if (ptr + old_aligned == arena->avail && arena->avail + extra <= arena->limit) {
+        if (extra > 0) {
+            Arena_alloc(arena, extra, file, line);
+        }
+        return ptr;
+    }
     void* data = Arena_alloc(arena, size, file, line);
-    memcpy(data, ptr, old_size);
+    if (ptr != NULL && old_size > 0) {
+        memcpy(data, ptr, old_size);
+    }
     return data;
 #endif // USE_ZONES
 }
-#endif // 0
 
 void
-Arena_free(T arena)
+Arena_free(T arena, void* ptr, ptrdiff_t size)
+{
+    assert(size >= 0);
+#if USE_ZONES
+    malloc_zone_free(arena->zone, ptr);
+#else
+    // <round up to alignment boundary>
+    size = ((size + alignment - 1) / alignment) * alignment;
+
+    if (ptr + size == arena->avail) {
+        arena->avail -= size;
+    }
+#endif // USE_ZONES
+}
+
+void
+Arena_clear(T arena)
 {
     assert(arena);
 #if USE_ZONES
@@ -210,7 +232,7 @@ test_Arena()
     strcpy(buf, test_str);
     assert(strcmp(test_str, buf) == 0);
 
-    Arena_free(a);
+    Arena_clear(a);
 
     char* buf2 = Arena_alloc(a, bufsize, __FILE__, __LINE__);
 
