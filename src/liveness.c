@@ -277,14 +277,17 @@ static temp_list_t* temp_list_sort(temp_list_t* tl, Arena_T ar)
 {
     int len = list_length(tl);
     if (len < 2) {
-        // FIXME: don't we need to copy this?
+        // It's only valid to not copy this if the src list outlives the
+        // destination. In this case, instructions outlive liveness.
         return tl;
     }
     long nbytes = len * sizeof(temp_t);
-    // there are multiple calls to this per instruction - so for those
-    // cases we use alloca to avoid lots of small leaks. Expected number of
+    // there are multiple calls to this per instruction - so for those cases we
+    // use this stack array to avoid lots of small leaks. Expected number of
     // calls with a large N is small.
-    temp_t* temp_array = (len > 1024) ? Alloc(ar, nbytes) : alloca(nbytes);
+    enum { fixed_max = 1024 };
+    temp_t fixed_size[fixed_max];
+    temp_t* temp_array = (len > fixed_max) ? Alloc(ar, nbytes) : fixed_size;
     int i = 0;
     for (var t = tl; t; t = t->tmp_list, i++) {
         temp_array[i] = t->tmp_temp;

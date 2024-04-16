@@ -38,6 +38,7 @@ typedef struct target_t {
     struct codegen_t* tgt_backend;
 } target_t;
 
+enum { TARGET_CS_COUNT_MAX = 10 }; // arm64 has 10, x86_64 has 5
 
 extern const target_t target_arm64;
 extern const target_t target_x86_64;

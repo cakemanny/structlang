@@ -1176,6 +1176,7 @@ const target_t target_x86_64 = {
     .tgt_temp_map = x86_64_temp_map,
     .tgt_backend = &x86_64_codegen_module,
 };
+static_assert(NELEMS(callee_saves) <= TARGET_CS_COUNT_MAX, "callee save count");
 
 /*
  * These are used when we have Tables with temp_t's as keys

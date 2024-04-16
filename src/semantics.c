@@ -21,6 +21,7 @@ static void check_psem_info_t(sem_info_t* sem_info) {}
             term_colours.red, term_colours.clear, ##__VA_ARGS__); \
 } while (0)
 
+// Idea: change this to use a stack allocator?
 static scope_t* scope_new()
 {
     scope_t* s = xmalloc(sizeof *s);

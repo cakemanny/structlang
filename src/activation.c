@@ -917,7 +917,7 @@ tree_stm_t* proc_entry_exit_1(
     const target_t* target = frame->acf_target;
     const size_t num_callee_saves = target->callee_saves.length;
     const size_t word_size = target->word_size;
-    temp_t temps_for_callee_saves[num_callee_saves];
+    temp_t temps_for_callee_saves[TARGET_CS_COUNT_MAX];
     for (int i = 0; i < num_callee_saves; i++) {
         temps_for_callee_saves[i] =
             temp_newtemp(temp_state, word_size, TEMP_DISP_INHERIT);

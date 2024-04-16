@@ -67,6 +67,7 @@ static tree_stm_t* lbf_call(label_bifunc_t lbf, sl_sym_t t, sl_sym_t f, Arena_T 
     return lbf.lbf_fn(t, f, lbf.lbf_cl, a);
 }
 
+// Idea: change these to use a Pool Allocator
 static translate_exp_t* translate_ex(tree_exp_t* e, Arena_T ar)
 {
     translate_exp_t* result = Alloc(ar, sizeof *result);

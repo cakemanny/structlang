@@ -1019,6 +1019,8 @@ const target_t target_arm64 = {
     .tgt_temp_map = arm64_temp_map,
     .tgt_backend = &arm64_codegen_module,
 };
+static_assert(NELEMS(arm64_callee_saves) <= TARGET_CS_COUNT_MAX,
+        "callee save count");
 
 /*
  * These are used when we have Tables with temp_t's as keys
