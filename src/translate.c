@@ -1,9 +1,9 @@
 #include "translate.h"
-#include <assert.h> /* assert */
 #include <stdbool.h> /* bool */
 #include <string.h>
 #include "grammar.tab.h"
 #include "arena_util.h"
+#include "assertions.h"
 
 #define EX_LIST_IT(it, head) sl_expr_t* it = (head); it; it = it->ex_list
 #define var __auto_type

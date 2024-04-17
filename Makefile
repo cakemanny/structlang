@@ -51,7 +51,7 @@ else ifndef NDEBUG
     LDFLAGS += -fsanitize=address
   endif
 else
-  CFLAGS += -O3
+  CFLAGS += -O3 -DNDEBUG
 endif
 
 .PHONY: all lib gen runtime

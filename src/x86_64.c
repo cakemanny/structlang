@@ -1,10 +1,10 @@
 #define _GNU_SOURCE // linux: ask for asprintf in stdio.h
 #include "x86_64.h"
 #include <stdlib.h>
-#include <assert.h>
 #include <string.h> // strdup
 #include "format.h" // fprint_str_escaped
 #include "arena_util.h"
+#include "assertions.h"
 
 // Useful references
 // - https://web.stanford.edu/class/cs107/guide/x86-64.html

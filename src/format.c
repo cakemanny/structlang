@@ -1,5 +1,5 @@
 #include "format.h"
-#include <assert.h>
+#include "assertions.h"
 
 
 void fprint_str_escaped(FILE* out, const char* str)

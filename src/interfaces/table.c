@@ -1,9 +1,9 @@
 #include <limits.h>
 #include <stddef.h>
-#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include "table.h"
+#include "../assertions.h"
 
 #define T Table_T
 

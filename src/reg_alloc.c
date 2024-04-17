@@ -1,9 +1,9 @@
 #include "reg_alloc.h"
 #include "liveness.h"
-#include <assert.h>
 #include <string.h>
 #include "list.h"
 #include "codegen.h"
+#include "assertions.h"
 
 #define var __auto_type
 
@@ -252,6 +252,41 @@ temp_list_contains(const temp_list_t* haystack, temp_t temp)
     }
     return false;
 }
+
+// based on https://nullprogram.com/blog/2023/09/30/
+typedef struct nodeset_t {
+    struct nodeset_t *child[4];
+    lv_node_t* key;
+} nodeset_t;
+static uint64_t nodeset_hash(lv_node_t* n)
+{
+    union { size_t idx; char data[sizeof(size_t)]; } s = {.idx=n->lvn_idx};
+    uint64_t h = 0x100;
+    for (ptrdiff_t i = 0; i < sizeof(s.data); i++) {
+        h ^= s.data[i];
+        h *= 1111111111111111111u;
+    }
+    return h;
+}
+static bool nodeset_upsert(nodeset_t **m, lv_node_t* key, Arena_T ar)
+{
+    for (uint64_t h = nodeset_hash(key); *m; h <<= 2) {
+        if (lv_eq(key, (*m)->key)) {
+            return 1;
+        }
+        m = &(*m)->child[h>>62];
+    }
+    if (ar) {
+        *m = Arena_alloc(ar, sizeof **m, __FILE__, __LINE__);
+        (*m)->key = key;
+    }
+    return 0;
+}
+static bool nodeset_ismember(nodeset_t* m, lv_node_t* key)
+{
+    return nodeset_upsert(&m, key, NULL);
+}
+
 
 static int
 get_degree(reg_alloc_info_t* info, lv_node_t* n)
@@ -517,13 +552,14 @@ all_adjacent_ok(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 static bool
 conservative_adj(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 {
-    Table_T seen = Table_new(0, cmpnode, hashnode);
+    // TODO: consider some sort of arena checkpoint and restore
+    nodeset_t* seen = NULL;
     int k = 0;
 
     adj_it_t it = {};
     adj_it_init(&it, info, u);
     for (var n = adj_it_next(&it); n; n = adj_it_next(&it)) {
-        Table_put(seen, n, n);
+        nodeset_upsert(&seen, n, info->scratch);
         if (info->degree[n->lvn_idx] >= info->K) {
             k += 1;
         }
@@ -531,14 +567,12 @@ conservative_adj(reg_alloc_info_t* info, lv_node_t* u, lv_node_t* v)
 
     adj_it_init(&it, info, v);
     for (var n = adj_it_next(&it); n; n = adj_it_next(&it)) {
-        if (!Table_get(seen, n)) {
+        if (!nodeset_ismember(seen, n)) {
             if (info->degree[n->lvn_idx] >= info->K) {
                 k += 1;
             }
         }
     }
-
-    Table_free(&seen);
     return (k < info->K);
 }
 
@@ -1499,4 +1533,53 @@ ra_alloc(
     Arena_dispose(&scratch);
 
     return result;
+}
+
+#include "test_harness.h"
+
+void
+test_nodeset()
+{
+
+    Arena_T ar = Arena_new();
+
+    nodeset_t* set = NULL;
+
+    var g = lv_new_graph(ar);
+    var n0 = lv_new_node(g, ar);
+    var n1 = lv_new_node(g, ar);
+    var n2 = lv_new_node(g, ar);
+
+    assert(!nodeset_ismember(set, n0));
+    assert(!nodeset_ismember(set, n1));
+    assert(!nodeset_ismember(set, n2));
+
+    {
+        nodeset_upsert(&set, n0, ar);
+        assert(nodeset_ismember(set, n0));
+        assert(!nodeset_ismember(set, n1));
+        assert(!nodeset_ismember(set, n2));
+    }
+    {
+        nodeset_upsert(&set, n1, ar);
+        assert(nodeset_ismember(set, n0));
+        assert(nodeset_ismember(set, n1));
+        assert(!nodeset_ismember(set, n2));
+    }
+    {
+        nodeset_upsert(&set, n2, ar);
+        assert(nodeset_ismember(set, n0));
+        assert(nodeset_ismember(set, n1));
+        assert(nodeset_ismember(set, n2));
+    }
+
+    Arena_dispose(&ar);
+}
+
+static void register_tests() __attribute__((constructor));
+void
+register_tests() {
+
+    REGISTER_TEST(test_nodeset);
+
 }

@@ -1,9 +1,9 @@
 #include "canonical.h"
-#include <assert.h> /* assert */
 #include <stdbool.h> /* bool */
 #include "interfaces/arena.h"
 #include "interfaces/table.h"
 #include "array.h"
+#include "assertions.h"
 
 #define var __auto_type
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)

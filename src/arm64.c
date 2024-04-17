@@ -1,6 +1,5 @@
 #define _GNU_SOURCE // linux: ask for asprintf in stdio.h
 #include "arm64.h"
-#include <assert.h>
 #include <stdio.h> // asprintf
 #include <stdlib.h> // abort
 #include <string.h> // strlen
@@ -9,6 +8,7 @@
 #include "fragment.h"
 #include "format.h" // fprint_str_escaped
 #include "arena_util.h"
+#include "assertions.h"
 
 // Useful resources
 // - https://developer.arm.com/documentation/102374/0101/Overview?lang=en

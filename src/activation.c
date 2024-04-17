@@ -1,9 +1,9 @@
 #include "activation.h"
 #include "x86_64.h"
 #include "translate.h"
-#include <assert.h>
 #include <stdint.h>
 #include <string.h>
+#include "assertions.h"
 
 #define var __auto_type
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)

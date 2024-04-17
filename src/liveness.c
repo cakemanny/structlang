@@ -147,6 +147,7 @@ static int node_set2_first_idx(node_set2_t s)
         }
     }
     assert(!"set is empty");
+    abort();
 }
 
 

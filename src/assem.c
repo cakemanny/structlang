@@ -1,8 +1,8 @@
-#include <assert.h>
 #include <string.h>
 #include <stdlib.h> // free
 #include <stdio.h> // snprintf
 #include "assem.h"
+#include "assertions.h"
 
 #define var __auto_type
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)

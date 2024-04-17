@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 #include <stdlib.h> // malloc, abort
 #include "arena.h"
+#include "../assertions.h"
+
 
 #if defined(__arm64__) && !defined(NDEBUG)
 #define USE_ZONES 1
