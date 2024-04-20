@@ -150,6 +150,39 @@ static int node_set2_first_idx(node_set2_t s)
     abort();
 }
 
+uint64_t lv_node_hash(lv_node_t* n)
+{
+    union { int idx; char data[sizeof(int)]; } s = {.idx=n->lvn_idx};
+    uint64_t h = 0x100;
+    for (ptrdiff_t i = 0; i < sizeof(s.data); i++) {
+        h ^= s.data[i];
+        h *= 1111111111111111111u;
+    }
+    return h;
+}
+temp_list_t* *nt_upsert(lv_node_temps_map_t **m, lv_node_t* key, Arena_T ar)
+{
+    for (uint64_t h = lv_node_hash(key); *m; h <<= 2) {
+        if (lv_eq(key, (*m)->key)) {
+            return &(*m)->value;
+        }
+        m = &(*m)->child[h>>62];
+    }
+    if (!ar) {
+        return NULL;
+    }
+    *m = Alloc(ar, sizeof **m);
+    (*m)->key = key;
+    return &(*m)->value;
+}
+temp_list_t* nt_get(lv_node_temps_map_t *m, lv_node_t* key)
+{
+    temp_list_t** ptl = nt_upsert(&m, key, NULL);
+    if (ptl == NULL) {
+        return NULL;
+    }
+    return *ptl;
+}
 
 
 static int cmpnode(const void* x, const void* y)
@@ -171,9 +204,9 @@ instrs2graph(const assm_instr_t* instrs, Arena_T arena)
     lv_flowgraph_t* flow_graph = Alloc(arena, sizeof *flow_graph);
     var graph = flow_graph->lvfg_control = lv_new_graph(arena);
 
-    var def = flow_graph->lvfg_def = Table_new(0, cmpnode, hashnode);
-    var use = flow_graph->lvfg_use = Table_new(0, cmpnode, hashnode);
-    var ismove = flow_graph->lvfg_ismove = Table_new(0, cmpnode, hashnode);
+    typeof(flow_graph->lvfg_def) def = NULL;
+    typeof(flow_graph->lvfg_use) use = NULL;
+    flow_graph->lvfg_ismove = NULL;
 
     /*
      * A lookup to the start node of each basic block, using the label
@@ -194,12 +227,12 @@ instrs2graph(const assm_instr_t* instrs, Arena_T arena)
                     lv_mk_edge(nodes->nl_list->nl_node, node);
                 }
                 if (instr->ai_oper_dst) {
-                    Table_put(def, node,
-                            temp_list_sort(instr->ai_oper_dst, arena));
+                    *nt_upsert(&def, node, arena) =
+                            temp_list_sort(instr->ai_oper_dst, arena);
                 }
                 if (instr->ai_oper_src) {
-                    Table_put(use, node,
-                            temp_list_sort(instr->ai_oper_src, arena));
+                    *nt_upsert(&use, node, arena) =
+                            temp_list_sort(instr->ai_oper_src, arena);
                 }
                 break;
             case ASSM_INSTR_LABEL:
@@ -220,9 +253,9 @@ instrs2graph(const assm_instr_t* instrs, Arena_T arena)
                     lv_mk_edge(nodes->nl_list->nl_node, node);
                 }
 
-                Table_put(def, node, temp_list(instr->ai_move_dst, arena));
-                Table_put(use, node, temp_list(instr->ai_move_src, arena));
-                Table_put(ismove, node, (void*)1);
+                *nt_upsert(&def, node, arena) = temp_list(instr->ai_move_dst, arena);
+                *nt_upsert(&use, node, arena) = temp_list(instr->ai_move_src, arena);
+                nodeset_upsert(&flow_graph->lvfg_ismove, node, arena);
                 break;
         }
         prev = instr;
@@ -243,6 +276,8 @@ instrs2graph(const assm_instr_t* instrs, Arena_T arena)
     }
     Table_free(&label_to_node);
 
+    flow_graph->lvfg_def = def;
+    flow_graph->lvfg_use = use;
     struct flowgraph_and_node_list result = {
         .flowgraph = flow_graph,
         .node_list = nodes,
@@ -410,11 +445,11 @@ interference_graph(
      * Add nodes to the interference graph for each temporary
      */
     for (var n = cg_nodes; n; n = n->nl_list) {
-        temp_list_t* def_n = Table_get(flow->lvfg_def, n->nl_node);
+        temp_list_t* def_n = nt_get(flow->lvfg_def, n->nl_node);
         for (var d = def_n; d; d = d->tmp_list) {
             ig_get_node_for_temp(igraph, &d->tmp_temp, arena);
         }
-        temp_list_t* use_n = Table_get(flow->lvfg_use, n->nl_node);
+        temp_list_t* use_n = nt_get(flow->lvfg_use, n->nl_node);
         for (var u = use_n; u; u = u->tmp_list) {
             ig_get_node_for_temp(igraph, &u->tmp_temp, arena);
         }
@@ -441,12 +476,12 @@ interference_graph(
         var def_ns = Table_NST_get(def_map, node);
         var use_ns = Table_NST_get(use_map, node);
 
-        temp_list_t* def_n = Table_get(flow->lvfg_def, node);
+        temp_list_t* def_n = nt_get(flow->lvfg_def, node);
         for (var d = def_n; d; d = d->tmp_list) {
             var d_node = ig_get_node_for_temp(igraph, &d->tmp_temp, arena);
             node_set2_add(def_ns, d_node);
         }
-        temp_list_t* use_n = Table_get(flow->lvfg_use, node);
+        temp_list_t* use_n = nt_get(flow->lvfg_use, node);
         for (var u = use_n; u; u = u->tmp_list) {
             var u_node = ig_get_node_for_temp(igraph, &u->tmp_temp, arena);
             node_set2_add(use_ns, u_node);
@@ -547,7 +582,7 @@ interference_graph(
             if (IsBitSet(def_n.bits, i)) {
                 lv_node_t* d_node = ig_get_node_by_idx(igraph, i, arena);
 
-                if (!Table_get(flow->lvfg_ismove, node)) {
+                if (!nodeset_ismember(flow->lvfg_ismove, node)) {
                     for (int j = 0; j < out_ns.len; j++) {
                         if (IsBitSet(out_ns.bits, j)) {
                             lv_node_t* t_node =
@@ -580,7 +615,7 @@ interference_graph(
         }
     }
 
-    Table_T live_outs = Table_new(0, cmpnode, hashnode);
+    lv_node_temps_map_t* live_outs = NULL;
 
     // convert the live outs into a map just to temp_list
     for (int i = 0; i < fg_len; i++) {
@@ -595,7 +630,7 @@ interference_graph(
                     out_temps = temp_list_cons(*ptemp, out_temps, arena);
                 }
             }
-            Table_put(live_outs, node, out_temps);
+            *nt_upsert(&live_outs, node, arena) = out_temps;
         }
     }
 
@@ -613,14 +648,8 @@ lv_free_interference_and_flow_graph(
         struct flowgraph_and_node_list* flow_and_nodes)
 {
     // Free interference graph
-    Table_free(&igraph_and_live_outs->live_outs);
     Table_free(&igraph_and_live_outs->igraph->lvig_tnode);
     Table_free(&igraph_and_live_outs->igraph->lvig_gtemp);
-
-    // Free flow graph
-    Table_free(&flow_and_nodes->flowgraph->lvfg_def);
-    Table_free(&flow_and_nodes->flowgraph->lvfg_use);
-    Table_free(&flow_and_nodes->flowgraph->lvfg_ismove);
 }
 
 // Yeah... so... the return value must be used immediately, or copied by the

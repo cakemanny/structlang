@@ -261,12 +261,6 @@ lv_is_adj(const lv_node_t* n, const lv_node_t* m)
 }
 
 
-bool
-lv_eq(const lv_node_t* a, const lv_node_t* b)
-{
-    return a->lvn_graph == b->lvn_graph && a->lvn_idx == b->lvn_idx;
-}
-
 #include "test_harness.h"
 
 void

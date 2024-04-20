@@ -3,6 +3,7 @@
 // vim:ft=c:
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "interfaces/arena.h"
 #include "interfaces/table.h"
 #include "assem.h" // assm_instr_t
@@ -24,6 +25,7 @@ typedef struct lv_node_list_t {
     struct lv_node_list_t* nl_list;
 } lv_node_list_t;
 
+// Node iterator, array backing
 typedef struct {
     lv_node_t lvni_node;
     const void* node_array;
@@ -31,6 +33,7 @@ typedef struct {
     int i;
 } lv_node_it_arr;
 
+// Node iterator, virtual backing
 typedef struct {
     lv_node_t lvni_node;
     int i;
@@ -47,9 +50,13 @@ extern lv_node_it_virt lv_nodes(lv_graph_t*);
 extern lv_node_it_arr lv_succ(lv_node_t*);
 extern lv_node_it_arr lv_pred(lv_node_t*);
 extern lv_node_list_t* lv_adj(lv_node_t*, Arena_T);
-extern void lv_node_list_free(lv_node_list_t*);
-extern bool lv_eq(const lv_node_t*, const lv_node_t*);
 extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
+extern void lv_node_list_free(lv_node_list_t*);
+
+static inline bool
+lv_eq(const lv_node_t* a, const lv_node_t* b) {
+    return a->lvn_graph == b->lvn_graph && a->lvn_idx == b->lvn_idx;
+}
 
 extern lv_graph_t* lv_new_graph(Arena_T);
 extern size_t lv_graph_length(const lv_graph_t*);
@@ -63,6 +70,23 @@ extern void lv_print_graph(lv_graph_t*);
 /* for debugging */
 char* lv_nodename(lv_node_t* node);
 
+// 4-way hash trie
+typedef struct lv_node_temps_map_t {
+    struct lv_node_temps_map_t *child[4];
+    lv_node_t*  key;
+    temp_list_t*  value;
+} lv_node_temps_map_t;
+
+temp_list_t* *nt_upsert(lv_node_temps_map_t **m, lv_node_t* key, Arena_T);
+temp_list_t* nt_get(lv_node_temps_map_t *m, lv_node_t* key);
+
+uint64_t lv_node_hash(lv_node_t* n);
+
+// nodeset_t is a simple add-only set.
+typedef struct nodeset_t nodeset_t;
+bool nodeset_upsert(nodeset_t **m, lv_node_t* key, Arena_T arena);
+bool nodeset_ismember(nodeset_t* m, lv_node_t* key);
+
 /*
  * Flow
  */
@@ -70,9 +94,9 @@ typedef struct lv_flowgraph_t lv_flowgraph_t;
 
 struct lv_flowgraph_t {
     lv_graph_t* lvfg_control;
-    Table_T lvfg_def; // node -> temp_list_t  does not own keys
-    Table_T lvfg_use; // node -> temp_list_t  does not own keys
-    Table_T lvfg_ismove; // node -> bool
+    lv_node_temps_map_t* lvfg_def; // does not own keys
+    lv_node_temps_map_t* lvfg_use; // does not own keys
+    nodeset_t* lvfg_ismove;
 };
 
 /*
@@ -129,7 +153,7 @@ struct igraph_and_table {
      * live_outs is the mapping from flow graph nodes to the temporaries
      * that are Live Out at that node
      */
-    Table_T live_outs; // lv_node_t* -> temp_list_t*
+    lv_node_temps_map_t* live_outs;
 };
 
 struct igraph_and_table interference_graph(

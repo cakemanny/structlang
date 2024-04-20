@@ -258,19 +258,11 @@ typedef struct nodeset_t {
     struct nodeset_t *child[4];
     lv_node_t* key;
 } nodeset_t;
-static uint64_t nodeset_hash(lv_node_t* n)
+// nodeset_upsert adds the given node to the set when an arena is passed.
+// it tests for membership when arena is null
+bool nodeset_upsert(nodeset_t **m, lv_node_t* key, Arena_T ar)
 {
-    union { size_t idx; char data[sizeof(size_t)]; } s = {.idx=n->lvn_idx};
-    uint64_t h = 0x100;
-    for (ptrdiff_t i = 0; i < sizeof(s.data); i++) {
-        h ^= s.data[i];
-        h *= 1111111111111111111u;
-    }
-    return h;
-}
-static bool nodeset_upsert(nodeset_t **m, lv_node_t* key, Arena_T ar)
-{
-    for (uint64_t h = nodeset_hash(key); *m; h <<= 2) {
+    for (uint64_t h = lv_node_hash(key); *m; h <<= 2) {
         if (lv_eq(key, (*m)->key)) {
             return 1;
         }
@@ -282,7 +274,7 @@ static bool nodeset_upsert(nodeset_t **m, lv_node_t* key, Arena_T ar)
     }
     return 0;
 }
-static bool nodeset_ismember(nodeset_t* m, lv_node_t* key)
+bool nodeset_ismember(nodeset_t* m, lv_node_t* key)
 {
     return nodeset_upsert(&m, key, NULL);
 }
@@ -770,14 +762,14 @@ spill_cost(
     var flow = info->flowgraph;
     for (var it = lv_nodes(flow->lvfg_control); lv_node_it_next(&it); ) {
         var node = &it.lvni_node;
-        temp_list_t* use_n = Table_get(flow->lvfg_use, node);
+        temp_list_t* use_n = nt_get(flow->lvfg_use, node);
         for (var u = use_n; u; u = u->tmp_list) {
             if (u->tmp_temp.temp_id == t.temp_id) {
                 cost += 1;
                 break;
             }
         }
-        temp_list_t* def_n = Table_get(flow->lvfg_def, node);
+        temp_list_t* def_n = nt_get(flow->lvfg_def, node);
         for (var d = def_n; d; d = d->tmp_list) {
             if (d->tmp_temp.temp_id == t.temp_id) {
                 cost += 1;
@@ -1325,7 +1317,7 @@ record_spill_liveness(
     for (var instr = instrs; instr && lv_node_it_next(&it); instr = instr->ai_list) {
         if (is_call_instr(instr)) {
             temp_list_t* live_outs =
-                Table_get(igraph_and_table.live_outs, &it.lvni_node);
+                nt_get(igraph_and_table.live_outs, &it.lvni_node);
 
             temp_list_t* spill_live_outs =
                 Table_get(label_to_spill_liveness, instr->ai_list->ai_label);
@@ -1400,7 +1392,7 @@ compute_cs_ptr_dispo_at_call_sites(
     for (var instr = instrs; instr && lv_node_it_next(&it); instr = instr->ai_list) {
         if (is_call_instr(instr)) {
             temp_list_t* live_outs =
-                Table_get(igraph_and_table.live_outs, &it.lvni_node);
+                nt_get(igraph_and_table.live_outs, &it.lvni_node);
 
             // Any non-live callee saved will get a value of 0b00.
             uint32_t cs_bitmap = 0;
