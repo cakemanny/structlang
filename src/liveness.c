@@ -150,23 +150,24 @@ static int node_set2_first_idx(node_set2_t s)
     abort();
 }
 
-uint64_t lv_node_hash(lv_node_t* n)
+// https://nullprogram.com/blog/2018/07/31/
+uint32_t lv_node_hash(lv_node_t* n)
 {
-    union { int idx; char data[sizeof(int)]; } s = {.idx=n->lvn_idx};
-    uint64_t h = 0x100;
-    for (ptrdiff_t i = 0; i < sizeof(s.data); i++) {
-        h ^= s.data[i];
-        h *= 1111111111111111111u;
-    }
-    return h;
+    uint32_t x = n->lvn_idx;
+    x ^= x >> 15;
+    x *= 0x2c1b3c6dU;
+    x ^= x >> 12;
+    x *= 0x297a2d39U;
+    x ^= x >> 15;
+    return x;
 }
 temp_list_t* *nt_upsert(lv_node_temps_map_t **m, lv_node_t* key, Arena_T ar)
 {
-    for (uint64_t h = lv_node_hash(key); *m; h <<= 2) {
+    for (uint32_t h = lv_node_hash(key); *m; h <<= 2) {
         if (lv_eq(key, (*m)->key)) {
             return &(*m)->value;
         }
-        m = &(*m)->child[h>>62];
+        m = &(*m)->child[h>>30];
     }
     if (!ar) {
         return NULL;

@@ -80,7 +80,7 @@ typedef struct lv_node_temps_map_t {
 temp_list_t* *nt_upsert(lv_node_temps_map_t **m, lv_node_t* key, Arena_T);
 temp_list_t* nt_get(lv_node_temps_map_t *m, lv_node_t* key);
 
-uint64_t lv_node_hash(lv_node_t* n);
+uint32_t lv_node_hash(lv_node_t* n);
 
 // nodeset_t is a simple add-only set.
 typedef struct nodeset_t nodeset_t;

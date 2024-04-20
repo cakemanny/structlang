@@ -10,6 +10,32 @@
 #define var __auto_type
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
+typedef struct scope_t {
+    Table_T sc_bindings; // sl_sym_t -> scope_entry_t*
+    struct scope_t* sc_parent;
+} scope_t;
+
+typedef struct scope_entry_t {
+    sl_type_t* sce_type;
+    int sce_var_id;
+} scope_entry_t;
+
+typedef struct sem_info_t {
+    Arena_T     si_arena;
+    sl_decl_t*  si_program;
+    const char* si_filename;
+    scope_t*    si_root_scope;
+    scope_t*    si_current_scope;
+    sl_decl_t*  si_current_fn;
+    int         si_loop_depth;
+    int         si_next_var_id;
+    struct {
+        sl_type_t* int_type;
+        sl_type_t* bool_type;
+        sl_type_t* void_type;
+    } si_builtin_types;
+} sem_info_t;
+
 // used to define check types of our macros arguments
 static void check_int(int i) {}
 static void check_psem_info_t(sem_info_t* sem_info) {}
@@ -20,6 +46,7 @@ static void check_psem_info_t(sem_info_t* sem_info) {}
             (sem_info)->si_filename, lineno, \
             term_colours.red, term_colours.clear, ##__VA_ARGS__); \
 } while (0)
+
 
 // Idea: change this to use a stack allocator?
 static scope_t* scope_new()

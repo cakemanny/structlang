@@ -262,11 +262,11 @@ typedef struct nodeset_t {
 // it tests for membership when arena is null
 bool nodeset_upsert(nodeset_t **m, lv_node_t* key, Arena_T ar)
 {
-    for (uint64_t h = lv_node_hash(key); *m; h <<= 2) {
+    for (uint32_t h = lv_node_hash(key); *m; h <<= 2) {
         if (lv_eq(key, (*m)->key)) {
             return 1;
         }
-        m = &(*m)->child[h>>62];
+        m = &(*m)->child[h>>30];
     }
     if (ar) {
         *m = Arena_alloc(ar, sizeof **m, __FILE__, __LINE__);
