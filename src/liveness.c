@@ -417,6 +417,7 @@ topological_sort(int flowgraph_length, lv_node_list_t* cg_nodes, Arena_T ar)
             k++; }
         if (k == 0) {
             exit_node = n->nl_node;
+            break;
         }
     }
     assert(exit_node);

@@ -59,15 +59,42 @@ lv_new_node(lv_graph_t* graph, Arena_T ar)
     return lv_node_new(graph, graph->nodes.len - 1, ar);
 }
 
+static int
+int_binary_search(int* a, int from, int to, int key)
+{
+    int low = from;
+    int high = to;
+
+    while (low <= high) {
+        int mid = (low + high) >> 1;
+        int midVal = a[mid];
+
+        if (midVal < key)
+            low = mid + 1;
+        else if (midVal > key)
+            high = mid - 1;
+        else
+            return mid;  // key found
+    }
+    return -(low + 1);
+}
+
 static bool
 node_array_contains(const node_array_t* haystack, node_t needle)
 {
-    for (int i = 0; i < haystack->len; i++) {
-        if (haystack->data[i] == needle) {
-            return true;
-        }
+    return int_binary_search(haystack->data, 0, haystack->len - 1, needle) >= 0;
+}
+
+static void
+node_array_keep_sorted(node_array_t* a)
+{
+    int i = a->len - 1;
+    var data = a->data;
+    for (; (i >= 1) && (data[i - 1] > data[i]); --i) {
+        var tmp = data[i - 1];
+        data[i - 1] = data[i];
+        data[i] = tmp;
     }
-    return false;
 }
 
 void
@@ -79,22 +106,15 @@ lv_mk_edge(lv_node_t* from, lv_node_t* to)
     var nodes = from->lvn_graph->nodes;
     if (!node_array_contains(&nodes.data[from->lvn_idx].succ, to->lvn_idx)) {
         arrpush(&nodes.data[from->lvn_idx].succ, arena, to->lvn_idx);
+        node_array_keep_sorted(&nodes.data[from->lvn_idx].succ);
         arrpush(&nodes.data[to->lvn_idx].pred, arena, from->lvn_idx);
+        node_array_keep_sorted(&nodes.data[from->lvn_idx].pred);
     }
 }
 
 // TODO: lv_rm_edge
 // TODO: lv_print_graph
 
-
-static lv_node_list_t*
-node_list_cons(lv_node_t* node, lv_node_list_t* list, Arena_T ar)
-{
-    lv_node_list_t* cell = Alloc(ar, sizeof *cell);
-    cell->nl_node = node;
-    cell->nl_list = list;
-    return cell;
-}
 
 lv_node_it_virt
 lv_nodes(lv_graph_t* graph)
@@ -158,6 +178,38 @@ _lv_node_it_arr_next(lv_node_it_arr* it)
     return has_next;
 }
 
+bool
+_lv_node_it_2arr_next(lv_node_it_2arr* it)
+{
+    const node_array_t* a[2];
+    a[0] = it->node_array[0];
+    a[1] = it->node_array[1];
+#define has_next(i_) (it->i[(i_)] < a[(i_)]->len)
+#define next(i_) (a[(i_)]->data[it->i[(i_)]])
+    int j = it->j;
+    var has_next = has_next(j);
+    if (has_next) {
+        it->lvni_node.lvn_idx = next(j);
+
+        // advance
+        it->i[j]++;
+
+        if (has_next(0) && has_next(1)) {
+            if (next(0) == next(1)) {
+                it->i[1]++;
+                it->j = 0;
+            } else {
+                it->j = (next(0) < next(1)) ? 0 : 1;
+            }
+        } else {
+            it->j = (has_next(0)) ? 0 : 1;
+        }
+    }
+    return has_next;
+#undef next
+#undef has_next
+}
+
 void
 lv_node_list_free(lv_node_list_t* nl)
 {
@@ -169,88 +221,37 @@ lv_node_list_free(lv_node_list_t* nl)
     }
 }
 
-static int
-node_qsort_cmp(const void* x, const void* y)
-{
-    const node_t* xx = x;
-    const node_t* yy = y;
-    return *xx - *yy;
-}
-
-static void
-node_array_push_if_missing(node_array_t* a, node_t idx, Arena_T ar)
-{
-    if (!node_array_contains(a, idx)) {
-        arrpush(a, ar, idx);
-    }
-}
-
-typedef struct {
-    const node_array_t* a;
-    int i;
-    node_t idx;  // the node ID
-} node_array_it_t;
-
-
-static node_array_it_t
-node_array_it(const node_array_t* a)
-{
-    return (node_array_it_t){ .a = a, .i = 0 };
-}
-
-static bool
-node_array_it_next(node_array_it_t* it)
-{
-    var has_next = it->i < it->a->len;
-    if (has_next) {
-        it->idx = it->a->data[it->i];
-        it->i++;
-    }
-    return has_next;
-}
-
 
 /*
- * Returns all nodes with an edge from or to `n`
- *
- * Deprecated: use lv_is_adj for now
+ * Returns an iterator of nodes with an edge from or to `n`
  */
-lv_node_list_t*
-lv_adj(lv_node_t* node, Arena_T ar)
+lv_node_it_2arr
+lv_adj(lv_node_t* node)
 {
     var graph = node->lvn_graph;
 
-    node_array_t adj = {};
-    var node_rep = graph->nodes.data[node->lvn_idx];
-    // TODO: implement some sort of Set
-    for (var it = node_array_it(&node_rep.pred); node_array_it_next(&it);) {
-        node_array_push_if_missing(&adj, it.idx, ar);
-    }
-    for (NODE_ARR_IT(idx, node_rep.succ)) {
-        node_array_push_if_missing(&adj, idx, ar);
-    }
-    qsort(adj.data, adj.len, sizeof(adj.data[0]), node_qsort_cmp);
+    lv_node_it_2arr it = {};
+    it.lvni_node.lvn_graph = graph;
+    it.node_array[0] = &graph->nodes.data[node->lvn_idx].pred;
+    it.node_array[1] = &graph->nodes.data[node->lvn_idx].succ;
+    it.i[0] = it.i[1] = 0;
 
-    lv_node_list_t* result = NULL;
-    for (int i = adj.len - 1; i >= 0; i--) {
-        var idx = adj.data[i];
-        lv_node_t* new_node = lv_node_new(graph, idx, ar);
-        result = node_list_cons(new_node, result, ar);
+    var node_rep = graph->nodes.data[node->lvn_idx];
+    if (node_rep.pred.len > 0 && node_rep.succ.len > 0) {
+        // j points the the array with the min next value;
+        it.j = (node_rep.pred.data[0] > node_rep.succ.data[0]);
+    } else if (node_rep.succ.len > 0) {
+        it.j = 1;
     }
-    return result;
+
+    return it;
 }
 
 static bool
 lv_is_succ(const lv_node_t* n, const lv_node_t* m)
 {
-    var node_rep = n->lvn_graph->nodes.data[n->lvn_idx];
-    for (NODE_ARR_IT(idx, node_rep.succ)) {
-        if (idx == m->lvn_idx) {
-            return true;
-        }
-    }
-    return false;
-
+    var n_succ = n->lvn_graph->nodes.data[n->lvn_idx].succ;
+    return node_array_contains(&n_succ, m->lvn_idx);
 }
 
 bool

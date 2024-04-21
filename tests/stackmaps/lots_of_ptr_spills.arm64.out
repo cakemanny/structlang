@@ -88,7 +88,7 @@ Lptrmap4:
 Lptrmap5:
 	.quad	Lptrmap4
 	.quad	Lret57	; return address - the key
-	.long	693504	; callee-save bitmap
+	.long	688149	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -105,7 +105,7 @@ Lptrmap5:
 Lptrmap6:
 	.quad	Lptrmap5
 	.quad	Lret56	; return address - the key
-	.long	693588	; callee-save bitmap
+	.long	689493	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -139,7 +139,7 @@ Lptrmap7:
 Lptrmap8:
 	.quad	Lptrmap7
 	.quad	Lret54	; return address - the key
-	.long	693588	; callee-save bitmap
+	.long	689493	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -156,7 +156,7 @@ Lptrmap8:
 Lptrmap9:
 	.quad	Lptrmap8
 	.quad	Lret53	; return address - the key
-	.long	693584	; callee-save bitmap
+	.long	688469	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -173,7 +173,7 @@ Lptrmap9:
 Lptrmap10:
 	.quad	Lptrmap9
 	.quad	Lret52	; return address - the key
-	.long	693585	; callee-save bitmap
+	.long	689493	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -190,7 +190,7 @@ Lptrmap10:
 Lptrmap11:
 	.quad	Lptrmap10
 	.quad	Lret51	; return address - the key
-	.long	693584	; callee-save bitmap
+	.long	688469	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -207,7 +207,7 @@ Lptrmap11:
 Lptrmap12:
 	.quad	Lptrmap11
 	.quad	Lret50	; return address - the key
-	.long	693568	; callee-save bitmap
+	.long	688213	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -224,7 +224,7 @@ Lptrmap12:
 Lptrmap13:
 	.quad	Lptrmap12
 	.quad	Lret49	; return address - the key
-	.long	693569	; callee-save bitmap
+	.long	688469	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -241,7 +241,7 @@ Lptrmap13:
 Lptrmap14:
 	.quad	Lptrmap13
 	.quad	Lret48	; return address - the key
-	.long	693568	; callee-save bitmap
+	.long	688213	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -258,7 +258,7 @@ Lptrmap14:
 Lptrmap15:
 	.quad	Lptrmap14
 	.quad	Lret47	; return address - the key
-	.long	693504	; callee-save bitmap
+	.long	688149	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -275,7 +275,7 @@ Lptrmap15:
 Lptrmap16:
 	.quad	Lptrmap15
 	.quad	Lret46	; return address - the key
-	.long	693505	; callee-save bitmap
+	.long	688213	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -292,7 +292,7 @@ Lptrmap16:
 Lptrmap17:
 	.quad	Lptrmap16
 	.quad	Lret45	; return address - the key
-	.long	693504	; callee-save bitmap
+	.long	688149	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -309,7 +309,7 @@ Lptrmap17:
 Lptrmap18:
 	.quad	Lptrmap17
 	.quad	Lret44	; return address - the key
-	.long	693248	; callee-save bitmap
+	.long	688133	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -326,7 +326,7 @@ Lptrmap18:
 Lptrmap19:
 	.quad	Lptrmap18
 	.quad	Lret43	; return address - the key
-	.long	693249	; callee-save bitmap
+	.long	688149	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -343,7 +343,7 @@ Lptrmap19:
 Lptrmap20:
 	.quad	Lptrmap19
 	.quad	Lret42	; return address - the key
-	.long	693269	; callee-save bitmap
+	.long	688469	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -360,7 +360,7 @@ Lptrmap20:
 Lptrmap21:
 	.quad	Lptrmap20
 	.quad	Lret41	; return address - the key
-	.long	693265	; callee-save bitmap
+	.long	688405	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -377,7 +377,7 @@ Lptrmap21:
 Lptrmap22:
 	.quad	Lptrmap21
 	.quad	Lret40	; return address - the key
-	.long	693249	; callee-save bitmap
+	.long	688149	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -394,7 +394,7 @@ Lptrmap22:
 Lptrmap23:
 	.quad	Lptrmap22
 	.quad	Lret39	; return address - the key
-	.long	693248	; callee-save bitmap
+	.long	688133	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -411,7 +411,7 @@ Lptrmap23:
 Lptrmap24:
 	.quad	Lptrmap23
 	.quad	Lret38	; return address - the key
-	.long	693253	; callee-save bitmap
+	.long	688213	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -428,7 +428,7 @@ Lptrmap24:
 Lptrmap25:
 	.quad	Lptrmap24
 	.quad	Lret37	; return address - the key
-	.long	693252	; callee-save bitmap
+	.long	688197	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -445,7 +445,7 @@ Lptrmap25:
 Lptrmap26:
 	.quad	Lptrmap25
 	.quad	Lret36	; return address - the key
-	.long	693248	; callee-save bitmap
+	.long	688133	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -462,7 +462,7 @@ Lptrmap26:
 Lptrmap27:
 	.quad	Lptrmap26
 	.quad	Lret35	; return address - the key
-	.long	692224	; callee-save bitmap
+	.long	688129	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -479,7 +479,7 @@ Lptrmap27:
 Lptrmap28:
 	.quad	Lptrmap27
 	.quad	Lret34	; return address - the key
-	.long	692225	; callee-save bitmap
+	.long	688133	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -496,7 +496,7 @@ Lptrmap28:
 Lptrmap29:
 	.quad	Lptrmap28
 	.quad	Lret33	; return address - the key
-	.long	692245	; callee-save bitmap
+	.long	688213	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -513,7 +513,7 @@ Lptrmap29:
 Lptrmap30:
 	.quad	Lptrmap29
 	.quad	Lret32	; return address - the key
-	.long	692241	; callee-save bitmap
+	.long	688197	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -530,7 +530,7 @@ Lptrmap30:
 Lptrmap31:
 	.quad	Lptrmap30
 	.quad	Lret31	; return address - the key
-	.long	692225	; callee-save bitmap
+	.long	688133	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -547,7 +547,7 @@ Lptrmap31:
 Lptrmap32:
 	.quad	Lptrmap31
 	.quad	Lret30	; return address - the key
-	.long	692224	; callee-save bitmap
+	.long	688129	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -564,7 +564,7 @@ Lptrmap32:
 Lptrmap33:
 	.quad	Lptrmap32
 	.quad	Lret29	; return address - the key
-	.long	692229	; callee-save bitmap
+	.long	688149	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -581,7 +581,7 @@ Lptrmap33:
 Lptrmap34:
 	.quad	Lptrmap33
 	.quad	Lret28	; return address - the key
-	.long	692228	; callee-save bitmap
+	.long	688145	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space
@@ -598,7 +598,7 @@ Lptrmap34:
 Lptrmap35:
 	.quad	Lptrmap34
 	.quad	Lret27	; return address - the key
-	.long	692224	; callee-save bitmap
+	.long	688129	; callee-save bitmap
 	.short	2	; number of stack args + 2
 	.short	8	; length of locals space
 	.short	7	; length of spills space

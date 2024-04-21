@@ -989,12 +989,9 @@ struct ra_color_result {
             info.initial = list_cons(node, info.initial, info.scratch);
             info.worklist[node->lvn_idx] = WL_INITIAL;
 
-            for (int j = 0; j < count_nodes; j++) {
-                var m = &nodes[j];
-                // todo: write an efficient adj iterator
-                if (lv_is_adj(node, m)) {
-                    add_edge_helper(&info, node, m);
-                }
+            for (var it = lv_adj(node); lv_node_it_next(&it);) {
+                var m = &nodes[it.lvni_node.lvn_idx];
+                add_edge_helper(&info, node, m);
             }
         }
     }

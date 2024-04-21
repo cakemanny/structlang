@@ -33,6 +33,13 @@ typedef struct {
     int i;
 } lv_node_it_arr;
 
+typedef struct {
+    lv_node_t lvni_node;
+    const void* node_array[2];
+    int i[2];
+    int j;
+} lv_node_it_2arr;
+
 // Node iterator, virtual backing
 typedef struct {
     lv_node_t lvni_node;
@@ -40,16 +47,18 @@ typedef struct {
 } lv_node_it_virt;
 
 extern bool _lv_node_it_arr_next(lv_node_it_arr*);
+extern bool _lv_node_it_2arr_next(lv_node_it_2arr*);
 extern bool _lv_node_it_virt_next(lv_node_it_virt* it);
 #define lv_node_it_next(it) _Generic((it) \
         , lv_node_it_arr*: _lv_node_it_arr_next \
+        , lv_node_it_2arr*: _lv_node_it_2arr_next \
         , lv_node_it_virt*: _lv_node_it_virt_next \
         )(it)
 
 extern lv_node_it_virt lv_nodes(lv_graph_t*);
 extern lv_node_it_arr lv_succ(lv_node_t*);
 extern lv_node_it_arr lv_pred(lv_node_t*);
-extern lv_node_list_t* lv_adj(lv_node_t*, Arena_T);
+extern lv_node_it_2arr lv_adj(lv_node_t*);
 extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
 extern void lv_node_list_free(lv_node_list_t*);
 
