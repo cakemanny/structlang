@@ -2,7 +2,7 @@
 #include <assert.h> // assert
 #include <string.h> // strcmp
 #include "semantics.h"
-#include "mem.h"
+#include "stack_alloc.h"
 #include "colours.h"
 #include "grammar.tab.h"
 
@@ -11,24 +11,27 @@
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
 typedef struct scope_t {
-    Table_T sc_bindings; // sl_sym_t -> scope_entry_t*
     struct scope_t* sc_parent;
+    struct scope_entry_t* sc_bindings;
 } scope_t;
 
 typedef struct scope_entry_t {
+    struct scope_entry_t *child[4];
+    sl_sym_t key;
     sl_type_t* sce_type;
     int sce_var_id;
 } scope_entry_t;
 
 typedef struct sem_info_t {
-    Arena_T     si_arena;
-    sl_decl_t*  si_program;
-    const char* si_filename;
-    scope_t*    si_root_scope;
-    scope_t*    si_current_scope;
-    sl_decl_t*  si_current_fn;
-    int         si_loop_depth;
-    int         si_next_var_id;
+    Arena_T         si_arena;
+    stack_alloc_t*  si_stack;
+    sl_decl_t*      si_program;
+    const char*     si_filename;
+    scope_t*        si_root_scope;
+    scope_t*        si_current_scope;
+    sl_decl_t*      si_current_fn;
+    int             si_loop_depth;
+    int             si_next_var_id;
     struct {
         sl_type_t* int_type;
         sl_type_t* bool_type;
@@ -47,38 +50,58 @@ static void check_psem_info_t(sem_info_t* sem_info) {}
             term_colours.red, term_colours.clear, ##__VA_ARGS__); \
 } while (0)
 
+// https://nullprogram.com/blog/2022/08/08/
+static uint64_t sym_hash(const char *s, int32_t len)
+{
+    uint64_t h = 0x100;
+    for (int32_t i = 0; i < len; i++) {
+        h ^= s[i] & 255;
+        h *= 1111111111111111111;
+    }
+    return h ^ h>>32;
+}
+
+static scope_entry_t*
+sce_upsert(scope_entry_t** m, sl_sym_t key, stack_alloc_t* st)
+{
+    for (uint32_t h = sym_hash(key, strlen(key)); *m; h <<= 2) {
+        if (strcmp(key, (*m)->key) == 0) {
+            return *m;
+        }
+        m = &(*m)->child[h>>30];
+    }
+    if (!st) {
+        return NULL;
+    }
+    *m = stack_alloc(st, sizeof **m);
+    (*m)->key = key;
+    return *m;
+}
+static int
+sce_len(scope_entry_t* m)
+{
+    if (!m) {
+        return 0;
+    }
+    int total = 1;
+    for (int i = 0; i < 4; i++) {
+        total += sce_len(m->child[i]);
+    }
+    return total;
+}
 
 // Idea: change this to use a stack allocator?
-static scope_t* scope_new()
+static scope_t* scope_new(stack_alloc_t* stack)
 {
-    scope_t* s = xmalloc(sizeof *s);
-    s->sc_bindings = Table_new(0, NULL, NULL);
+    scope_t* s = stack_alloc(stack, sizeof *s);
+    s->sc_bindings = NULL;
     s->sc_parent = NULL;
     return s;
 }
 
-static void scope_entry_free(const void* key, void** value, void* cl)
-{
-    // We don't free the contents of the entry, namely the sl_type_t*, because
-    // it will be referenced by the ast at this point.
-    assert(*value);
-    free(*value);
-    // Table_map does not allow us to set the values to NULL, so we must only
-    // call this using Table_map right before calling Table_free
-}
-
-static void scope_free(scope_t** scope)
-{
-    Table_map((*scope)->sc_bindings, scope_entry_free, NULL);
-    Table_free(&(*scope)->sc_bindings);
-    assert(scope && *scope);
-    free(*scope);
-    *scope = NULL;
-}
-
 static void push_scope(sem_info_t* info)
 {
-    scope_t* new_scope = scope_new();
+    scope_t* new_scope = scope_new(info->si_stack);
     new_scope->sc_parent = info->si_current_scope;
     info->si_current_scope = new_scope;
 }
@@ -88,7 +111,7 @@ static void pop_scope(sem_info_t* info)
     scope_t* old_scope = info->si_current_scope;
     assert(old_scope);
     info->si_current_scope = old_scope->sc_parent;
-    scope_free(&old_scope);
+    stack_popto(info->si_stack, old_scope);
 }
 
 static int declare_in_current_scope(
@@ -96,12 +119,14 @@ static int declare_in_current_scope(
 {
     assert(type->ty_tag > 0);
     assert(id > 0);
-    scope_entry_t* entry = xmalloc(sizeof *entry);
+
+    scope_entry_t* entry = sce_upsert(&info->si_current_scope->sc_bindings,
+            name, info->si_stack);
+    if (entry->sce_type != NULL) {
+        return -1; // was already there.
+    }
     entry->sce_type = type;
     entry->sce_var_id = id;
-    if (Table_put(info->si_current_scope->sc_bindings, name, entry) != NULL) {
-        return -1;
-    }
     return 0;
 }
 
@@ -109,7 +134,7 @@ static scope_entry_t* lookup_var(sem_info_t* info, sl_sym_t name)
 {
     scope_t* scope = info->si_current_scope;
     for (; scope; scope = scope->sc_parent) {
-        scope_entry_t* found = Table_get(scope->sc_bindings, name);
+        scope_entry_t* found = sce_upsert(&scope->sc_bindings, name, NULL);
         if (found) {
             return found;
         }
@@ -117,6 +142,7 @@ static scope_entry_t* lookup_var(sem_info_t* info, sl_sym_t name)
     return NULL;
 }
 
+// TODO: put the struct/type declarations in a table?
 static sl_decl_t* lookup_decl(sem_info_t* sem_info, sl_sym_t name, int tag)
 {
     sl_decl_t* x;
@@ -191,12 +217,16 @@ bool sem_is_lvalue(const sl_expr_t* expr)
 }
 
 
-static void defined_vars_helper(const void* key, void** value, void* cl)
+static void
+fill_defined_vars(int** pvar_array, scope_entry_t* m)
 {
-    scope_entry_t** entry = (scope_entry_t**)value;
-    int** pvar_array = cl;
-    **pvar_array = (*entry)->sce_var_id;
-    *pvar_array += 1;
+    if (!m)
+        return;
+    **pvar_array = m->sce_var_id;
+    *pvar_array += 1; // move pvar_array to next place to put the var id
+    for (int i = 0; i < 4; i++) {
+        fill_defined_vars(pvar_array, m->child[i]);
+    }
 }
 
 /*
@@ -212,16 +242,17 @@ static int* defined_vars(sem_info_t* info)
     // don't care about the root scope, where functions are defined
     for (scope_t* scope = info->si_current_scope;
             scope->sc_parent; scope = scope->sc_parent) {
-        total_vars += Table_length(scope->sc_bindings);
+        total_vars += sce_len(scope->sc_bindings);
     }
 
+    // todo: use one of our dynamic arrays...
     int* const result =
         Alloc(info->si_arena, (1 + total_vars) * sizeof *result);
     int* it = result;
 
     for (scope_t* scope = info->si_current_scope;
             scope->sc_parent; scope = scope->sc_parent) {
-        Table_map(scope->sc_bindings, defined_vars_helper, &it);
+        fill_defined_vars(&it, scope->sc_bindings);
     }
     return result;
 }
@@ -372,6 +403,7 @@ static int verify_expr_call(sem_info_t* info, sl_expr_t* expr)
         num_args += 1;
     }
 
+    // FIXME: should this not look through the scope chain?
     sl_decl_t* fn_decl = lookup_func_decl(info, expr->ex_fn_name);
     if (fn_decl == NULL) {
         elprintf("call to undefined function '%s'",
@@ -839,11 +871,12 @@ sem_verify_and_type_program(
     int result = 0;
     sem_info_t sem_info = {
         .si_arena = arena,
+        .si_stack = stack_alloc_new(),
         .si_program = program,
         .si_filename = (strcmp(filename, "-") == 0) ? "<stdin>" : filename,
-        .si_root_scope = scope_new(),
         .si_next_var_id = 1,
     };
+    sem_info.si_root_scope = scope_new(sem_info.si_stack),
     sem_info.si_current_scope = sem_info.si_root_scope;
 
     // Add builtin types to sem_info
@@ -887,6 +920,6 @@ sem_verify_and_type_program(
     }
 
 cleanup:
-    scope_free(&sem_info.si_root_scope);
+    stack_dispose(&sem_info.si_stack);
     return result;
 }

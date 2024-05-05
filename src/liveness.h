@@ -63,14 +63,14 @@ extern bool lv_is_adj(const lv_node_t*, const lv_node_t*);
 extern void lv_node_list_free(lv_node_list_t*);
 
 static inline bool
-lv_eq(const lv_node_t* a, const lv_node_t* b) {
+lv_eq(const lv_node_t* a, const lv_node_t* b)
+{
     return a->lvn_graph == b->lvn_graph && a->lvn_idx == b->lvn_idx;
 }
 
 extern lv_graph_t* lv_new_graph(Arena_T);
 extern size_t lv_graph_length(const lv_graph_t*);
 extern lv_node_t* lv_new_node(lv_graph_t* graph, Arena_T);
-/* for when freeing a node that came from lv_new_node */
 extern void lv_mk_edge(lv_node_t* from, lv_node_t* to);
 extern void lv_rm_edge(lv_node_t* from, lv_node_t* to);
 
