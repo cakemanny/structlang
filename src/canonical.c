@@ -672,20 +672,13 @@ static tree_stm_t* last_stm_in_block(basic_block_t* b)
     return s;
 }
 
-static basic_block_t* remove_block_from_blocks(
-        basic_block_t** pQ, basic_block_t* c)
+static basic_block_t*
+remove_block_from_blocks(basic_block_t** pQ, basic_block_t* c)
 {
-    var Q = *pQ;
-
-    if (Q == c) {
-        *pQ = Q->bb_list;
-        c->bb_list = NULL;
-        return c;
-    }
-
-    for (var b = Q; b; b = b->bb_list) {
-        if (b->bb_list == c) {
-            b->bb_list = c->bb_list; c->bb_list = NULL;
+    for (; *pQ; pQ = &(*pQ)->bb_list ) {
+        if (*pQ == c) {
+            *pQ = (*pQ)->bb_list;
+            c->bb_list = NULL;
             return c;
         }
     }
