@@ -519,6 +519,7 @@ typedef struct basic_block_t basic_block_t;
 struct basic_block_t {
     tree_stm_t* bb_stmts;
     basic_block_t* bb_list;
+    bool bb_marked; // block as been added to a trace
 };
 typedef struct basic_blocks_t {
     basic_block_t* bb_blocks;
@@ -682,6 +683,7 @@ remove_block_from_blocks(basic_block_t** pQ, basic_block_t* c)
             return c;
         }
     }
+    return NULL;
     assert(0 && "c not in Q");
 }
 
@@ -761,7 +763,6 @@ static void put_falses_after_cjumps(
                         s1->tst_cjump_true,
                         info->arena);
                 s->tst_list->tst_list = s2;
-                // leak s1 ,lol
             } else { // neither the t or f label follows
                 // add an unconditional jump
                 sl_sym_t f0 = temp_newlabel(info->temp_state);
@@ -781,14 +782,23 @@ static void put_falses_after_cjumps(
     }
 }
 
+static basic_block_t*
+get_unmarked(Table_T block_by_label, sl_sym_t lbl)
+{
+    basic_block_t* c = Table_get(block_by_label, lbl);
+    if (c && !c->bb_marked) {
+        return c;
+    }
+    return NULL;
+}
+
 static tree_stm_t*
 trace_schedule(canon_info_t* info, basic_blocks_t blocks)
 {
-    // if the block is in the table it's not marked
-    Table_T table = Table_new(0, NULL, NULL);
+    Table_T by_label = Table_new(0, NULL, NULL);
 
     for (basic_block_t* b = blocks.bb_blocks; b; b = b->bb_list) {
-        Table_put(table, label_for_block(b), b);
+        Table_put(by_label, label_for_block(b), b);
     }
 
     trace_list_t* traces = NULL;
@@ -797,9 +807,8 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
         trace_t* T = NULL;
         // remove the head of Q
         var b = remove_block_from_blocks(&Q, Q);
-        while (Table_get(table, label_for_block(b))) { // !is_marked(b)
-            // mark b
-            Table_remove(table, label_for_block(b));
+        while (!b->bb_marked) {
+            b->bb_marked = true;
 
             T = append_block_to_trace(T, b);
 
@@ -808,14 +817,14 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
             tree_stm_t* last = last_stm_in_block(b);
             if (last->tst_tag == TREE_STM_JUMP) {
                 for (int i = 0; i < last->tst_jump_num_labels; i++) {
-                    if ((c = Table_get(table, last->tst_jump_labels[i]))) {
+                    if ((c = get_unmarked(by_label, last->tst_jump_labels[i]))) {
                         break;
                     }
                 }
             } else if (last->tst_tag == TREE_STM_CJUMP) {
-                if ((c = Table_get(table, last->tst_cjump_false))) {
+                if ((c = get_unmarked(by_label, last->tst_cjump_false))) {
                     // c has been found
-                } else if ((c = Table_get(table, last->tst_cjump_true))) {
+                } else if ((c = get_unmarked(by_label, last->tst_cjump_true))) {
                     // c has been found
                 }
             }
@@ -829,7 +838,7 @@ trace_schedule(canon_info_t* info, basic_blocks_t blocks)
             traces = append_trace_to_trace_list(traces, T, info->scratch);
     }
 
-    Table_free(&table);
+    Table_free(&by_label);
 
     // build a new list of basic blocks by following the traces
 
