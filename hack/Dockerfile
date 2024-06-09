@@ -1,6 +1,7 @@
 FROM debian:bookworm-slim
 
-RUN apt update && \
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt update && \
     apt install -y \
         clang \
         make \

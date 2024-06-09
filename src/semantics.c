@@ -1,5 +1,6 @@
-#include <stdlib.h> // free
 #include <assert.h> // assert
+#include <stdint.h> // uint64_t
+#include <stdlib.h> // free
 #include <string.h> // strcmp
 #include "semantics.h"
 #include "stack_alloc.h"
