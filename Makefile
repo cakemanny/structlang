@@ -35,7 +35,7 @@ LEX=flex
 LFLAGS=
 
 CPPFLAGS ?= $(INC_FLAGS) -MMD -MP
-CFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer
+CFLAGS = -std=gnu11 -g -Wall -Wvla -Werror -fno-omit-frame-pointer
 LDFLAGS =
 
 RTCFLAGS = -std=gnu11 -g -Wall -Werror -fno-omit-frame-pointer -O1

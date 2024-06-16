@@ -134,7 +134,7 @@ static void node_set2_remove(node_set2_t s, const lv_node_t* node)
     ClearBit(s.bits, node->lvn_idx);
 }
 
-/*static*/ bool node_set2_member(node_set2_t s, const lv_node_t* node)
+static bool node_set2_member(node_set2_t s, const lv_node_t* node)
 {
     return IsBitSet(s.bits, node->lvn_idx);
 }

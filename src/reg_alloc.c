@@ -1379,7 +1379,7 @@ compute_cs_ptr_dispo_at_call_sites(
 {
     const target_t* target = frame->acf_target;
     const int csn = target->callee_saves.length;
-    const char* callee_save_names[target->callee_saves.length];
+    const char* callee_save_names[TARGET_CS_COUNT_MAX];
     for (int i = 0, n = target->callee_saves.length; i < n; i++) {
         callee_save_names[i] =
             target->register_names[target->callee_saves.elems[i].temp_id];
