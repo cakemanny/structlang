@@ -7,11 +7,11 @@ Lptrmap0:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -24,11 +24,11 @@ Lptrmap1:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -41,11 +41,11 @@ Lptrmap2:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -58,11 +58,11 @@ Lptrmap3:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -75,11 +75,11 @@ Lptrmap4:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -92,11 +92,11 @@ Lptrmap5:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -109,11 +109,11 @@ Lptrmap6:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -126,11 +126,11 @@ Lptrmap7:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -143,11 +143,11 @@ Lptrmap8:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -160,11 +160,11 @@ Lptrmap9:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap
@@ -177,11 +177,11 @@ Lptrmap10:
 	.short	2	; number of stack args + 2
 	.short	10	; length of locals space
 	.short	10	; length of spills space
-	.byte	120	; spill_reg
-	.byte	86	; spill_reg
-	.byte	52	; spill_reg
-	.byte	18	; spill_reg
-	.byte	160	; spill_reg
+	.byte	16	; spill_reg
+	.byte	50	; spill_reg
+	.byte	84	; spill_reg
+	.byte	118	; spill_reg
+	.byte	168	; spill_reg
 	.zero	1
 	.quad	0	; arg bitmap
 	.quad	0	; locals bitmap

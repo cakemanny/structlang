@@ -70,14 +70,14 @@ struct frame_map_t {
 
     /*
      * An array of 10 4-bit cs register indexes. N used for unused
-     * One for each offset after the frame_words
+     * One for each set bit in the spill-inherit bitmap
      */
     uint8_t         spill_reg[5];
     uint8_t         _padding0[1];
 
     /*
-     * The arg bitmap followed directly by the frame bitmap, and then the spill
-     * bitmap.
+     * The arg bitmap followed directly by the frame bitmap, and then the
+     * spill-inherit bitmap.
      */
     uint64_t        bitmaps[0];
 };
@@ -119,11 +119,11 @@ print_stack_backtrace(void* fp)
         Dl_info info;
         if (dladdr(frame->ret_addr, &info) == 0) {
             // unable to find symbol
-            fprintf(stderr, "%3d %35s 0x%016lx\n", i, "???",
+            fprintf(stderr, "%-3d %-35s 0x%016lx\n", i, "???",
                     (uintptr_t)frame->ret_addr);
         } else {
             char bname[MAXPATHLEN];
-            fprintf(stderr, "%3d %35s 0x%016lx %s + %ld\n", i,
+            fprintf(stderr, "%-3d %-35s 0x%016lx %s + %ld\n", i,
                     basename_r(info.dli_fname, bname),
                     (uintptr_t)frame->ret_addr, info.dli_sname,
                     frame->ret_addr - info.dli_saddr);

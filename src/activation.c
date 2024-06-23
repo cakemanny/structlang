@@ -593,9 +593,9 @@ debug_print_frame(ac_frame_t* frame)
                 fprintf(stderr, "|                                      |\n");
             }
             if (v->acf_varname != NULL) {
-                fprintf(stderr, "| %36s | %d \n", v->acf_varname, v->acf_offset);
+                fprintf(stderr, "| %-36s | %d \n", v->acf_varname, v->acf_offset);
             } else {
-                fprintf(stderr, "| %36d | %d \n", v->acf_stored.temp_id, v->acf_offset);
+                fprintf(stderr, "| %-36d | %d \n", v->acf_stored.temp_id, v->acf_offset);
             }
 
             last_offset = v->acf_offset;
@@ -744,6 +744,23 @@ reg_idx_for_name(const ac_frame_t* frame, const char* reg_name)
     return i;
 }
 
+static void
+spill_reg_keep_sorted(
+        ac_frame_map_t* frame_map, int* spill_reg_offset, int len)
+{
+    int i = len - 1;
+    var keys = spill_reg_offset;
+    var data = frame_map->acfm_spill_reg;
+    for (; (i >= 1) && (keys[i - 1] > keys[i]); --i) {
+        var t = data[i - 1];
+        data[i - 1] = data[i];
+        data[i] = t;
+        var k = keys[i - 1];
+        keys[i - 1] = keys[i];
+        keys[i] = k;
+    }
+}
+
 /*
  * Given the following program
  *
@@ -818,6 +835,7 @@ void ac_extend_frame_map_for_spills(
     frame_map->acfm_num_spill_words = spill_words;
 
     int spill_reg_idx = 0;
+    int spill_reg_offset[10];
 
     for (struct ac_frame_var* v = frame->ac_frame_vars; v; v = v->acf_list) {
         if (v->acf_tag == ACF_ACCESS_FRAME
@@ -863,10 +881,12 @@ void ac_extend_frame_map_for_spills(
                     assert(spill_reg_idx < NELEMS(frame_map->acfm_spill_reg) &&
                             "too many inherited dispositions");
 
-                    // FIXME: we need to fill this array in order
-                    // of least to greatest offset - not the order they
-                    // appear on the frame vars list.
+                    spill_reg_offset[spill_reg_idx] = v->acf_offset;
                     frame_map->acfm_spill_reg[spill_reg_idx++] = reg_idx;
+                    // we do a little insert sort to ensure the reg indexes
+                    // are least to greatest offet - i.e. stack order.
+                    spill_reg_keep_sorted(frame_map, spill_reg_offset, spill_reg_idx);
+
                     SetBit(frame_map->acfm_spills, bit_to_set);
                     break;
                 }

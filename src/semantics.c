@@ -10,6 +10,7 @@
 // type infering declarations - requires -std=gnu11
 #define var __auto_type
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
+#define NELEMS(A) ((sizeof A) / sizeof A[0])
 
 typedef struct scope_t {
     struct scope_t* sc_parent;
@@ -85,7 +86,7 @@ sce_len(scope_entry_t* m)
         return 0;
     }
     int total = 1;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < NELEMS(m->child); i++) {
         total += sce_len(m->child[i]);
     }
     return total;
@@ -225,7 +226,7 @@ fill_defined_vars(int** pvar_array, scope_entry_t* m)
         return;
     **pvar_array = m->sce_var_id;
     *pvar_array += 1; // move pvar_array to next place to put the var id
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < NELEMS(m->child); i++) {
         fill_defined_vars(pvar_array, m->child[i]);
     }
 }
@@ -235,6 +236,7 @@ fill_defined_vars(int** pvar_array, scope_entry_t* m)
  * memory, we attach an array of in-scope variable ids to each function
  * call and allocation.
  */
+// thought: is it possible to ignore variables that have no future uses?
 static int* defined_vars(sem_info_t* info)
 {
     int total_vars = 0;
