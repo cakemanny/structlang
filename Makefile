@@ -75,7 +75,7 @@ $(BUILD_DIR)/$(TEST_EXEC): $(OBJS)
 
 $(BUILD_DIR)/$(RUNTIME_LIB): runtime/runtime.c
 	$(MKDIR_P) $(BUILD_DIR)/runtime
-	$(CC) -g -Wall -Werror -fno-omit-frame-pointer -c $< -o $(BUILD_DIR)/runtime/runtime.o
+	$(CC) -g -Wall -Wvla -Werror -fno-omit-frame-pointer -c $< -o $(BUILD_DIR)/runtime/runtime.o
 	$(AR) rcs $@ $(BUILD_DIR)/runtime/runtime.o
 
 $(BUILD_DIR)/src/lex.yy.c: src/lexer.l
