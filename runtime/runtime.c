@@ -1,7 +1,10 @@
-#include <dlfcn.h>
-#include <execinfo.h>
+//#define _POSIX_C_SOURCE 1
+#include <dlfcn.h> // dladdr, ..
+#include <execinfo.h> // backtrace, ..
+#include <libgen.h> // basename_r
+#include <stdbool.h> // true, false
 #include <stdint.h> // uint32_t, ...
-#include <libgen.h>
+#include <stddef.h> // ptrdiff_t
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,29 +34,23 @@
 } while (0)
 
 
-#if defined(__arm64__)
-/* static */
+#if defined(__arm64__) || defined(__aarch64__)
 const char* callee_saved[] = {
     "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 };
 
-struct cs_context_t {
-    void* reg[10];
-} cs_context;
-
 #elif defined(__x86_64__)
-/* static */
 const char* callee_saved[] = {
     "rbx", "r12", "r13", "r14", "r15",
 };
 
-struct cs_context_t {
-    void* reg[5];
-} cs_context;
-
 #else
 #  error "unsupported target platform"
 #endif
+
+struct cs_context_t {
+    void* reg[NELEMS(callee_saved)];
+} cs_context;
 
 
 typedef struct frame_map_t frame_map_t;
@@ -129,11 +126,14 @@ print_stack_backtrace(void* fp)
 
     int n = 128; // cut short after we find main
     for (int i = 0; i < n; i++, frame = frame->prev) {
+#ifdef __APPLE__
         Dl_info info;
         if (dladdr(frame->ret_addr, &info) == 0) {
             // unable to find symbol
+#endif /* __APPLE__ */
             fprintf(stderr, "%-3d %-35s 0x%016lx\n", i, "???",
                     (uintptr_t)frame->ret_addr);
+#ifdef __APPLE__
         } else {
             char bname[MAXPATHLEN];
             fprintf(stderr, "%-3d %-35s 0x%016lx %s + %ld\n", i,
@@ -141,6 +141,7 @@ print_stack_backtrace(void* fp)
                     (uintptr_t)frame->ret_addr, info.dli_sname,
                     frame->ret_addr - info.dli_saddr);
         }
+#endif /* __APPLE__ */
 
         const frame_map_t* m = find_frame_map(frame->ret_addr);
         if (!m) {
@@ -216,14 +217,29 @@ static void*
 pd_find_slot(page_desc_t* page)
 {
     // TODO: replace with bitset intrinsics
-    for (int i = 0; i < 64; i++) {
-        if ((page->allocated & (1ULL<<i)) == 0ULL) {
+
+    // TODO: think about page sizes properly before switching to this
+    // forever
+    if (true) {
+        // find first zero
+        int j = __builtin_ffsll(~page->allocated);
+        if (j > 0) {
+            int i = j - 1;
             page->allocated |= (1ULL<<i);
             void** base = page->data;
             return base + i;
         }
+        return NULL;
+    } else {
+        for (int i = 0; i < 64; i++) {
+            if ((page->allocated & (1ULL<<i)) == 0ULL) {
+                page->allocated |= (1ULL<<i);
+                void** base = page->data;
+                return base + i;
+            }
+        }
+        return NULL;
     }
-    return NULL;
 }
 
 
@@ -294,6 +310,7 @@ alloc_print_stats()
 void* sl_alloc_des(const char* descriptor);
 // we save the callee-saved registers before jumping the to c code
 // TODO: use stp to store pairwise and save half the instructions
+#if defined(__arm64__)
 asm ("\
 	.global _sl_alloc_des\n\
 	.p2align	2\n\
@@ -312,6 +329,29 @@ _sl_alloc_des:\n\
 	str	x28, [x8, #72]\n\
 	b	_sl_alloc_des_pt2\n\
 ");
+#elif defined(__aarch64__)
+asm ("\
+	.global sl_alloc_des\n\
+	.p2align	2\n\
+sl_alloc_des:\n\
+	adrp	x8, cs_context\n\
+	add	x8, x8, :lo12:cs_context\n\
+	str	x19, [x8]\n\
+	str	x20, [x8, #8]\n\
+	str	x21, [x8, #16]\n\
+	str	x22, [x8, #24]\n\
+	str	x23, [x8, #32]\n\
+	str	x24, [x8, #40]\n\
+	str	x25, [x8, #48]\n\
+	str	x26, [x8, #56]\n\
+	str	x27, [x8, #64]\n\
+	str	x28, [x8, #72]\n\
+	b	sl_alloc_des_pt2\n\
+");
+
+// TODO: __x86_64__
+
+#endif
 
 
 static void find_roots_and_mark(void* fp);
@@ -363,7 +403,7 @@ void* sl_alloc_des_pt2(const char* descriptor)
      */
 
     uintptr_t* fp;
-#if defined(__arm64__)
+#if defined(__arm64__) || defined(__aarch64__)
     asm ("mov	%0, fp" : "=r" (fp));
 #elif defined(__x86_64__)
     asm ("movq	%%rbp, %0" : "=r" (fp));
