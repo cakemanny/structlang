@@ -9,9 +9,15 @@
 #include <sys/param.h>
 #include <assert.h>
 
+#define var __auto_type
+
 #define IsBitSet(x, i) (( (x)[(i)>>6] & (1ULL<<((i)&63)) ) != 0ULL)
 #define SetBit(x, i) (x)[(i)>>6] |= (1ULL<<((i)&63))
 #define ClearBit(x, i) (x)[(i)>>6] &= (1ULL<<((i)&63)) ^ 0xFFFFFFFFFFFFFFFFULL
+#define BitsetLen(len) (((len) + 63) / 64)
+
+#define cs_bitmap_get(x, i) (((x) >> (2 * (i))) & 0b11)
+#define CS_BITMAP_SET(x, i, v)  x = (x & (-1 ^ (0b11 << (2*(i))))) | ((v) << (2*(i)))
 
 #define NELEMS(A) ((sizeof A) / sizeof A[0])
 
@@ -31,11 +37,20 @@ const char* callee_saved[] = {
     "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 };
 
+struct cs_context_t {
+    void* reg[10];
+} cs_context;
+
 #elif defined(__x86_64__)
 /* static */
 const char* callee_saved[] = {
     "rbx", "r12", "r13", "r14", "r15",
 };
+
+struct cs_context_t {
+    void* reg[5];
+} cs_context;
+
 #else
 #  error "unsupported target platform"
 #endif
@@ -83,25 +98,23 @@ struct frame_map_t {
 };
 
 
-
 /*
  * This symbol is emitted by in the structlang compilation unit
  */
 extern const frame_map_t* sl_rt_frame_maps;
 
-void print_cs_bitmaps()
-{
-    const frame_map_t* m = sl_rt_frame_maps;
 
-    int n = NELEMS(callee_saved);
+static const frame_map_t*
+find_frame_map(void* ret_addr)
+{
+    // TODO: put the frame maps into a sorted array or search tree.
+    const frame_map_t* m = sl_rt_frame_maps;
     for (; m ; m = m->prev) {
-        fprintf(stderr, "Frame descriptor for: %p\n", m->ret_addr);
-        for (int i = 0; i < n; i++) {
-            uint32_t cs_bitmap = m->cs_bitmap;
-            int value = (cs_bitmap >> (2 * i)) & 0b11;
-            fprintf(stderr, "%s: %d \n", callee_saved[i], value);
+        if (ret_addr == m->ret_addr) {
+            break;
         }
     }
+    return m;
 }
 
 
@@ -115,7 +128,7 @@ print_stack_backtrace(void* fp)
 
 
     int n = 128; // cut short after we find main
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++, frame = frame->prev) {
         Dl_info info;
         if (dladdr(frame->ret_addr, &info) == 0) {
             // unable to find symbol
@@ -129,12 +142,7 @@ print_stack_backtrace(void* fp)
                     frame->ret_addr - info.dli_saddr);
         }
 
-        const frame_map_t* m = sl_rt_frame_maps;
-        for (; m ; m = m->prev) {
-            if (frame->ret_addr == m->ret_addr) {
-                break;
-            }
-        }
+        const frame_map_t* m = find_frame_map(frame->ret_addr);
         if (!m) {
             // no more GC'd frames. next ones are the OS or libc
             break;
@@ -144,8 +152,7 @@ print_stack_backtrace(void* fp)
         fprintf(stderr, "\tcs_dispo = ");
         int n = NELEMS(callee_saved);
         for (int i = 0; i < n; i++) {
-            uint32_t cs_bitmap = m->cs_bitmap;
-            int value = (cs_bitmap >> (2 * i)) & 0b11;
+            int value = cs_bitmap_get(m->cs_bitmap, i);
             fprintf(stderr, "%s: %d, ", callee_saved[i], value);
         }
         fprintf(stderr, "\n");
@@ -169,8 +176,6 @@ print_stack_backtrace(void* fp)
             }
         }
         fprintf(stderr, "\n");
-
-        frame = frame->prev;
     }
 }
 
@@ -286,11 +291,37 @@ alloc_print_stats()
 }
 
 
+void* sl_alloc_des(const char* descriptor);
+// we save the callee-saved registers before jumping the to c code
+// TODO: use stp to store pairwise and save half the instructions
+asm ("\
+	.global _sl_alloc_des\n\
+	.p2align	2\n\
+_sl_alloc_des:\n\
+	adrp	x8, _cs_context@GOTPAGE\n\
+	ldr	x8, [x8, _cs_context@GOTPAGEOFF]\n\
+	str	x19, [x8]\n\
+	str	x20, [x8, #8]\n\
+	str	x21, [x8, #16]\n\
+	str	x22, [x8, #24]\n\
+	str	x23, [x8, #32]\n\
+	str	x24, [x8, #40]\n\
+	str	x25, [x8, #48]\n\
+	str	x26, [x8, #56]\n\
+	str	x27, [x8, #64]\n\
+	str	x28, [x8, #72]\n\
+	b	_sl_alloc_des_pt2\n\
+");
+
+
+static void find_roots_and_mark(void* fp);
+
+
 /*
  * We will rewrite this to be the allocator for our garbage collector
  * in due course.
  */
-void* sl_alloc_des(const char* descriptor)
+void* sl_alloc_des_pt2(const char* descriptor)
 {
     size_t nwords = strlen(descriptor);
 
@@ -344,8 +375,115 @@ void* sl_alloc_des(const char* descriptor)
     fprintf(stderr, "RA = (0x%lx)\n", fp[1]);
 
     print_stack_backtrace(fp);
-    // print_cs_bitmaps();
+    find_roots_and_mark(fp);
 
     alloc_print_stats();
     fatal("TODO: implement garbage collection / add more pages?");
+}
+
+
+struct stack_frame {
+    struct stack_frame*  prev;
+    void*                ret_addr;
+};
+
+static int
+deduce_cs_dispo(struct stack_frame *frame, int cs_idx)
+{
+    assert(cs_idx < NELEMS(callee_saved));
+
+    uint32_t cs_dispo = 0b10;
+
+    const frame_map_t* m;
+    for (; (m = find_frame_map(frame->ret_addr)); frame = frame->prev) {
+        if (cs_dispo == 2) {
+            cs_dispo = cs_bitmap_get(m->cs_bitmap, cs_idx);
+        } else {
+            break;
+        }
+    }
+    // 0 or 2 both mean not a pointer now we've gone through all the frames.
+    return (cs_dispo == 1);
+}
+
+static void
+find_roots_and_mark(void* fp)
+{
+    struct stack_frame *frame = fp;
+
+    /*
+     * Plan: create a cs_bitmap that we finalize as we go through the
+     * frames. i.e. find out whether each callee-saved is a pointer or
+     * not.
+     * Until we've done that, we check the stack frame itself for roots.
+     */
+    // start with dispo inherited for all
+    uint32_t cs_bitmap = 0b10101010101010101010101010101010;
+
+    for (int i = 0;; i++, frame = frame->prev) {
+
+        const frame_map_t* m = find_frame_map(frame->ret_addr);
+        if (!m) {
+            // no more GC'd frames. next ones are the OS or libc
+            break;
+        }
+
+        fprintf(stderr, "%-3d %-35s 0x%016lx\n", i, "???",
+                (uintptr_t)frame->ret_addr);
+
+        for (int i = 0; i < m->num_arg_words; i++) {
+            if (IsBitSet(m->bitmaps, i)) {
+                fprintf(stderr, "would mark arg %d at %p\n", i,
+                        (void**)frame->prev + i);
+            }
+        }
+        var locals_bitmap = m->bitmaps + BitsetLen(m->num_arg_words);
+        var locals_base = (void**)frame->prev - m->num_frame_words;
+        for (int i = 0; i < m->num_frame_words; i++) {
+            if (IsBitSet(locals_bitmap, i)) {
+                fprintf(stderr, "would mark slot %d at %p\n", i,
+                        (void**)locals_base + i);
+            }
+        }
+        var spills_bitmap = locals_bitmap + BitsetLen(m->num_spill_words);
+        int j = 0;
+        for (int i = 0; i < m->num_spill_words; i++) {
+            if (IsBitSet(spills_bitmap, i)) {
+                int spill_reg_idx = j >> 1;
+                uint8_t cs_idx = m->spill_reg[spill_reg_idx];
+                if (j & 0b1) {
+                    cs_idx >>= 4;
+                }
+                cs_idx &= 0b00001111;
+                assert(cs_idx < NELEMS(callee_saved));
+                var cs_name = callee_saved[cs_idx];
+                fprintf(stderr,
+                        "will investigate dispo of cs '%s' at slot %d at %p, "
+                        "in previous frame\n",
+                        cs_name, i, (void**)locals_base + i);
+                if (deduce_cs_dispo(frame->prev, i)) {
+                    fprintf(stderr,
+                            "would mark spilled cs '%s' at slot %d at %p\n",
+                            cs_name, i, (void**)locals_base + i);
+                }
+                j++;
+            }
+        }
+
+        int n = NELEMS(callee_saved);
+        for (int i = 0; i < n; i++) {
+            if (cs_bitmap_get(cs_bitmap, i) == 2) {
+                int value = cs_bitmap_get(m->cs_bitmap, i);
+                CS_BITMAP_SET(cs_bitmap, i, value);
+            }
+        }
+
+    }
+
+    for (int i = 0; i < NELEMS(callee_saved); i++) {
+        if (cs_bitmap_get(cs_bitmap, i) == 1) {
+            fprintf(stderr, "would mark cs %s containing addr %p\n",
+                    callee_saved[i], cs_context.reg[i]);
+        }
+    }
 }

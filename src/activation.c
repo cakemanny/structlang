@@ -885,7 +885,8 @@ void ac_extend_frame_map_for_spills(
                     frame_map->acfm_spill_reg[spill_reg_idx++] = reg_idx;
                     // we do a little insert sort to ensure the reg indexes
                     // are least to greatest offet - i.e. stack order.
-                    spill_reg_keep_sorted(frame_map, spill_reg_offset, spill_reg_idx);
+                    spill_reg_keep_sorted(
+                            frame_map, spill_reg_offset, spill_reg_idx);
 
                     SetBit(frame_map->acfm_spills, bit_to_set);
                     break;
