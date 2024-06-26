@@ -317,16 +317,11 @@ asm ("\
 _sl_alloc_des:\n\
 	adrp	x8, _cs_context@GOTPAGE\n\
 	ldr	x8, [x8, _cs_context@GOTPAGEOFF]\n\
-	str	x19, [x8]\n\
-	str	x20, [x8, #8]\n\
-	str	x21, [x8, #16]\n\
-	str	x22, [x8, #24]\n\
-	str	x23, [x8, #32]\n\
-	str	x24, [x8, #40]\n\
-	str	x25, [x8, #48]\n\
-	str	x26, [x8, #56]\n\
-	str	x27, [x8, #64]\n\
-	str	x28, [x8, #72]\n\
+	stp	x19, x20, [x8]\n\
+	stp	x21, x22, [x8, #16]\n\
+	stp	x23, x24, [x8, #32]\n\
+	stp	x25, x26, [x8, #48]\n\
+	stp	x27, x28, [x8, #64]\n\
 	b	_sl_alloc_des_pt2\n\
 ");
 #elif defined(__aarch64__)
@@ -336,16 +331,11 @@ asm ("\
 sl_alloc_des:\n\
 	adrp	x8, cs_context\n\
 	add	x8, x8, :lo12:cs_context\n\
-	str	x19, [x8]\n\
-	str	x20, [x8, #8]\n\
-	str	x21, [x8, #16]\n\
-	str	x22, [x8, #24]\n\
-	str	x23, [x8, #32]\n\
-	str	x24, [x8, #40]\n\
-	str	x25, [x8, #48]\n\
-	str	x26, [x8, #56]\n\
-	str	x27, [x8, #64]\n\
-	str	x28, [x8, #72]\n\
+	stp	x19, x20, [x8]\n\
+	stp	x21, x22, [x8, #16]\n\
+	stp	x23, x24, [x8, #32]\n\
+	stp	x25, x26, [x8, #48]\n\
+	stp	x27, x28, [x8, #64]\n\
 	b	sl_alloc_des_pt2\n\
 ");
 
