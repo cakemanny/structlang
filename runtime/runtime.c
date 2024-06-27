@@ -187,9 +187,19 @@ print_stack_backtrace(void* fp)
 typedef struct page_desc_t page_desc_t;
 struct page_desc_t {
     uint32_t        object_size; // in words
-
-    uint64_t        allocated; // bitmap: 1 means allocated
-    uint64_t        mark; // mark bit in Mark Sweep collector
+    /*
+     * "Allocated" bits. 1 bit per object. Excess space is unused
+     */
+    uint64_t        allocated[8];
+    /*
+     * Mark bits in Mark Sweep collector - 1 bit per object.
+     * Remaining space is unused
+     */
+    uint64_t        mark[8];
+    /*
+     * 1-bit per word. 1 means there's a pointer.
+     */
+    uint64_t        ptr_map[8];
     void*           data; // pointer to 64 objects of object_size length.
     page_desc_t*    next;
 };
@@ -214,28 +224,41 @@ struct allocator {
 
 
 static void*
-pd_find_slot(page_desc_t* page)
+pd_find_slot(page_desc_t* page, const char* descriptor)
 {
     // TODO: replace with bitset intrinsics
+    if (false) {
+#ifdef XXX
+        // TODO: this needs to be adapted to work with variable length
+        // bitsets.
 
-    // TODO: think about page sizes properly before switching to this
-    // forever
-    if (true) {
         // find first zero
         int j = __builtin_ffsll(~page->allocated);
         if (j > 0) {
             int i = j - 1;
             page->allocated |= (1ULL<<i);
             void** base = page->data;
-            return base + i;
+            return base + i; // FIXME: this is broken
         }
         return NULL;
+#endif
     } else {
-        for (int i = 0; i < 64; i++) {
-            if ((page->allocated & (1ULL<<i)) == 0ULL) {
-                page->allocated |= (1ULL<<i);
+        int n = 64 / page->object_size;
+        for (int i = 0; i < n; i++) {
+            if (!IsBitSet(page->allocated, i)) {
+                SetBit(page->allocated, i);
+
+                // describe object layout
+                int offset = (i * page->object_size);
+                for (int j = 0; j < page->object_size; j++) {
+                    if (descriptor[j] == 'p') {
+                        SetBit(page->ptr_map, offset + j);
+                    } else {
+                        ClearBit(page->ptr_map, offset + j);
+                    }
+                }
                 void** base = page->data;
-                return base + i;
+                return base + (i * page->object_size);
             }
         }
         return NULL;
@@ -371,7 +394,7 @@ void* sl_alloc_des_pt2(const char* descriptor)
         page->object_size = nwords;
     }
 
-    void* slot = pd_find_slot(page);
+    void* slot = pd_find_slot(page, descriptor);
     if (slot) {
         return slot;
     }

@@ -33,6 +33,6 @@ fn makeX100(x: int, y: int) -> *X {
 }
 
 fn main() -> int {
-    let a: *X = makeX100(1, 2);
+    let a: *X = makeX100(2, 1);
     return a->x;
 }
