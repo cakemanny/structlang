@@ -2,6 +2,7 @@
 #include "x86_64.h"
 #include <stdlib.h>
 #include <string.h> // strdup
+#include <inttypes.h> // PRIu64, ...
 #include "format.h" // fprint_str_escaped
 #include "arena_util.h"
 #include "assertions.h"
@@ -12,13 +13,16 @@
 #define var __auto_type
 #define Alloc(arena, size) Arena_alloc(arena, size, __FILE__, __LINE__)
 
+#define BitsetLen(len) (((len) + 63) / 64)
 #define NELEMS(A) ((sizeof A) / sizeof A[0])
+
+#define fatal(msg) do { perror(msg); abort(); } while(0)
 
 typedef struct codegen_state_t {
     assm_instr_t** ilist;
     temp_state_t* temp_state;
     ac_frame_t* frame;
-    /* */
+    sl_fragment_t** ptr_map_fragments;
     Arena_T ret_arena; // for assm instructions
     Arena_T frag_arena; // for fragments, frame stuff
 } codegen_state_t;
@@ -130,6 +134,13 @@ static void emit(codegen_state_t state, assm_instr_t* new_instr)
 {
     new_instr->ai_list = *state.ilist;
     *state.ilist = new_instr;
+}
+
+static void emit_ptr_map(codegen_state_t state, ac_frame_map_t* map, sl_sym_t ret_label)
+{
+    var new_frag = sl_frame_map_fragment(map, ret_label, state.frag_arena);
+    new_frag->fr_list = *state.ptr_map_fragments;
+    *state.ptr_map_fragments = new_frag;
 }
 
 /**
@@ -622,6 +633,18 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
                                 munch_args(state, 0, args)),
                             NULL));
             }
+
+            /*
+             * Label for return address. Return address is the key in the
+             * stack map structure.
+             */
+            sl_sym_t retaddr_label = temp_prefixedlabel(state.temp_state, "ret");
+            char* s = NULL;
+            Asprintf(&s, "%s:\n", retaddr_label);
+            emit(state, Assm_label(s, retaddr_label));
+            emit_ptr_map(state, exp->te_ptr_map, retaddr_label);
+
+
             temp_t result = state.frame->acf_target->tgt_ret0;
             result.temp_size = exp->te_size;
             assert(result.temp_size);
@@ -938,14 +961,22 @@ x86_64_codegen(
         sl_fragment_t* fragment, tree_stm_t* stm)
 {
     assm_instr_t* result = NULL;
+    sl_fragment_t* ptr_map_fragments = NULL;
     codegen_state_t codegen_state = {
         .ilist = &result,
         .temp_state = temp_state,
         .frame = fragment->fr_frame,
+        .ptr_map_fragments = &ptr_map_fragments,
         .ret_arena = instr_arena,
         .frag_arena = frag_arena,
     };
     munch_stm(codegen_state, stm);
+
+    /*
+     * insert the generated frame maps into the list of all fragments
+     */
+    fragment->fr_list = fr_append(ptr_map_fragments, fragment->fr_list);
+
     return assm_list_reverse(result);
 }
 
@@ -1065,6 +1096,94 @@ emit_text_segment_header(FILE* out)
 
 void emit_str_escaped(FILE* out, const char* str);
 
+static int
+get_callee_save_idx(int reg_idx)
+{
+    int i = 0;
+    for (; i < NELEMS(callee_saves); i++) {
+        if (callee_saves[i].temp_id == reg_idx) {
+            break;
+        }
+    }
+    return i;
+}
+
+static void
+emit_frame_map_entry(
+        FILE* out, const sl_fragment_t* frag, Table_T label_to_cs_bitmap,
+        int entry_num)
+{
+#define A(mnemonic, opsfmt, ...) \
+    fprintf(out, "\t" mnemonic "\t" opsfmt "\n", ##__VA_ARGS__)
+#define L(labelfmt, ...) fprintf(out, labelfmt ":\n", ##__VA_ARGS__)
+
+    A(".type", "Lptrmap%d,@object", entry_num);
+    A(".p2align", "3"); // maybe it'll need to be 4
+    L("Lptrmap%d", entry_num);
+
+    if (entry_num == 0) {
+        A(".quad", "0");
+    } else {
+        A(".quad", "Lptrmap%d", entry_num - 1);
+    }
+
+    A(".quad", "%s	# ret addr - the key", frag->fr_ret_label);
+
+    union { uint32_t bm; void* v; } cs_bitmap = {};
+    static_assert(sizeof(cs_bitmap.v) >= sizeof(cs_bitmap.bm),
+            "16-bit machine?");
+    cs_bitmap.v = Table_get(label_to_cs_bitmap, frag->fr_ret_label);
+    A(".long", "%"PRIu32"	# callee-save bitmap", cs_bitmap.bm);
+
+    var map = frag->fr_map;
+
+    if (map->acfm_num_arg_words > UINT16_MAX) {
+        fatal("num arg words > uint16_max");
+    }
+    if (map->acfm_num_local_words > UINT16_MAX) {
+        fatal("num local words > uint16_max");
+    }
+    assert(map->acfm_num_spill_words <= map->acfm_num_local_words);
+
+    // This number actually includes the saved FP and RA...
+    A(".short", "%d	# number of stack args + 2", map->acfm_num_arg_words);
+
+    // This number also includes the length of the spill space
+    A(".short", "%d	# length of locals space", map->acfm_num_local_words);
+
+    A(".short", "%d	# length of spills space", map->acfm_num_spill_words);
+
+    // frame_map->acfm_spill_reg contains indexes into x86_64_registers
+    // Take each, and turn it into a 4-bit index into callee_saves
+    // stuff those values into the next 40 bits.
+    uint8_t spill_reg[5] = {};
+    for (int i = 0; i < 10; (i+=2)) {
+        uint8_t cs_idxs[2] = {
+            get_callee_save_idx(map->acfm_spill_reg[i + 0]),
+            get_callee_save_idx(map->acfm_spill_reg[i + 1]),
+        };
+        spill_reg[(i>>1)] = cs_idxs[0] | (cs_idxs[1] << 4);
+    }
+
+    for (int i = 0; i < 5; i++) {
+        A(".byte", "%"PRIu8"	# spill_reg", spill_reg[i]);
+    }
+    A(".zero", "%d", 1); // padding
+
+    for (int i = 0; i < BitsetLen(map->acfm_num_arg_words); i++) {
+        A(".quad", "%"PRIu64"	# arg bitmap", map->acfm_args[i]);
+    }
+    for (int i = 0; i < BitsetLen(map->acfm_num_local_words); i++) {
+        A(".quad", "%"PRIu64"	# locals bitmap", map->acfm_locals[i]);
+    }
+    for (int i = 0; i < BitsetLen(map->acfm_num_spill_words); i++) {
+        A(".quad", "%"PRIu64"	# spills bitmap", map->acfm_spills[i]);
+    }
+
+#undef L
+#undef A
+}
+
 static void
 emit_data_segment(
         FILE* out, const sl_fragment_t* fragments, Table_T label_to_cs_bitmap)
@@ -1097,24 +1216,42 @@ emit_data_segment(
                 break;
             }
             case FR_FRAME_MAP:
-            {
-                assert(!"TODO: frame map");
-                break;
-            }
+                continue;
         }
     }
 
     // The gas manual explains the .section syntax somewhat.
     // https://ftp.gnu.org/old-gnu/Manuals/gas-2.9.1/html_chapter/as_7.html#SEC119
+    A(".section", ".data.rel.ro,\"aw\",@progbits");
+
+    int entry_num = 0;
+    for (var frag = fragments; frag; frag = frag->fr_list) {
+        switch (frag->fr_tag) {
+            case FR_CODE:
+                continue;
+            case FR_STRING:
+                continue;
+            case FR_FRAME_MAP:
+            {
+                emit_frame_map_entry(
+                        out, frag, label_to_cs_bitmap, entry_num);
+                entry_num = entry_num + 1;
+                break;
+            }
+        }
+    }
 
     // Emit a NULL ptr until we implement the frame maps proper for x86_64.
     A(".type", "sl_rt_frame_maps,@object");
-    A(".section", ".data.rel.ro,\"aw\",@progbits");
     A(".globl", "sl_rt_frame_maps");
     A(".p2align", "3, 0x0");
     L("sl_rt_frame_maps");
-    A(".quad", "0");
-    A(".size", "sl_rt_frame_maps, 4");
+    if (entry_num > 0) {
+        A(".quad", "Lptrmap%d", entry_num - 1);
+    } else {
+        A(".quad", "0");
+    }
+    A(".size", "sl_rt_frame_maps, 8");
 
     // Silence warning about executable stack.
     A(".section", ".note.GNU-stack,\"\",@progbits");

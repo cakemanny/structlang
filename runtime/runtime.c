@@ -1,7 +1,10 @@
 //#define _POSIX_C_SOURCE 1
+#define _GNU_SOURCE // ask for dladdr under Linux/GLibc , basename in string.h
 #include <dlfcn.h> // dladdr, ..
 #include <execinfo.h> // backtrace, ..
+#ifdef __APPLE__
 #include <libgen.h> // basename_r
+#endif // __APPLE__
 #include <stdbool.h> // true, false
 #include <stdint.h> // uint32_t, ...
 #include <stddef.h> // ptrdiff_t
@@ -141,16 +144,20 @@ print_stack_backtrace(void* fp)
 
     int n = 128; // cut short after we find main
     for (int i = 0; i < n; i++, frame = frame->prev) {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         Dl_info info;
         if (dladdr(frame->ret_addr, &info) == 0) {
             // unable to find symbol
 #endif /* __APPLE__ */
             fprintf(stderr, "%-3d %-35s 0x%016lx\n", i, "???",
                     (uintptr_t)frame->ret_addr);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         } else {
-            char bname[MAXPATHLEN];
+            #if defined(__linux__)
+                #define basename_r(fname, bname) basename(fname)
+            #else
+                char bname[MAXPATHLEN];
+            #endif // _GNU_SOURCE
             fprintf(stderr, "%-3d %-35s 0x%016lx %s + %ld\n", i,
                     basename_r(info.dli_fname, bname),
                     (uintptr_t)frame->ret_addr, info.dli_sname,

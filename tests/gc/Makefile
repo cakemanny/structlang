@@ -14,7 +14,7 @@ all: $(TARGETS)
 
 $(ASMS): $(SLC)
 %.s: %.sl
-	$(SLC) --target=arm64 $< -o $@
+	$(SLC) $< -o $@
 #.INTERMEDIATE: $(ASMS)
 
 $(TARGETS): $(LDLIBS)
