@@ -28,10 +28,20 @@
     fprintf(stderr, "sl runtime: " fmt "\n", ##__VA_ARGS__); \
     abort(); \
 } while (0)
+
 #define pfatal(msg) do { \
     perror("sl runtime: " msg); \
     abort(); \
 } while (0)
+
+#define debugf(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+
+// I manually switch this to ifndef when debugging caveman-style
+#ifdef XXX
+#define odebug(fmt, var_ex) fprintf(stderr, #var_ex " = " fmt "\n", var_ex)
+#else
+#define odebug(fmt, var_ex) {}
+#endif
 
 
 #if defined(__arm64__) || defined(__aarch64__)
@@ -265,6 +275,19 @@ pd_find_slot(page_desc_t* page, const char* descriptor)
     }
 }
 
+static void
+pd_print(page_desc_t* page)
+{
+    fprintf(stderr, "object_size = %u\n", page->object_size);
+
+    char fmtd[64 * NELEMS(page->allocated) + 1];
+    fmtd[64 * NELEMS(page->allocated)] = '\0';
+    for (int i =0; i < 64 * NELEMS(page->allocated); i++) {
+        fmtd[i] = IsBitSet(page->allocated, i) ? '1' : '0';
+    }
+    fprintf(stderr, "allocated = 0b%s\n", fmtd);
+}
+
 
 static struct superpage*
 alloc_next_free_sp()
@@ -303,7 +326,7 @@ alloc_new_superpage()
 
     // link descriptors together to form the free list
     for (int i = 0; i < 63; i++) {
-        descs[i].next = &(descs[i]);
+        descs[i].next = &(descs[i + 1]);
     }
     // point each descriptor to its data page
     for (int i = 0; i < 64; i++) {
@@ -424,14 +447,68 @@ void* sl_alloc_des_pt2(const char* descriptor)
 #  error "unsupported"
 #endif
 
-    fprintf(stderr, "fp = (0x%lx)\n", (uintptr_t)fp);
-    fprintf(stderr, "RA = (0x%lx)\n", fp[1]);
+    debugf("fp = (0x%lx)\n", (uintptr_t)fp);
+    debugf("RA = (0x%lx)\n", fp[1]);
 
     print_stack_backtrace(fp);
     find_roots_and_mark(fp);
 
     alloc_print_stats();
+    debugf("this descriptor '%s'\n", descriptor);
+    debugf("this page:\n----\n");
+    pd_print(page);
+    debugf("----\n");
     fatal("TODO: implement garbage collection / add more pages?");
+}
+
+
+static void
+mark_depth_first(void* ptr)
+{
+
+    // TODO: just mask off lower bits?
+    struct superpage* sp = NULL;
+    ptrdiff_t page_num;
+    for (int i = 0;
+            i < NELEMS(alloc.superpage) && alloc.superpage[i].sp_descs;
+            i++) {
+        sp = &alloc.superpage[i];
+        odebug("%p", sp->sp_slab);
+
+        // >>9 gives the number of multiples of 512 (the page size)
+        page_num = ((ptrdiff_t)ptr - (ptrdiff_t)sp->sp_slab) >> 9;
+        if (page_num >= 0 && page_num < 64) {
+            odebug("%ld", page_num);
+            break;
+        }
+        sp = NULL;
+    }
+    if (sp == NULL) {
+        // Could be a pointer to a stack location?
+        fprintf(stderr, "warn: superpage not found for %p\n", ptr);
+        return;
+    }
+
+    page_desc_t* page = &sp->sp_descs[page_num];
+
+    long word_idx = ((ptrdiff_t)ptr - (ptrdiff_t)page->data) / sizeof(void*);
+    odebug("%ld", word_idx);
+
+    int obj_idx = word_idx / page->object_size;
+    odebug("%d", obj_idx);
+
+    if (IsBitSet(page->mark, obj_idx)) {
+        return;
+    }
+    SetBit(page->mark, obj_idx);
+
+    // use ptr_map to recurse over all the fields
+    for (int i = 0, n = page->object_size; i < n; i++) {
+        if (IsBitSet(page->ptr_map, word_idx + i)) {
+            // TODO: use a stack data structure instead of recursing
+            mark_depth_first(((void**)ptr)[i]);
+        }
+    }
 }
 
 
@@ -486,16 +563,19 @@ find_roots_and_mark(void* fp)
 
         for (int i = 0; i < m->num_arg_words; i++) {
             if (IsBitSet(m->bitmaps, i)) {
-                fprintf(stderr, "would mark arg %d at %p\n", i,
+                debugf("marking arg %d at %p\n", i,
                         (void**)frame->prev + i);
+                void* root = *((void**)frame->prev + i);
+                mark_depth_first(root);
             }
         }
         var locals_bitmap = m->bitmaps + BitsetLen(m->num_arg_words);
-        var locals_base = (void**)frame->prev - m->num_frame_words;
+        void** locals_base = (void**)frame->prev - m->num_frame_words;
         for (int i = 0; i < m->num_frame_words; i++) {
             if (IsBitSet(locals_bitmap, i)) {
-                fprintf(stderr, "would mark slot %d at %p\n", i,
-                        (void**)locals_base + i);
+                debugf("marking slot %d at %p\n", i, locals_base + i);
+                void* root = *(locals_base + i);
+                mark_depth_first(root);
             }
         }
         var spills_bitmap = locals_bitmap + BitsetLen(m->num_spill_words);
@@ -510,14 +590,11 @@ find_roots_and_mark(void* fp)
                 cs_idx &= 0b00001111;
                 assert(cs_idx < NELEMS(callee_saved));
                 var cs_name = callee_saved[cs_idx];
-                fprintf(stderr,
-                        "will investigate dispo of cs '%s' at slot %d at %p, "
-                        "in previous frame\n",
-                        cs_name, i, (void**)locals_base + i);
-                if (deduce_cs_dispo(frame->prev, i)) {
-                    fprintf(stderr,
-                            "would mark spilled cs '%s' at slot %d at %p\n",
+                if (deduce_cs_dispo(frame->prev, cs_idx)) {
+                    debugf("marking spilled cs '%s' at slot %d at %p\n",
                             cs_name, i, (void**)locals_base + i);
+                    void* root = *((void**)locals_base + i);
+                    mark_depth_first(root);
                 }
                 j++;
             }
@@ -535,8 +612,9 @@ find_roots_and_mark(void* fp)
 
     for (int i = 0; i < NELEMS(callee_saved); i++) {
         if (cs_bitmap_get(cs_bitmap, i) == 1) {
-            fprintf(stderr, "would mark cs %s containing addr %p\n",
+            debugf("marking mark cs %s containing addr %p\n",
                     callee_saved[i], cs_context.reg[i]);
+            mark_depth_first(cs_context.reg[i]);
         }
     }
 }
