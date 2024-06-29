@@ -34,7 +34,9 @@
     abort(); \
 } while (0)
 
-#define debugf(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#define debugf(fmt, ...)  do { \
+    if (debug) { fprintf(stderr, fmt, ##__VA_ARGS__); } \
+} while (0)
 
 // I manually switch this to ifndef when debugging caveman-style
 #ifdef XXX
@@ -43,14 +45,17 @@
 #define odebug(fmt, var_ex) {}
 #endif
 
+// Useful note for self when debugging:
+// __builtin_debugtrap()
+static const bool debug = 0;
 
 #if defined(__arm64__) || defined(__aarch64__)
-const char* callee_saved[] = {
+static const char* callee_saved[] = {
     "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 };
 
 #elif defined(__x86_64__)
-const char* callee_saved[] = {
+static const char* callee_saved[] = {
     "rbx", "r12", "r13", "r14", "r15",
 };
 
@@ -200,17 +205,17 @@ struct page_desc_t {
     /*
      * "Allocated" bits. 1 bit per object. Excess space is unused
      */
-    uint64_t        allocated[8];
+    uint64_t        allocated[1];
     /*
      * Mark bits in Mark Sweep collector - 1 bit per object.
      * Remaining space is unused
      */
-    uint64_t        mark[8];
+    uint64_t        mark[1];
     /*
      * 1-bit per word. 1 means there's a pointer.
      */
-    uint64_t        ptr_map[8];
-    void*           data; // pointer to 64 objects of object_size length.
+    uint64_t        ptr_map[1];
+    void*           data; // pointer to 64/object_size objects of object_size length.
     page_desc_t*    next;
 };
 
@@ -232,47 +237,42 @@ struct allocator {
     }               superpage[16];
 } alloc;
 
+#define SP_NUM_PAGES 64  /* pages per superpage */
+
 
 static void*
 pd_find_slot(page_desc_t* page, const char* descriptor)
 {
-    // TODO: replace with bitset intrinsics
-    if (false) {
-#ifdef XXX
-        // TODO: this needs to be adapted to work with variable length
-        // bitsets.
+    static_assert(NELEMS(page->allocated) == 1, "len(page->allocated)");
 
-        // find first zero
-        int j = __builtin_ffsll(~page->allocated);
-        if (j > 0) {
-            int i = j - 1;
-            page->allocated |= (1ULL<<i);
-            void** base = page->data;
-            return base + i; // FIXME: this is broken
-        }
-        return NULL;
-#endif
-    } else {
+    for (; page ; page = page->next) {
         int n = 64 / page->object_size;
-        for (int i = 0; i < n; i++) {
-            if (!IsBitSet(page->allocated, i)) {
-                SetBit(page->allocated, i);
+        // find first zero
+        int j = __builtin_ffsll(~page->allocated[0]);
+        if (j > 0 && (j - 1) < n) {
+            int i = (j - 1);
+            SetBit(page->allocated, i);
 
-                // describe object layout
-                int offset = (i * page->object_size);
-                for (int j = 0; j < page->object_size; j++) {
-                    if (descriptor[j] == 'p') {
-                        SetBit(page->ptr_map, offset + j);
-                    } else {
-                        ClearBit(page->ptr_map, offset + j);
-                    }
+            int offset = (i * page->object_size);
+            for (int j = 0; j < page->object_size; j++) {
+                if (descriptor[j] == 'p') {
+                    SetBit(page->ptr_map, offset + j);
+                } else {
+                    ClearBit(page->ptr_map, offset + j);
                 }
-                void** base = page->data;
-                return base + (i * page->object_size);
             }
+            void** base = page->data;
+            return base + (i * page->object_size);
         }
-        return NULL;
     }
+    return NULL;
+}
+
+static bool
+pd_is_empty(page_desc_t* page)
+{
+    static_assert(NELEMS(page->allocated) == 1, "len(page->allocated)");
+    return page->allocated[0] == 0ULL;
 }
 
 static void
@@ -288,6 +288,17 @@ pd_print(page_desc_t* page)
     fprintf(stderr, "allocated = 0b%s\n", fmtd);
 }
 
+
+static page_desc_t*
+alloc_page_from_free_list(size_t nwords)
+{
+    var page = alloc.free_list;
+    alloc.free_list = page->next;
+    page->next = alloc.pages[nwords];
+    alloc.pages[nwords] = page;
+    page->object_size = nwords;
+    return page;
+}
 
 static struct superpage*
 alloc_next_free_sp()
@@ -313,23 +324,24 @@ alloc_new_superpage()
         fatal("out of super pages");
     }
 
-    typeof(sp->sp_descs) descs = calloc(64, sizeof *descs);
+    int N = SP_NUM_PAGES;
+    typeof(sp->sp_descs) descs = calloc(N, sizeof *descs);
     if (descs == NULL) {
         pfatal("calloc");
     }
 
-    void* slab = mmap(0, 64 * sizeof(page_data_t),
+    void* slab = mmap(0, N * sizeof(page_data_t),
             PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, 0, 0);
     if (slab == MAP_FAILED) {
         pfatal("mmap");
     }
 
     // link descriptors together to form the free list
-    for (int i = 0; i < 63; i++) {
+    for (int i = 0; i < N - 1; i++) {
         descs[i].next = &(descs[i + 1]);
     }
     // point each descriptor to its data page
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < N; i++) {
         descs[i].data = ((page_data_t*)slab) + i;
     }
 
@@ -353,9 +365,13 @@ alloc_print_stats()
 }
 
 
+/*
+ * The allocation function called by the structlang program descriptor
+ * is a null terminated C string consisting of 'n's and 'p's for each
+ * word to be allocated. 'p' for pointer, 'n' for non-pointer.
+ */
 void* sl_alloc_des(const char* descriptor);
 // we save the callee-saved registers before jumping the to c code
-// TODO: use stp to store pairwise and save half the instructions
 #if defined(__arm64__)
 asm ("\
 	.global _sl_alloc_des\n\
@@ -391,19 +407,23 @@ sl_alloc_des:\n\
 
 
 static void find_roots_and_mark(void* fp);
-
+static void sweep_heap();
 
 /*
- * We will rewrite this to be the allocator for our garbage collector
- * in due course.
+ * The C part of sl_alloc_des
  */
-void* sl_alloc_des_pt2(const char* descriptor)
+__attribute__((used))
+static void*
+sl_alloc_des_pt2(const char* descriptor)
 {
     size_t nwords = strlen(descriptor);
 
-    assert(nwords < 64 && "TODO");
+    assert(nwords < NELEMS(alloc.counter) && "TODO");
     assert(nwords < (2ULL<<32)); // Keep this one
     alloc.counter[nwords] += 1;
+    int retry_count = 0;
+retry:
+    ;
 
     page_desc_t* page = alloc.pages[nwords];
     if (!page) {
@@ -411,15 +431,20 @@ void* sl_alloc_des_pt2(const char* descriptor)
             struct superpage* sp = alloc_new_superpage();
             alloc.free_list = sp->sp_descs;
         }
-        page = alloc.pages[nwords] = alloc.free_list;
-        alloc.free_list = page->next;
-
-        page->object_size = nwords;
+        page = alloc_page_from_free_list(nwords);
     }
 
     void* slot = pd_find_slot(page, descriptor);
     if (slot) {
+        // Should we zero the memory? Or does the program always initialize
+        // the memory?
         return slot;
+    }
+
+    // This is falsed out for the sake of the test programs atm
+    if (false && alloc.free_list) {
+        page = alloc_page_from_free_list(nwords);
+        goto retry; // could also just call pd_find_slot, should always work..
     }
 
     /*
@@ -427,15 +452,6 @@ void* sl_alloc_des_pt2(const char* descriptor)
      * , do a CG, then we know heap usage
      * and then if heap usage is above let's say 50% .... maybe
      * we allocate a new super page (or double the number...)
-     */
-
-
-    void* callstack[128];
-    int frames = backtrace(callstack, 128);
-    backtrace_symbols_fd(callstack, frames, 2);
-
-    /*
-     * We should try to implement what backtrace does....
      */
 
     uintptr_t* fp;
@@ -450,15 +466,22 @@ void* sl_alloc_des_pt2(const char* descriptor)
     debugf("fp = (0x%lx)\n", (uintptr_t)fp);
     debugf("RA = (0x%lx)\n", fp[1]);
 
-    print_stack_backtrace(fp);
+    if (debug) {
+        print_stack_backtrace(fp);
+    }
     find_roots_and_mark(fp);
+    sweep_heap();
+    if (retry_count == 0) {
+        retry_count += 1;
+        goto retry;
+    }
 
     alloc_print_stats();
     debugf("this descriptor '%s'\n", descriptor);
     debugf("this page:\n----\n");
-    pd_print(page);
+    if (debug){ pd_print(page); };
     debugf("----\n");
-    fatal("TODO: implement garbage collection / add more pages?");
+    fatal("OUT OF MEMORY");
 }
 
 
@@ -477,7 +500,7 @@ mark_depth_first(void* ptr)
 
         // >>9 gives the number of multiples of 512 (the page size)
         page_num = ((ptrdiff_t)ptr - (ptrdiff_t)sp->sp_slab) >> 9;
-        if (page_num >= 0 && page_num < 64) {
+        if (page_num >= 0 && page_num < SP_NUM_PAGES) {
             odebug("%ld", page_num);
             break;
         }
@@ -501,6 +524,11 @@ mark_depth_first(void* ptr)
         return;
     }
     SetBit(page->mark, obj_idx);
+
+    // ptr may be an object internal pointer.
+    // so we move it back to the object boundary
+    word_idx = obj_idx * page->object_size;
+    ptr = (void**)page->data + word_idx;
 
     // use ptr_map to recurse over all the fields
     for (int i = 0, n = page->object_size; i < n; i++) {
@@ -558,8 +586,7 @@ find_roots_and_mark(void* fp)
             break;
         }
 
-        fprintf(stderr, "%-3d %-35s 0x%016lx\n", i, "???",
-                (uintptr_t)frame->ret_addr);
+        debugf("%-3d %-35s 0x%016lx\n", i, "???", (uintptr_t)frame->ret_addr);
 
         for (int i = 0; i < m->num_arg_words; i++) {
             if (IsBitSet(m->bitmaps, i)) {
@@ -582,15 +609,18 @@ find_roots_and_mark(void* fp)
         int j = 0;
         for (int i = 0; i < m->num_spill_words; i++) {
             if (IsBitSet(spills_bitmap, i)) {
+
+                /* see comment for spill_reg */
                 int spill_reg_idx = j >> 1;
                 uint8_t cs_idx = m->spill_reg[spill_reg_idx];
                 if (j & 0b1) {
                     cs_idx >>= 4;
                 }
                 cs_idx &= 0b00001111;
+
                 assert(cs_idx < NELEMS(callee_saved));
-                var cs_name = callee_saved[cs_idx];
                 if (deduce_cs_dispo(frame->prev, cs_idx)) {
+                    var cs_name = callee_saved[cs_idx];
                     debugf("marking spilled cs '%s' at slot %d at %p\n",
                             cs_name, i, (void**)locals_base + i);
                     void* root = *((void**)locals_base + i);
@@ -615,6 +645,80 @@ find_roots_and_mark(void* fp)
             debugf("marking mark cs %s containing addr %p\n",
                     callee_saved[i], cs_context.reg[i]);
             mark_depth_first(cs_context.reg[i]);
+        }
+    }
+}
+
+static void
+sweep_page(page_desc_t* page)
+{
+    assert(page->object_size > 0);
+    page_data_t* pd; // only used for counting
+    for (int word_idx = 0, obj_idx = 0; word_idx < NELEMS(pd->words);
+            word_idx += page->object_size, obj_idx++) {
+        if (IsBitSet(page->mark, obj_idx)) {
+            ClearBit(page->mark, obj_idx);
+        } else {
+            ClearBit(page->allocated, obj_idx);
+#ifndef NDEBUG
+            // ptr_map will get overwritten during allocation anyway.
+            // but this might help clean up things for debugging.
+            for (int i = 0; i < page->object_size; i++) {
+                ClearBit(page->ptr_map, word_idx + i);
+            }
+#endif
+        }
+    }
+}
+
+static void
+sweep_superpage(struct superpage* sp)
+{
+    for (int i = 0; i < SP_NUM_PAGES; i++) {
+        var page = &sp->sp_descs[i];
+        if (page->object_size == 0) {
+            continue;
+        }
+        sweep_page(page);
+    }
+}
+
+static void
+sweep_page_chain(page_desc_t** ppage)
+{
+    while (*ppage) {
+        sweep_page(*ppage);
+
+        if (pd_is_empty(*ppage)) {
+            var empty_page = *ppage;
+            *ppage = (*ppage)->next;
+
+            empty_page->object_size = 0;
+            empty_page->next = alloc.free_list;
+            alloc.free_list = empty_page;
+        } else {
+            ppage = &(*ppage)->next;
+        }
+    }
+}
+
+static void
+sweep_heap()
+{
+    for (int i = 0; i < NELEMS(alloc.pages); i++) {
+        if ((alloc.pages[i])) {
+            sweep_page_chain(&alloc.pages[i]);
+        }
+    }
+
+    if (false) {
+        // This feels more cache-friendly, as it hits the pages in order
+        // but it doesn't refill the free_list
+        for (int i = 0;
+                i < NELEMS(alloc.superpage) && alloc.superpage[i].sp_descs;
+                i++) {
+            struct superpage* sp = &alloc.superpage[i];
+            sweep_superpage(sp);
         }
     }
 }
