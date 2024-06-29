@@ -400,9 +400,19 @@ sl_alloc_des:\n\
 	stp	x27, x28, [x8, #64]\n\
 	b	sl_alloc_des_pt2\n\
 ");
-
-// TODO: __x86_64__
-
+#elif defined(__x86_64__)
+asm ("\
+	.globl	sl_alloc_des\n\
+	.p2align	4, 0x90\n\
+sl_alloc_des:\n\
+	leaq	cs_context(%rip), %rax\n\
+	movq	%rbx, 0(%rax)\n\
+	movq	%r12, 8(%rax)\n\
+	movq	%r13, 16(%rax)\n\
+	movq	%r14, 24(%rax)\n\
+	movq	%r15, 32(%rax)\n\
+	jmp	sl_alloc_des_pt2\n\
+");
 #endif
 
 
