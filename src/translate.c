@@ -782,9 +782,10 @@ static translate_exp_t* translate_expr_loop(
     /* restore loop_end */
     info->current_loop_end = saved_end;
 
-    tree_stm_t* result = tree_stm_seq(
-            translated_stmts,
-            tree_stm_label(loop_end, info->ret_arena), info->ret_arena);
+    tree_stm_t* result = tree_stm_seq(tree_stm_seq(
+                translated_stmts,
+                unconditional_jump(loop_start, info->ret_arena), info->ret_arena),
+                tree_stm_label(loop_end, info->ret_arena), info->ret_arena);
     return translate_nx(result, info->scratch);
 }
 

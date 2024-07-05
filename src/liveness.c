@@ -387,6 +387,27 @@ ig_get_node_by_idx(lv_igraph_t* igraph, int i, Arena_T ar)
     return ig_get_node_for_temp(igraph, ptemp, ar);
 }
 
+static lv_node_t*
+find_end_unmarked_node(int N, lv_node_list_t* cg_nodes, bool* mark, Arena_T ar)
+{
+    bool* mark2 = Alloc(ar, N * sizeof *mark2);
+    lv_node_t* end_node = NULL;
+    for (var n = cg_nodes; n; n = n->nl_list) {
+        if (mark[n->nl_node->lvn_idx] == false) {
+            mark2[n->nl_node->lvn_idx] = true;
+            int k = 0;
+            for (var it = lv_succ(n->nl_node); lv_node_it_next(&it);) {
+                if (mark2[it.lvni_node.lvn_idx] == false) {
+                    k++; } }
+            if (k == 0) {
+                end_node = n->nl_node;
+                break;
+            }
+        }
+    }
+    assert(end_node);
+    return end_node;
+}
 
 static void
 depth_first_search(int* N, lv_node_t* i, bool* mark, lv_node_t* sorted)
@@ -423,6 +444,12 @@ topological_sort(int flowgraph_length, lv_node_list_t* cg_nodes, Arena_T ar)
     assert(exit_node);
 
     depth_first_search(&N, exit_node, mark, sorted);
+    while (N != 0) {
+        var end_node =
+            find_end_unmarked_node(flowgraph_length, cg_nodes, mark, ar);
+        depth_first_search(&N, end_node, mark, sorted);
+    }
+    assert(N == 0);
     return sorted;
 }
 
