@@ -1,5 +1,3 @@
-// vim: ft= syntax=structlang
-
 struct X {
     x: int,
     y: int,

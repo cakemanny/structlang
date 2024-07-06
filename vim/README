@@ -1,0 +1,11 @@
+
+A vim plugin for a little bit of syntax highlighting.
+
+There are quite a number of vim plugin managers. If you are using vim-plug[1],
+the incantation will look like this:
+
+    Plug 'cakemanny/structlang', { 'rtp': 'vim' }
+
+Hopefully your plugin manager is able to do something similar.
+
+[1]: https://github.com/junegunn/vim-plug
