@@ -1,8 +1,8 @@
-SRCS = leak1.sl leak2.sl
+SRCS = leak1.sl leak2.sl leak3.sl
 ASMS = $(SRCS:.sl=.s)
 OBJS = $(ASMS:.s=.o)
 
-TARGETS = leak1 leak2
+TARGETS = leak1 leak2 leak3
 
 SLC = ../../build/debug/structlangc
 LDLIBS = ../../build/debug/libslruntime.a
@@ -15,7 +15,7 @@ all: $(TARGETS)
 $(ASMS): $(SLC)
 %.s: %.sl
 	$(SLC) $< -o $@
-#.INTERMEDIATE: $(ASMS)
+.INTERMEDIATE: $(ASMS)
 
 $(TARGETS): $(LDLIBS)
 %: %.o

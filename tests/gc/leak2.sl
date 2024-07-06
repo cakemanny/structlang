@@ -58,5 +58,5 @@ fn makeP100(x: int, y: int) -> *P2 {
 
 fn main() -> int {
     let a: *P2 = makeP100(2, 1);
-    return a->y0;
+    return a->y0 - a->y1 - a->y1;
 }
