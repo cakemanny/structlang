@@ -192,6 +192,7 @@ static temp_ptr_disposition_t ptr_disp_of_type(const sl_type_t* type)
         case SL_TYPE_FUNC:
             assert(!"not implemented, size_of_type, function");
     }
+    __builtin_unreachable();
 }
 
 // TODO: we should scan through the program and calculate the types as a

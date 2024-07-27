@@ -531,6 +531,7 @@ int ty_cmp(sl_type_t* t1, sl_type_t* t2)
         case SL_TYPE_FUNC:
             return 1; // FIXME
     }
+    __builtin_unreachable();
 }
 
 /*

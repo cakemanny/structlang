@@ -132,6 +132,7 @@ static tree_exp_t* translate_un_ex(translate_info_t* info, translate_exp_t* ex)
             break;
         }
     }
+    __builtin_unreachable();
 }
 
 static tree_stm_t* translate_un_nx(translate_info_t* info, translate_exp_t* ex)
@@ -156,6 +157,7 @@ static tree_stm_t* translate_un_nx(translate_info_t* info, translate_exp_t* ex)
             );
         }
     }
+    __builtin_unreachable();
 }
 
 static tree_stm_t* unconditional_jump(sl_sym_t dst, Arena_T a)
@@ -213,6 +215,7 @@ static label_bifunc_t translate_un_cx(translate_exp_t* ex)
             return ex->tr_exp_cx;
         }
     }
+    __builtin_unreachable();
 }
 
 
@@ -301,6 +304,7 @@ translate_type0(
         case SL_TYPE_FUNC:
             assert(!"not implemented");
     }
+    __builtin_unreachable();
 }
 
 tree_typ_t*
@@ -993,6 +997,7 @@ static translate_exp_t* translate_expr(
         case SL_EXPR_IF:
             return translate_expr_if(info, frame, expr);;
     }
+    __builtin_unreachable();
 }
 
 static tree_stm_t* translate_decl(

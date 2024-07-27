@@ -101,6 +101,7 @@ static bool may_define_temps(canon_info_t* info, tree_stm_t* s, tree_exp_t* e)
             assert(false);
             break;
     }
+    __builtin_unreachable();
 }
 
 /*
@@ -489,6 +490,7 @@ static tree_stm_t* do_stm(canon_info_t* info, tree_stm_t* s)
         case TREE_STM_LABEL:
             return reorder_stm(info, NULL, bsp_func(rebuild_stm_other, s));
     }
+    __builtin_unreachable();
 }
 
 /**
@@ -732,6 +734,7 @@ static tree_relop_t invert_relop(tree_relop_t op)
         case TREE_RELOP_ULE: return TREE_RELOP_UGT;
         case TREE_RELOP_UGT: return TREE_RELOP_ULE;
     }
+    __builtin_unreachable();
 }
 
 /*

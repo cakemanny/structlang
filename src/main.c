@@ -158,6 +158,7 @@ int main(int argc, char* argv[])
     Arena_T ast_arena = Arena_new();
     sl_decl_t* program = parse_file(ast_arena, inarg);
     if (!program) {
+        Arena_dispose(&ast_arena);
         return 1;
     }
 
@@ -173,6 +174,7 @@ int main(int argc, char* argv[])
     int sem_result = sem_verify_and_type_program(ast_arena, inarg, program);
     if (sem_result < 0) {
         fprintf(stderr, "%d errors\n", -sem_result);
+        Arena_dispose(&ast_arena);
         return 1;
     }
 

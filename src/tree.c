@@ -449,4 +449,5 @@ temp_ptr_disposition_t tree_dispo_from_type(const tree_typ_t* tree_type) {
         case TREE_TYPE_STRUCT:
             return TEMP_DISP_NOT_PTR;
     }
+    __builtin_unreachable();
 }

@@ -212,6 +212,7 @@ static const char* x86_64_register_for_size(const char* regname, size_t size)
 
     fprintf(stderr, "unexpected register name %s\n", regname);
     assert(!"unexpected register name");
+    __builtin_unreachable();
 }
 
 static assm_instr_t*
@@ -658,6 +659,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
 #undef temp_list
 #undef temp_list_cons
 #undef Munch_exp
+    __builtin_unreachable();
 }
 
 // TODO: We might need to consider sign-extending and zero extending moves

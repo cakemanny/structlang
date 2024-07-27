@@ -489,6 +489,7 @@ static temp_t munch_exp(codegen_state_t state, tree_exp_t* exp)
 #undef temp_list
 #undef temp_list_cons
 #undef Munch_exp
+    __builtin_unreachable();
 }
 
 static void debug_print_drop(tree_stm_t* stm)
