@@ -62,6 +62,15 @@ static const char* callee_saved[] = {
     "rbx", "r12", "r13", "r14", "r15",
 };
 
+#elif defined(__riscv) && __riscv_xlen == 64
+// https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/riscv-asm.md
+// TODO: we may need to come back to this if we consider any of these special
+static const char* callee_saved[] = {
+//   x9,   x18 --- x27
+    "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11"
+        // FIXME: this is too many registers for our scheme
+};
+
 #else
 #  error "unsupported target platform"
 #endif
@@ -420,6 +429,7 @@ sl_alloc_des:\n\
 	movq	%r15, 32(%rax)\n\
 	jmp	sl_alloc_des_pt2\n\
 ");
+// TODO: RISCV
 #endif
 
 
@@ -476,6 +486,8 @@ retry:
     asm ("mov	%0, fp" : "=r" (fp));
 #elif defined(__x86_64__)
     asm ("movq	%%rbp, %0" : "=r" (fp));
+#elif defined(__riscv)
+    asm ("mv	%0, fp" : "=r" (fp));
 #else
 #  error "unsupported"
 #endif
