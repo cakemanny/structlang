@@ -54,11 +54,18 @@ else
   CFLAGS += -O3 -DNDEBUG
 endif
 
-.PHONY: all lib gen runtime
-all: gen lib \
+ALL=gen lib \
 	$(BUILD_DIR)/$(TARGET_EXEC) \
 	$(BUILD_DIR)/$(TEST_EXEC) \
-	$(BUILD_DIR)/compile_commands.json runtime
+	runtime
+
+ifeq "$(CC)" "clang"
+  ALL += $(BUILD_DIR)/compile_commands.json
+  CFLAGS += -MJ $(@).json
+endif
+
+.PHONY: all lib gen runtime
+all: $(ALL)
 
 lib: gen $(BUILD_DIR)/$(TARGET_LIB)
 
@@ -84,7 +91,7 @@ $(BUILD_DIR)/src/lex.yy.c: src/lexer.l
 
 $(BUILD_DIR)/src/lex.yy.c.o: $(BUILD_DIR)/src/lex.yy.c $(BUILD_DIR)/src/grammar.tab.h
 	$(MKDIR_P) $(dir $@)
-	$(CC) $(CPPFLAGS) -MJ $(@).json $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/src/grammar.tab.c $(BUILD_DIR)/src/grammar.tab.h: src/grammar.y
 	$(MKDIR_P) $(dir $@)
@@ -92,7 +99,7 @@ $(BUILD_DIR)/src/grammar.tab.c $(BUILD_DIR)/src/grammar.tab.h: src/grammar.y
 
 $(BUILD_DIR)/src/grammar.tab.c.o: $(BUILD_DIR)/src/grammar.tab.c
 	$(MKDIR_P) $(dir $@)
-	$(CC) $(CPPFLAGS) -MJ $(@).json $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 # assembly
 $(BUILD_DIR)/%.s.o: %.s
@@ -102,7 +109,7 @@ $(BUILD_DIR)/%.s.o: %.s
 # c source
 $(BUILD_DIR)/%.c.o: %.c
 	$(MKDIR_P) $(dir $@)
-	$(CC) $(CPPFLAGS) -MJ $(@).json $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 # c++ source
 $(BUILD_DIR)/%.cpp.o: %.cpp
