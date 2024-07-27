@@ -17,7 +17,8 @@
 static const bool debug = 0;
 static const bool enable_coalescing = true;
 
-enum worklist_mem : unsigned char {
+// TODO: change to ': unsigned char' once on gcc13
+enum worklist_mem {
     WL_PRECOLORED = 0,
     WL_INITIAL,
     WL_SIMPLIFY,
@@ -27,7 +28,9 @@ enum worklist_mem : unsigned char {
     WL_COALESCED,
     WL_COLORED,
     WL_SELECT,
-};
+} __attribute((packed));
+static_assert(sizeof(enum worklist_mem) == 1,
+        "sizeof(enum worklist_mem) == 1");
 
 /*
  * Holds all of our worklists and state, etc for the graph colouring

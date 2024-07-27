@@ -8,11 +8,15 @@
 struct temp_state;
 typedef struct temp_state temp_state_t;
 
-typedef enum temp_ptr_disposition : unsigned char {
+// TODO: change to ': unsigned char' once on gcc13
+typedef enum temp_ptr_disposition {
     TEMP_DISP_PTR = 1,
     TEMP_DISP_NOT_PTR,
     TEMP_DISP_INHERIT,
-} temp_ptr_disposition_t;
+} __attribute__((packed)) temp_ptr_disposition_t;
+
+_Static_assert(sizeof(temp_ptr_disposition_t) == 1,
+        "sizeof(temp_ptr_disposition_t) == 1");
 
 typedef struct temp {
     int temp_id;
